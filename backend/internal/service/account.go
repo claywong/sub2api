@@ -1188,15 +1188,80 @@ func (a *Account) IsOpenAIOAuthPassthroughEnabled() bool {
 	return a != nil && a.IsOpenAIOAuth() && a.IsOpenAIPassthroughEnabled()
 }
 
-// IsAnthropicAPIKeyPassthroughEnabled 返回 Anthropic API Key 账号是否启用"自动透传（仅替换认证）"。
-// 字段：accounts.extra.anthropic_passthrough。
-// 字段缺失或类型不正确时，按 false（关闭）处理。
+const (
+	AnthropicPassthroughModeCompat   = “compat”
+	AnthropicPassthroughModeAuthOnly = “auth_only”
+	AnthropicPassthroughModeFull     = “full”
+)
+
+func normalizeAnthropicPassthroughMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case AnthropicPassthroughModeCompat:
+		return AnthropicPassthroughModeCompat
+	case AnthropicPassthroughModeAuthOnly:
+		return AnthropicPassthroughModeAuthOnly
+	case AnthropicPassthroughModeFull:
+		return AnthropicPassthroughModeFull
+	default:
+		return “”
+	}
+}
+
+// ResolveAnthropicPassthroughMode 返回 Anthropic 账号当前生效的透传模式。
+//
+// 新字段：accounts.extra.anthropic_passthrough_mode。
+// 兼容字段：accounts.extra.anthropic_passthrough（仅 Anthropic API Key，解释为 auth_only）。
+// 默认值：compat。
+func (a *Account) ResolveAnthropicPassthroughMode() string {
+	if a == nil || !a.IsAnthropic() {
+		return AnthropicPassthroughModeCompat
+	}
+
+	if a.Extra != nil {
+		if rawMode, ok := a.Extra[“anthropic_passthrough_mode”].(string); ok {
+			if normalized := normalizeAnthropicPassthroughMode(rawMode); normalized != “” {
+				switch a.Type {
+				case AccountTypeAPIKey:
+					return normalized
+				case AccountTypeOAuth, AccountTypeSetupToken:
+					if normalized == AnthropicPassthroughModeCompat || normalized == AnthropicPassthroughModeFull {
+						return normalized
+					}
+				}
+			}
+		}
+
+		if a.Type == AccountTypeAPIKey {
+			if enabled, ok := a.Extra[“anthropic_passthrough”].(bool); ok && enabled {
+				return AnthropicPassthroughModeAuthOnly
+			}
+		}
+	}
+
+	return AnthropicPassthroughModeCompat
+}
+
+// IsAnthropicAPIKeyPassthroughEnabled 返回 Anthropic API Key 账号是否启用”自动透传（仅替换认证）”。
+// 该方法兼容旧布尔字段，但新的首选字段为 anthropic_passthrough_mode=auth_only。
 func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
-	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
+	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey {
 		return false
 	}
-	enabled, ok := a.Extra["anthropic_passthrough"].(bool)
-	return ok && enabled
+	return a.ResolveAnthropicPassthroughMode() == AnthropicPassthroughModeAuthOnly
+}
+
+// IsAnthropicFullPassthroughEnabled 返回 Anthropic 账号是否启用“完整透传”模式。
+// 支持的账号类型：oauth / setup-token / apikey。
+func (a *Account) IsAnthropicFullPassthroughEnabled() bool {
+	if a == nil || !a.IsAnthropic() {
+		return false
+	}
+	switch a.Type {
+	case AccountTypeOAuth, AccountTypeSetupToken, AccountTypeAPIKey:
+		return a.ResolveAnthropicPassthroughMode() == AnthropicPassthroughModeFull
+	default:
+		return false
+	}
 }
 
 // WebSearch 模拟三态常量

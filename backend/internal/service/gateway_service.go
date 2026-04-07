@@ -3928,6 +3928,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, fmt.Errorf("parse request: empty request")
 	}
 
+	if account != nil && account.IsAnthropicFullPassthroughEnabled() {
+		return s.forwardAnthropicFullPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
+			Body:          parsed.Body,
+			RequestModel:  parsed.Model,
+			OriginalModel: parsed.Model,
+			RequestStream: parsed.Stream,
+			StartTime:     startTime,
+		})
+	}
+
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body) {
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
@@ -4512,6 +4522,15 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}, nil
 }
 
+type anthropicPassthroughRequestBuilder func(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	tokenType string,
+) (*http.Request, error)
+
 type anthropicPassthroughForwardInput struct {
 	Body          []byte
 	RequestModel  string
@@ -4520,52 +4539,163 @@ type anthropicPassthroughForwardInput struct {
 	StartTime     time.Time
 }
 
-func (s *GatewayService) forwardAnthropicAPIKeyPassthrough(
+func deleteHeaderRaw(h http.Header, key string) {
+	if h == nil {
+		return
+	}
+	h.Del(key)
+	if wireKey := resolveWireCasing(key); wireKey != key {
+		delete(h, wireKey)
+	}
+	delete(h, key)
+}
+
+func copyAllowedPassthroughHeaders(dst http.Header, src http.Header) {
+	if dst == nil || src == nil {
+		return
+	}
+	for key, values := range src {
+		lowerKey := strings.ToLower(strings.TrimSpace(key))
+		if !allowedHeaders[lowerKey] {
+			continue
+		}
+		wireKey := resolveWireCasing(key)
+		for _, v := range values {
+			addHeaderRaw(dst, wireKey, v)
+		}
+	}
+}
+
+func (s *GatewayService) buildAnthropicPassthroughTargetURL(account *Account, path string) (string, error) {
+	var targetURL string
+	switch path {
+	case "/v1/messages":
+		targetURL = claudeAPIURL
+	case "/v1/messages/count_tokens":
+		targetURL = claudeAPICountTokensURL
+	default:
+		return "", fmt.Errorf("unsupported anthropic passthrough path: %s", path)
+	}
+
+	if account == nil {
+		return targetURL, nil
+	}
+
+	if account.Type == AccountTypeAPIKey {
+		baseURL := account.GetBaseURL()
+		if baseURL == "" {
+			return targetURL, nil
+		}
+		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return "", err
+		}
+		return validatedURL + path + "?beta=true", nil
+	}
+
+	if account.IsCustomBaseURLEnabled() {
+		customURL := account.GetCustomBaseURL()
+		if customURL == "" {
+			return "", fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
+		}
+		validatedURL, err := s.validateUpstreamBaseURL(customURL)
+		if err != nil {
+			return "", err
+		}
+		return s.buildCustomRelayURL(validatedURL, path, account), nil
+	}
+
+	return targetURL, nil
+}
+
+func resolveAnthropicPassthroughProxyURL(account *Account) string {
+	if account == nil || account.ProxyID == nil || account.Proxy == nil {
+		return ""
+	}
+	if account.IsCustomBaseURLEnabled() && account.GetCustomBaseURL() != "" {
+		return ""
+	}
+	return account.Proxy.URL()
+}
+
+func (s *GatewayService) buildAnthropicSafePassthroughRequest(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	body []byte,
-	reqModel string,
-	originalModel string,
-	reqStream bool,
-	startTime time.Time,
-) (*ForwardResult, error) {
-	return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
-		Body:          body,
-		RequestModel:  reqModel,
-		OriginalModel: originalModel,
-		RequestStream: reqStream,
-		StartTime:     startTime,
-	})
+	token string,
+	tokenType string,
+	path string,
+) (*http.Request, error) {
+	targetURL, err := s.buildAnthropicPassthroughTargetURL(account, path)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	if c != nil && c.Request != nil {
+		copyAllowedPassthroughHeaders(req.Header, c.Request.Header)
+	}
+
+	deleteHeaderRaw(req.Header, "authorization")
+	deleteHeaderRaw(req.Header, "x-api-key")
+	deleteHeaderRaw(req.Header, "x-goog-api-key")
+	deleteHeaderRaw(req.Header, "cookie")
+
+	if tokenType == "oauth" {
+		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
+	} else {
+		setHeaderRaw(req.Header, "x-api-key", token)
+	}
+
+	if getHeaderRaw(req.Header, "content-type") == "" {
+		setHeaderRaw(req.Header, "content-type", "application/json")
+	}
+	if getHeaderRaw(req.Header, "anthropic-version") == "" {
+		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
+	}
+
+	return req, nil
 }
 
-func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
+func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	input anthropicPassthroughForwardInput,
+	errorLabel string,
+	logMode string,
+	stripEmptyTextBlocks bool,
+	allowOAuth bool,
+	buildRequest anthropicPassthroughRequestBuilder,
 ) (*ForwardResult, error) {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err
 	}
-	if tokenType != "apikey" {
-		return nil, fmt.Errorf("anthropic api key passthrough requires apikey token, got: %s", tokenType)
+	if tokenType != "apikey" && (!allowOAuth || tokenType != "oauth") {
+		expected := "apikey"
+		if allowOAuth {
+			expected = "apikey or oauth"
+		}
+		return nil, fmt.Errorf("%s requires %s token, got: %s", errorLabel, expected, tokenType)
 	}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := resolveAnthropicPassthroughProxyURL(account)
 
-	logger.LegacyPrintf("service.gateway", "[Anthropic 自动透传] 命中 API Key 透传分支: account=%d name=%s model=%s stream=%v",
-		account.ID, account.Name, input.RequestModel, input.RequestStream)
+	logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] mode=%s account=%d name=%s model=%s stream=%v",
+		logMode, account.ID, account.Name, input.RequestModel, input.RequestStream)
 
 	if c != nil {
 		c.Set("anthropic_passthrough", true)
 	}
-	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
-	input.Body = StripEmptyTextBlocks(input.Body)
+	if stripEmptyTextBlocks {
+		input.Body = StripEmptyTextBlocks(input.Body)
+	}
 
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
@@ -4574,7 +4704,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
-		upstreamReq, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(upstreamCtx, c, account, input.Body, token)
+		upstreamReq, err := buildRequest(upstreamCtx, c, account, input.Body, token, tokenType)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
@@ -4768,6 +4898,44 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}, nil
 }
 
+func (s *GatewayService) forwardAnthropicAPIKeyPassthrough(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	reqModel string,
+	originalModel string,
+	reqStream bool,
+	startTime time.Time,
+) (*ForwardResult, error) {
+	return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
+		Body:          body,
+		RequestModel:  reqModel,
+		OriginalModel: originalModel,
+		RequestStream: reqStream,
+		StartTime:     startTime,
+	})
+}
+
+func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	input anthropicPassthroughForwardInput,
+) (*ForwardResult, error) {
+	return s.forwardAnthropicPassthroughWithInput(
+		ctx,
+		c,
+		account,
+		input,
+		"anthropic api key passthrough",
+		"auth_only",
+		true,
+		false,
+		s.buildUpstreamRequestAnthropicAPIKeyPassthroughForMode,
+	)
+}
+
 func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	ctx context.Context,
 	c *gin.Context,
@@ -4775,49 +4943,48 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
-	targetURL := claudeAPIURL
-	baseURL := account.GetBaseURL()
-	if baseURL != "" {
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-		if err != nil {
-			return nil, err
-		}
-		targetURL = validatedURL + "/v1/messages?beta=true"
-	}
+	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, "apikey", "/v1/messages")
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
+func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthroughForMode(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	_ string,
+) (*http.Request, error) {
+	return s.buildUpstreamRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
+}
 
-	if c != nil && c.Request != nil {
-		for key, values := range c.Request.Header {
-			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
-				continue
-			}
-			wireKey := resolveWireCasing(key)
-			for _, v := range values {
-				addHeaderRaw(req.Header, wireKey, v)
-			}
-		}
-	}
+func (s *GatewayService) forwardAnthropicFullPassthroughWithInput(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	input anthropicPassthroughForwardInput,
+) (*ForwardResult, error) {
+	return s.forwardAnthropicPassthroughWithInput(
+		ctx,
+		c,
+		account,
+		input,
+		"anthropic full passthrough",
+		"full",
+		false,
+		true,
+		s.buildUpstreamRequestAnthropicFullPassthrough,
+	)
+}
 
-	// 覆盖入站鉴权残留，并注入上游认证
-	req.Header.Del("authorization")
-	req.Header.Del("x-api-key")
-	req.Header.Del("x-goog-api-key")
-	req.Header.Del("cookie")
-	setHeaderRaw(req.Header, "x-api-key", token)
-
-	if getHeaderRaw(req.Header, "content-type") == "" {
-		setHeaderRaw(req.Header, "content-type", "application/json")
-	}
-	if getHeaderRaw(req.Header, "anthropic-version") == "" {
-		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
-	}
-
-	return req, nil
+func (s *GatewayService) buildUpstreamRequestAnthropicFullPassthrough(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	tokenType string,
+) (*http.Request, error) {
+	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, tokenType, "/v1/messages")
 }
 
 func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
@@ -8179,6 +8346,10 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
+	if account != nil && account.IsAnthropicFullPassthroughEnabled() {
+		return s.forwardCountTokensAnthropicFullPassthrough(ctx, c, account, parsed.Body)
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
 		if reqModel := parsed.Model; reqModel != "" {
@@ -8357,27 +8528,36 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	return nil
 }
 
-func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
+func (s *GatewayService) forwardCountTokensAnthropicPassthrough(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	errorLabel string,
+	allowOAuth bool,
+	buildRequest anthropicPassthroughRequestBuilder,
+) error {
 	token, tokenType, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
 		return err
 	}
-	if tokenType != "apikey" {
+	if tokenType != "apikey" && (!allowOAuth || tokenType != "oauth") {
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Invalid account token type")
-		return fmt.Errorf("anthropic api key passthrough requires apikey token, got: %s", tokenType)
+		expected := "apikey"
+		if allowOAuth {
+			expected = "apikey or oauth"
+		}
+		return fmt.Errorf("%s requires %s token, got: %s", errorLabel, expected, tokenType)
 	}
 
-	upstreamReq, err := s.buildCountTokensRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
+	upstreamReq, err := buildRequest(ctx, c, account, body, token, tokenType)
 	if err != nil {
 		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return err
 	}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := resolveAnthropicPassthroughProxyURL(account)
 
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
@@ -8472,6 +8652,18 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 	return nil
 }
 
+func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
+	return s.forwardCountTokensAnthropicPassthrough(
+		ctx,
+		c,
+		account,
+		body,
+		"anthropic api key passthrough",
+		false,
+		s.buildCountTokensRequestAnthropicAPIKeyPassthroughForMode,
+	)
+}
+
 func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	ctx context.Context,
 	c *gin.Context,
@@ -8479,48 +8671,41 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
-	targetURL := claudeAPICountTokensURL
-	baseURL := account.GetBaseURL()
-	if baseURL != "" {
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-		if err != nil {
-			return nil, err
-		}
-		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
-	}
+	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, "apikey", "/v1/messages/count_tokens")
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
+func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthroughForMode(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	_ string,
+) (*http.Request, error) {
+	return s.buildCountTokensRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
+}
 
-	if c != nil && c.Request != nil {
-		for key, values := range c.Request.Header {
-			lowerKey := strings.ToLower(strings.TrimSpace(key))
-			if !allowedHeaders[lowerKey] {
-				continue
-			}
-			wireKey := resolveWireCasing(key)
-			for _, v := range values {
-				addHeaderRaw(req.Header, wireKey, v)
-			}
-		}
-	}
+func (s *GatewayService) forwardCountTokensAnthropicFullPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
+	return s.forwardCountTokensAnthropicPassthrough(
+		ctx,
+		c,
+		account,
+		body,
+		"anthropic full passthrough",
+		true,
+		s.buildCountTokensRequestAnthropicFullPassthrough,
+	)
+}
 
-	req.Header.Del("authorization")
-	req.Header.Del("x-api-key")
-	req.Header.Del("x-goog-api-key")
-	req.Header.Del("cookie")
-	req.Header.Set("x-api-key", token)
-
-	if req.Header.Get("content-type") == "" {
-		req.Header.Set("content-type", "application/json")
-	}
-	if req.Header.Get("anthropic-version") == "" {
-		req.Header.Set("anthropic-version", "2023-06-01")
-	}
-
-	return req, nil
+func (s *GatewayService) buildCountTokensRequestAnthropicFullPassthrough(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	tokenType string,
+) (*http.Request, error) {
+	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, tokenType, "/v1/messages/count_tokens")
 }
 
 // buildCountTokensRequest 构建 count_tokens 上游请求

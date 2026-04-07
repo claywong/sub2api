@@ -3005,6 +3005,12 @@ export default {
         webSearchDefault: '默认',
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
+        passthroughMode: '透传模式',
+        passthroughModeDesc:
+          'Anthropic `messages` / `count_tokens` 的请求侧协议模式。`compat` 保持现有兼容链路，`auth_only` 仅替换认证，`full` 尽量保留原始请求头与请求体并只注入上游认证。',
+        passthroughModeCompat: 'compat（兼容模式）',
+        passthroughModeAuthOnly: 'auth_only（仅替换认证）',
+        passthroughModeFull: 'full（完整透传）'
       },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',

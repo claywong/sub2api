@@ -2860,6 +2860,12 @@ export default {
         webSearchDefault: 'Default',
         webSearchEnabled: 'Enabled',
         webSearchDisabled: 'Disabled',
+        passthroughMode: 'Passthrough mode',
+        passthroughModeDesc:
+          'Request-side protocol mode for Anthropic `messages` / `count_tokens`. `compat` keeps the existing compatibility path, `auth_only` only replaces upstream auth, and `full` preserves the original request headers/body as much as possible while injecting only upstream auth.',
+        passthroughModeCompat: 'compat (compatibility)',
+        passthroughModeAuthOnly: 'auth_only (auth replacement only)',
+        passthroughModeFull: 'full (full passthrough)'
       },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',

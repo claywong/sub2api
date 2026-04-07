@@ -2369,33 +2369,21 @@
         </div>
       </div>
 
-      <!-- Anthropic API Key 自动透传开关 -->
+      <!-- Anthropic 透传模式 -->
       <div
-        v-if="form.platform === 'anthropic' && accountCategory === 'apikey'"
+        v-if="isAnthropicPassthroughModeVisible"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
           <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.apiKeyPassthrough') }}</label>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.passthroughMode') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.anthropic.apiKeyPassthroughDesc') }}
+              {{ t('admin.accounts.anthropic.passthroughModeDesc') }}
             </p>
           </div>
-          <button
-            type="button"
-            @click="anthropicPassthroughEnabled = !anthropicPassthroughEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              anthropicPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                anthropicPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
+          <div class="w-52">
+            <Select v-model="anthropicPassthroughMode" :options="anthropicPassthroughModeOptions" />
+          </div>
         </div>
       </div>
 
@@ -2929,6 +2917,15 @@ import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
+import {
+  ANTHROPIC_PASSTHROUGH_MODE_AUTH_ONLY,
+  ANTHROPIC_PASSTHROUGH_MODE_COMPAT,
+  ANTHROPIC_PASSTHROUGH_MODE_FULL,
+  isAnthropicPassthroughModeSupported,
+  writeAnthropicPassthroughModeToExtra,
+  type AnthropicPassthroughAccountType,
+  type AnthropicPassthroughMode
+} from '@/utils/anthropicPassthroughMode'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
@@ -3074,7 +3071,7 @@ const openaiPassthroughEnabled = ref(false)
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
-const anthropicPassthroughEnabled = ref(false)
+const anthropicPassthroughMode = ref<AnthropicPassthroughMode>(ANTHROPIC_PASSTHROUGH_MODE_COMPAT)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const {
@@ -3203,6 +3200,40 @@ const openaiResponsesWebSocketV2Mode = computed({
 const openAIWSModeConcurrencyHintKey = computed(() =>
   resolveOpenAIWSModeConcurrencyHintKey(openaiResponsesWebSocketV2Mode.value)
 )
+
+const currentAnthropicPassthroughType = computed<AnthropicPassthroughAccountType | null>(() => {
+  if (form.platform !== 'anthropic') return null
+  if (accountCategory.value === 'apikey') return 'apikey'
+  if (accountCategory.value === 'oauth-based') {
+    return addMethod.value as AnthropicPassthroughAccountType
+  }
+  return null
+})
+
+const isAnthropicPassthroughModeVisible = computed(() => currentAnthropicPassthroughType.value !== null)
+
+const anthropicPassthroughModeOptions = computed(() => {
+  const options = [
+    {
+      value: ANTHROPIC_PASSTHROUGH_MODE_COMPAT,
+      label: t('admin.accounts.anthropic.passthroughModeCompat')
+    }
+  ]
+
+  if (currentAnthropicPassthroughType.value === 'apikey') {
+    options.push({
+      value: ANTHROPIC_PASSTHROUGH_MODE_AUTH_ONLY,
+      label: t('admin.accounts.anthropic.passthroughModeAuthOnly')
+    })
+  }
+
+  options.push({
+    value: ANTHROPIC_PASSTHROUGH_MODE_FULL,
+    label: t('admin.accounts.anthropic.passthroughModeFull')
+  })
+
+  return options
+})
 
 const isOpenAIModelRestrictionDisabled = computed(() =>
   form.platform === 'openai' && openaiPassthroughEnabled.value
@@ -3415,7 +3446,7 @@ watch(
       codexCLIOnlyEnabled.value = false
     }
     if (newPlatform !== 'anthropic') {
-      anthropicPassthroughEnabled.value = false
+      anthropicPassthroughMode.value = ANTHROPIC_PASSTHROUGH_MODE_COMPAT
       webSearchEmulationMode.value = 'default'
     }
     // Reset OAuth states
@@ -3429,14 +3460,29 @@ watch(
 
 // Gemini AI Studio OAuth availability (requires operator-configured OAuth client)
 watch(
-  [accountCategory, () => form.platform],
-  ([category, platform]) => {
+  [accountCategory, addMethod, () => form.platform],
+  ([category, method, platform]) => {
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
     }
-    if (platform !== 'anthropic' || category !== 'apikey') {
-      anthropicPassthroughEnabled.value = false
+    if (platform !== 'anthropic') {
+      anthropicPassthroughMode.value = ANTHROPIC_PASSTHROUGH_MODE_COMPAT
       webSearchEmulationMode.value = 'default'
+      return
+    }
+
+    const passthroughType =
+      category === 'apikey'
+        ? 'apikey'
+        : category === 'oauth-based'
+          ? (method as AnthropicPassthroughAccountType)
+          : null
+
+    if (
+      !passthroughType ||
+      !isAnthropicPassthroughModeSupported(passthroughType, anthropicPassthroughMode.value)
+    ) {
+      anthropicPassthroughMode.value = ANTHROPIC_PASSTHROUGH_MODE_COMPAT
     }
   }
 )
@@ -3800,7 +3846,7 @@ const resetForm = () => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
-  anthropicPassthroughEnabled.value = false
+  anthropicPassthroughMode.value = ANTHROPIC_PASSTHROUGH_MODE_COMPAT
   webSearchEmulationMode.value = 'default'
   // Reset quota control state
   windowCostEnabled.value = false
@@ -3878,17 +3924,15 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   return Object.keys(extra).length > 0 ? extra : undefined
 }
 
-const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (form.platform !== 'anthropic' || accountCategory.value !== 'apikey') {
+const buildAnthropicExtra = (
+  base?: Record<string, unknown>,
+  type: AccountType | null = form.type
+): Record<string, unknown> | undefined => {
+  if (form.platform !== 'anthropic') {
     return base
   }
 
-  const extra: Record<string, unknown> = { ...(base || {}) }
-  if (anthropicPassthroughEnabled.value) {
-    extra.anthropic_passthrough = true
-  } else {
-    delete extra.anthropic_passthrough
-  }
+  const extra = writeAnthropicPassthroughModeToExtra(base, type, anthropicPassthroughMode.value)
   if (webSearchEmulationMode.value === 'default') {
     delete extra.web_search_emulation
   } else {
@@ -4167,9 +4211,9 @@ const createAccountAndFinish = async (
     return
   }
   // Inject quota limits for apikey/bedrock accounts
-  let finalExtra = extra
+  let finalExtra = platform === 'anthropic' ? buildAnthropicExtra(extra, type) : extra
   if (type === 'apikey' || type === 'bedrock') {
-    const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
+    const quotaExtra: Record<string, unknown> = { ...(finalExtra || {}) }
     if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
       quotaExtra.quota_limit = editQuotaLimit.value
     }
@@ -4788,6 +4832,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_enabled = true
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
+        const finalExtra = buildAnthropicExtra(extra, addMethod.value as AccountType)
 
         await adminAPI.accounts.create({
           name: accountName,
@@ -4795,7 +4840,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: finalExtra,
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
