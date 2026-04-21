@@ -1238,12 +1238,9 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 }
 
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
-// OAuth/SetupToken：读 extra.enable_tls_fingerprint，默认关闭
-// API Key：始终启用（使用内置默认 Node.js 24.x profile）
+// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	if a.Platform == PlatformAnthropic && a.Type == AccountTypeAPIKey {
-		return true
-	}
 	if !a.IsAnthropicOAuthOrSetupToken() {
 		return false
 	}
