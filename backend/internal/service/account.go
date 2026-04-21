@@ -772,7 +772,7 @@ func parsePoolModeRetryCount(value any) int {
 // isPoolModeRetryableStatus 池模式下应触发同账号重试的状态码
 func isPoolModeRetryableStatus(statusCode int) bool {
 	switch statusCode {
-	case 401, 403, 429, 502:
+	case 401, 403, 429:
 		return true
 	default:
 		return false
