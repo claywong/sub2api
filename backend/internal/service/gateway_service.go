@@ -4110,6 +4110,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					"message": "Upstream request failed",
 				},
 			})
+			if s.rateLimitService != nil {
+				errBody, _ := json.Marshal(map[string]string{"message": safeErr})
+				s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusBadGateway, nil, errBody)
+			}
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
@@ -4600,6 +4604,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 					"message": "Upstream request failed",
 				},
 			})
+			if s.rateLimitService != nil {
+				errBody, _ := json.Marshal(map[string]string{"message": safeErr})
+				s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusBadGateway, nil, errBody)
+			}
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
