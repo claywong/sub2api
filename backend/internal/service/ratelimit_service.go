@@ -114,7 +114,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
+	// 但临时不可调度规则仍然生效（401除外，因为它有特殊的OAuth token刷新逻辑）
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		if statusCode != 401 && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+		}
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 	}
