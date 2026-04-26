@@ -517,12 +517,19 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
 		return
 	}
-	// 根据状态码选择封禁策略
+	// 根据状态码选择硬编码封禁策略
 	switch failoverErr.StatusCode {
 	case http.StatusBadRequest:
 		tempUnscheduleGoogleConfigError(ctx, s.accountRepo, accountID, "[handler]")
 	case http.StatusBadGateway:
 		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
+	}
+	// 补充执行规则级别的临时不可调度检查（handleFailoverSideEffects 中已跳过）
+	if s.rateLimitService != nil && len(failoverErr.ResponseBody) > 0 {
+		account, err := s.accountRepo.GetByID(ctx, accountID)
+		if err == nil && account != nil {
+			s.rateLimitService.HandleTempUnschedulable(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody)
+		}
 	}
 }
 
@@ -6839,6 +6846,12 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	// pool mode 可重试状态码：延迟到同账号重试全部耗尽后再执行，
+	// 避免提前触发 tryTempUnschedulable 封禁账号，导致同账号重试实际路由到其他账号。
+	// custom_error_codes_enabled 账号不延迟：其自定义错误码规则需立即执行。
+	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() && isPoolModeRetryableStatus(resp.StatusCode) {
+		return
+	}
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 }
 
