@@ -99,6 +99,7 @@ var ProviderSet = wire.NewSet(
 	NewAPIKeyCache,
 	NewTempUnschedCache,
 	NewTimeoutCounterCache,
+	NewErrorCounterCache,
 	NewOpenAI403CounterCache,
 	NewInternal500CounterCache,
 	ProvideConcurrencyCache,

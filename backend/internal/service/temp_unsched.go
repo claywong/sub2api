@@ -34,3 +34,11 @@ type TimeoutCounterCache interface {
 	// GetTimeoutCountTTL 获取计数器剩余过期时间
 	GetTimeoutCountTTL(ctx context.Context, accountID int64) (time.Duration, error)
 }
+
+// ErrorCounterCache 上游错误计数器缓存接口（独立于流超时计数）
+type ErrorCounterCache interface {
+	// IncrementErrorCount 增加账户的上游错误计数，返回当前计数值
+	IncrementErrorCount(ctx context.Context, accountID int64, windowMinutes int) (int64, error)
+	// ResetErrorCount 重置账户的上游错误计数
+	ResetErrorCount(ctx context.Context, accountID int64) error
+}

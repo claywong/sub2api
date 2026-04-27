@@ -517,18 +517,21 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	if failoverErr == nil || !failoverErr.RetryableOnSameAccount {
 		return
 	}
-	// 根据状态码选择硬编码封禁策略
 	switch failoverErr.StatusCode {
 	case http.StatusBadRequest:
 		tempUnscheduleGoogleConfigError(ctx, s.accountRepo, accountID, "[handler]")
-	case http.StatusBadGateway:
-		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
 	}
-	// 补充执行规则级别的临时不可调度检查（handleFailoverSideEffects 中已跳过）
-	if s.rateLimitService != nil && len(failoverErr.ResponseBody) > 0 {
+	needAccount := (isUpstreamErrorThresholdStatus(failoverErr.StatusCode) || len(failoverErr.ResponseBody) > 0) &&
+		s.rateLimitService != nil
+	if needAccount {
 		account, err := s.accountRepo.GetByID(ctx, accountID)
 		if err == nil && account != nil {
-			s.rateLimitService.HandleTempUnschedulable(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody)
+			if isUpstreamErrorThresholdStatus(failoverErr.StatusCode) {
+				s.rateLimitService.HandleUpstreamErrorThreshold(ctx, account, failoverErr.StatusCode)
+			}
+			if len(failoverErr.ResponseBody) > 0 {
+				s.rateLimitService.HandleTempUnschedulable(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody)
+			}
 		}
 	}
 }
@@ -6616,6 +6619,14 @@ func (s *GatewayService) shouldFailoverOn400(respBody []byte) bool {
 	return false
 }
 
+// isRetryLater400 判断上游 400 响应是否为临时限流/过载，应触发 failover 重试。
+func isRetryLater400(body []byte) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	return strings.Contains(msg, "请稍后重试") ||
+		strings.Contains(msg, "please try again later") ||
+		strings.Contains(msg, "please retry later")
+}
+
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
 // 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."}}
 func ExtractUpstreamErrorMessage(body []byte) string {
@@ -6780,6 +6791,10 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
+		// 临时限流类 400（如 Anthropic "请稍后重试"）触发 failover，让调用方切换账号重试
+		if isRetryLater400(body) {
+			return nil, &UpstreamFailoverError{StatusCode: 400, ResponseBody: body}
+		}
 		c.Data(http.StatusBadRequest, "application/json", body)
 		summary := upstreamMsg
 		if summary == "" {
@@ -6851,6 +6866,10 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 	// custom_error_codes_enabled 账号不延迟：其自定义错误码规则需立即执行。
 	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() && isPoolModeRetryableStatus(resp.StatusCode) {
 		return
+	}
+	// 500/502/520 走阈值计数，达阈值后临时不可调度
+	if isUpstreamErrorThresholdStatus(resp.StatusCode) && s.rateLimitService != nil {
+		s.rateLimitService.HandleUpstreamErrorThreshold(ctx, account, resp.StatusCode)
 	}
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
 }
