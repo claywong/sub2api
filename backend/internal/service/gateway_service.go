@@ -521,17 +521,11 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	case http.StatusBadRequest:
 		tempUnscheduleGoogleConfigError(ctx, s.accountRepo, accountID, "[handler]")
 	}
-	needAccount := (isUpstreamErrorThresholdStatus(failoverErr.StatusCode) || len(failoverErr.ResponseBody) > 0) &&
-		s.rateLimitService != nil
-	if needAccount {
+	// 注意：500/502/520 的阈值计数已在 handleFailoverSideEffects 里每次响应时执行，此处不再重复计数。
+	if len(failoverErr.ResponseBody) > 0 && s.rateLimitService != nil {
 		account, err := s.accountRepo.GetByID(ctx, accountID)
 		if err == nil && account != nil {
-			if isUpstreamErrorThresholdStatus(failoverErr.StatusCode) {
-				s.rateLimitService.HandleUpstreamErrorThreshold(ctx, account, failoverErr.StatusCode)
-			}
-			if len(failoverErr.ResponseBody) > 0 {
-				s.rateLimitService.HandleTempUnschedulable(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody)
-			}
+			s.rateLimitService.HandleTempUnschedulable(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody)
 		}
 	}
 }
@@ -6864,7 +6858,11 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 	// pool mode 可重试状态码：延迟到同账号重试全部耗尽后再执行，
 	// 避免提前触发 tryTempUnschedulable 封禁账号，导致同账号重试实际路由到其他账号。
 	// custom_error_codes_enabled 账号不延迟：其自定义错误码规则需立即执行。
+	// 例外：500/502/520 的阈值计数每次都执行（含重试期间），保证计数准确。
 	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() && isPoolModeRetryableStatus(resp.StatusCode) {
+		if isUpstreamErrorThresholdStatus(resp.StatusCode) && s.rateLimitService != nil {
+			s.rateLimitService.HandleUpstreamErrorThreshold(ctx, account, resp.StatusCode)
+		}
 		return
 	}
 	// 500/502/520 走阈值计数，达阈值后临时不可调度
