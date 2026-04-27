@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -265,4 +266,90 @@ func newNonFailoverPassthroughRule(statusCode int, keyword string, respCode int,
 		PassthroughBody: false,
 		CustomMessage:   &customMessage,
 	}
+}
+
+func TestIsRetryLater400(t *testing.T) {
+	cases := []struct {
+		name  string
+		body  []byte
+		want  bool
+	}{
+		{
+			name: "anthropic chinese retry message",
+			body: []byte(`{"error":{"type":"<nil>","message":"请稍后重试 (request id: abc)"},"type":"error"}`),
+			want: true,
+		},
+		{
+			name: "english please try again later",
+			body: []byte(`{"error":{"message":"please try again later"}}`),
+			want: true,
+		},
+		{
+			name: "english please retry later",
+			body: []byte(`{"error":{"message":"please retry later"}}`),
+			want: true,
+		},
+		{
+			name: "normal 400 validation error",
+			body: []byte(`{"error":{"type":"invalid_request_error","message":"max_tokens is required"}}`),
+			want: false,
+		},
+		{
+			name: "empty body",
+			body: []byte(`{}`),
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isRetryLater400(tc.body))
+		})
+	}
+}
+
+func TestGatewayHandleErrorResponse_400RetryLater_ReturnsFailoverError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &GatewayService{}
+	respBody := []byte(`{"error":{"type":"<nil>","message":"请稍后重试 (request id: abc)"},"type":"error"}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header:     http.Header{},
+	}
+	account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account)
+	require.Error(t, err)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	assert.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	// 不应写响应，让 failover 循环处理
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestGatewayHandleErrorResponse_400NormalError_PassesThrough(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	svc := &GatewayService{}
+	respBody := []byte(`{"error":{"type":"invalid_request_error","message":"max_tokens is required"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+		Header:     http.Header{},
+	}
+	account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey}
+
+	_, err := svc.handleErrorResponse(context.Background(), resp, c, account)
+	require.Error(t, err)
+
+	var failoverErr *UpstreamFailoverError
+	assert.False(t, errors.As(err, &failoverErr), "normal 400 should not trigger failover")
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, respBody, rec.Body.Bytes())
 }
