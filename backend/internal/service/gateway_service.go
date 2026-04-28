@@ -2691,6 +2691,22 @@ func filterByMinSlowBucket(accounts []accountWithLoad, cache *AccountTestHealthC
 	return result
 }
 
+// ReportAnthropicAccountTTFT 将真实请求的首字时间上报到健康缓存
+func (s *GatewayService) ReportAnthropicAccountTTFT(accountID int64, firstTokenMs *int) {
+	if s.healthCache == nil || firstTokenMs == nil {
+		return
+	}
+	s.healthCache.UpdateTTFT(accountID, *firstTokenMs)
+}
+
+// ReportAnthropicAccountDuration 将真实请求的总耗时上报到健康缓存
+func (s *GatewayService) ReportAnthropicAccountDuration(accountID int64, durationMs int) {
+	if s.healthCache == nil {
+		return
+	}
+	s.healthCache.UpdateDuration(accountID, durationMs)
+}
+
 // selectByLRU 从集合中选择最久未用的账号
 // 如果有多个账号具有相同的最小 LastUsedAt，则随机选择一个
 func selectByLRU(accounts []accountWithLoad, preferOAuth bool) *accountWithLoad {
