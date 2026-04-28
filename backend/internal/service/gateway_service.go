@@ -1843,6 +1843,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 			continue
 		}
+		// 健康缓存硬过滤（Anthropic 平台）：连续失败 >= HardFilterThreshold 的账号跳过新会话
+		if platform == PlatformAnthropic && s.healthCache != nil && !s.healthCache.PassesHardFilter(acc.ID) {
+			continue
+		}
 		candidates = append(candidates, acc)
 	}
 
