@@ -18,6 +18,7 @@ type ScheduledTestRunnerService struct {
 	scheduledSvc   *ScheduledTestService
 	accountTestSvc *AccountTestService
 	rateLimitSvc   *RateLimitService
+	healthCache    *AccountTestHealthCache
 	cfg            *config.Config
 
 	cron      *cron.Cron
@@ -32,12 +33,14 @@ func NewScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	healthCache *AccountTestHealthCache,
 ) *ScheduledTestRunnerService {
 	return &ScheduledTestRunnerService{
 		planRepo:       planRepo,
 		scheduledSvc:   scheduledSvc,
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
+		healthCache:    healthCache,
 		cfg:            cfg,
 	}
 }
@@ -130,6 +133,12 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
 	}
 
+	// 更新健康缓存，并根据健康状态决定是否补测或隔离
+	if s.healthCache != nil {
+		s.healthCache.UpdateFromTest(plan.AccountID, result)
+		s.launchRetryIfNeeded(plan)
+	}
+
 	// Auto-recover account if test succeeded and auto_recover is enabled.
 	if result.Status == "success" && plan.AutoRecover {
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
@@ -143,6 +152,84 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
+	}
+}
+
+// launchRetryIfNeeded 根据当前 ConsecFails 决定是否启动补测 goroutine 或触发 TempUnschedulable。
+func (s *ScheduledTestRunnerService) launchRetryIfNeeded(plan *ScheduledTestPlan) {
+	h := s.healthCache.GetOrCreate(plan.AccountID)
+	h.mu.Lock()
+	consecFails := h.ConsecFails
+	retryInterval := h.RetryInterval
+	h.mu.Unlock()
+
+	cfg := s.healthCache.Cfg()
+	switch {
+	case consecFails == 1:
+		go s.runRetryTest(plan, 0)
+	case consecFails >= 2 && consecFails < cfg.tempUnschedThreshold:
+		go s.runRetryTest(plan, retryInterval)
+	case consecFails >= cfg.tempUnschedThreshold:
+		s.triggerTempUnschedForScheduledTest(plan.AccountID)
+	}
+}
+
+// runRetryTest 在独立 goroutine 中执行一次补测；delay>0 时先等待。
+// 补测不修改 nextRun，不影响原 cron 节奏。
+func (s *ScheduledTestRunnerService) runRetryTest(plan *ScheduledTestPlan, delay time.Duration) {
+	if delay > 0 {
+		time.Sleep(delay)
+	}
+
+	retryTimeout := 10 * time.Second
+	if s.cfg != nil && s.cfg.Gateway.ResponseHeaderTimeout > 0 {
+		retryTimeout = time.Duration(s.cfg.Gateway.ResponseHeaderTimeout) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retryTimeout)
+	defer cancel()
+
+	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] retry plan=%d RunTestBackground error: %v", plan.ID, err)
+		return
+	}
+
+	if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] retry plan=%d SaveResult error: %v", plan.ID, err)
+	}
+
+	s.healthCache.UpdateFromTest(plan.AccountID, result)
+	s.launchRetryIfNeeded(plan)
+}
+
+// triggerTempUnschedForScheduledTest 计算退避时长并持久化 TempUnschedulable。
+func (s *ScheduledTestRunnerService) triggerTempUnschedForScheduledTest(accountID int64) {
+	h := s.healthCache.GetOrCreate(accountID)
+	cfg := s.healthCache.Cfg()
+	h.mu.Lock()
+	if h.TempUnschedDuration == 0 {
+		h.TempUnschedDuration = cfg.tempUnschedInit
+	} else {
+		h.TempUnschedDuration *= 2
+		if h.TempUnschedDuration > cfg.tempUnschedMax {
+			h.TempUnschedDuration = cfg.tempUnschedMax
+		}
+	}
+	duration := h.TempUnschedDuration
+	h.mu.Unlock()
+
+	until := time.Now().Add(duration)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // DB 写操作，固定 10s
+	defer cancel()
+
+	if s.rateLimitSvc == nil {
+		return
+	}
+	if err := s.rateLimitSvc.SetTempUnschedulableForScheduledTest(ctx, accountID, until); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] SetTempUnschedulable account=%d error: %v", accountID, err)
+	} else {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] account=%d temp-unschedulable until=%s (duration=%s)", accountID, until.Format(time.RFC3339), duration)
 	}
 }
 

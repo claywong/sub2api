@@ -567,6 +567,7 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
+	healthCache           *AccountTestHealthCache
 }
 
 // NewGatewayService creates a new GatewayService
@@ -597,6 +598,7 @@ func NewGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
+	healthCache *AccountTestHealthCache,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -632,6 +634,7 @@ func NewGatewayService(
 		channelService:       channelService,
 		resolver:             resolver,
 		balanceNotifyService: balanceNotifyService,
+		healthCache:          healthCache,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -1840,6 +1843,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
 			continue
 		}
+		// 健康缓存硬过滤（Anthropic 平台）：连续失败 >= HardFilterThreshold 的账号跳过新会话
+		if platform == PlatformAnthropic && s.healthCache != nil && !s.healthCache.PassesHardFilter(acc.ID) {
+			continue
+		}
 		candidates = append(candidates, acc)
 	}
 
@@ -1877,13 +1884,19 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 → 负载率 → LRU
+		// 分层过滤选择：优先级 → 负载率 → LatencyBucket → SlowBucket → LRU
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合
 			candidates := filterByMinPriority(available)
 			// 2. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
-			// 3. LRU 选择最久未用的账号
+			// 3. 延时分桶过滤（仅 Anthropic）
+			if platform == PlatformAnthropic && s.healthCache != nil {
+				candidates = filterByMinLatencyBucket(candidates, s.healthCache)
+				// 4. 慢请求率分桶过滤（仅 Anthropic）
+				candidates = filterByMinSlowBucket(candidates, s.healthCache)
+			}
+			// 5. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
 			if selected == nil {
 				break
@@ -2634,6 +2647,68 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 		}
 	}
 	return result
+}
+
+// filterByMinLatencyBucket 过滤出延时分桶最小的账号集合（仅 Anthropic）
+func filterByMinLatencyBucket(accounts []accountWithLoad, cache *AccountTestHealthCache) []accountWithLoad {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	minBucket := cache.LatencyBucket(accounts[0].account.ID)
+	for _, acc := range accounts[1:] {
+		if b := cache.LatencyBucket(acc.account.ID); b < minBucket {
+			minBucket = b
+		}
+	}
+	result := make([]accountWithLoad, 0, len(accounts))
+	for _, acc := range accounts {
+		if cache.LatencyBucket(acc.account.ID) == minBucket {
+			result = append(result, acc)
+		}
+	}
+	if len(result) == 0 {
+		return accounts
+	}
+	return result
+}
+
+// filterByMinSlowBucket 过滤出慢请求率分桶最小的账号集合（仅 Anthropic）
+func filterByMinSlowBucket(accounts []accountWithLoad, cache *AccountTestHealthCache) []accountWithLoad {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	minBucket := cache.SlowBucket(accounts[0].account.ID)
+	for _, acc := range accounts[1:] {
+		if b := cache.SlowBucket(acc.account.ID); b < minBucket {
+			minBucket = b
+		}
+	}
+	result := make([]accountWithLoad, 0, len(accounts))
+	for _, acc := range accounts {
+		if cache.SlowBucket(acc.account.ID) == minBucket {
+			result = append(result, acc)
+		}
+	}
+	if len(result) == 0 {
+		return accounts
+	}
+	return result
+}
+
+// ReportAnthropicAccountTTFT 将真实请求的首字时间上报到健康缓存
+func (s *GatewayService) ReportAnthropicAccountTTFT(accountID int64, firstTokenMs *int) {
+	if s.healthCache == nil || firstTokenMs == nil {
+		return
+	}
+	s.healthCache.UpdateTTFT(accountID, *firstTokenMs)
+}
+
+// ReportAnthropicAccountDuration 将真实请求的总耗时上报到健康缓存
+func (s *GatewayService) ReportAnthropicAccountDuration(accountID int64, durationMs int) {
+	if s.healthCache == nil {
+		return
+	}
+	s.healthCache.UpdateDuration(accountID, durationMs)
 }
 
 // selectByLRU 从集合中选择最久未用的账号

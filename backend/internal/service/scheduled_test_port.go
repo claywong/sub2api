@@ -28,6 +28,7 @@ type ScheduledTestResult struct {
 	ResponseText string    `json:"response_text"`
 	ErrorMessage string    `json:"error_message"`
 	LatencyMs    int64     `json:"latency_ms"`
+	FirstTokenMs *int64    `json:"first_token_ms"` // 首字时间（ms），流式返回第一个 content 事件的耗时；失败时为 nil
 	StartedAt    time.Time `json:"started_at"`
 	FinishedAt   time.Time `json:"finished_at"`
 	CreatedAt    time.Time `json:"created_at"`

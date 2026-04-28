@@ -1866,3 +1866,22 @@ func (s *RateLimitService) triggerUpstreamErrorAccountError(ctx context.Context,
 	slog.Warn("upstream_error_threshold_account_error", "account_id", account.ID, "status_code", statusCode)
 	return true
 }
+
+// SetTempUnschedulableForScheduledTest 供定时测试退火逻辑调用，持久化 TempUnschedulable 状态。
+func (s *RateLimitService) SetTempUnschedulableForScheduledTest(ctx context.Context, accountID int64, until time.Time) error {
+	const reason = "scheduled_test_consecutive_failures"
+	if err := s.accountRepo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
+		return err
+	}
+	if s.tempUnschedCache != nil {
+		state := &TempUnschedState{
+			UntilUnix:       until.Unix(),
+			TriggeredAtUnix: time.Now().Unix(),
+		}
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, accountID, state); err != nil {
+			slog.Warn("temp_unsched_cache_set_failed", "account_id", accountID, "error", err)
+		}
+	}
+	slog.Info("account_temp_unschedulable_by_scheduled_test", "account_id", accountID, "until", until)
+	return nil
+}

@@ -1420,19 +1420,48 @@ func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) er
 	return fmt.Errorf("%s", errorMsg)
 }
 
+// ttftCapturingRecorder wraps httptest.ResponseRecorder and records the time of
+// the first SSE "content" event, enabling TTFT measurement in background tests.
+type ttftCapturingRecorder struct {
+	*httptest.ResponseRecorder
+	startedAt    time.Time
+	firstTokenAt time.Time
+	captured     bool
+}
+
+func (r *ttftCapturingRecorder) Write(b []byte) (int, error) {
+	if !r.captured && bytes.Contains(b, []byte(`"type":"content"`)) {
+		r.firstTokenAt = time.Now()
+		r.captured = true
+	}
+	return r.ResponseRecorder.Write(b)
+}
+
+// firstTokenMs returns the TTFT in milliseconds, or nil if no content event was observed.
+func (r *ttftCapturingRecorder) firstTokenMs() *int64 {
+	if !r.captured {
+		return nil
+	}
+	ms := r.firstTokenAt.Sub(r.startedAt).Milliseconds()
+	return &ms
+}
+
 // RunTestBackground executes an account test in-memory (no real HTTP client),
 // capturing SSE output via httptest.NewRecorder, then parses the result.
 func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID int64, modelID string) (*ScheduledTestResult, error) {
 	startedAt := time.Now()
 
-	w := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(w)
+	rec := &ttftCapturingRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+		startedAt:        startedAt,
+	}
+	ginCtx, _ := gin.CreateTestContext(rec)
 	ginCtx.Request = (&http.Request{}).WithContext(ctx)
 
 	testErr := s.TestAccountConnection(ginCtx, accountID, modelID, "", AccountTestModeDefault)
 
 	finishedAt := time.Now()
-	body := w.Body.String()
+	body := rec.Body.String()
 	responseText, errMsg := parseTestSSEOutput(body)
 
 	status := "success"
@@ -1448,6 +1477,7 @@ func (s *AccountTestService) RunTestBackground(ctx context.Context, accountID in
 		ResponseText: responseText,
 		ErrorMessage: errMsg,
 		LatencyMs:    finishedAt.Sub(startedAt).Milliseconds(),
+		FirstTokenMs: rec.firstTokenMs(),
 		StartedAt:    startedAt,
 		FinishedAt:   finishedAt,
 	}, nil
