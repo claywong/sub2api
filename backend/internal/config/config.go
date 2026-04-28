@@ -931,6 +931,39 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
+
+	// Anthropic 账号健康感知调度参数
+	AccountHealth AccountHealthConfig `mapstructure:"account_health"`
+}
+
+// AccountHealthConfig Anthropic 账号健康感知调度阈值，0 表示使用内置默认值。
+type AccountHealthConfig struct {
+	// 连续失败几次触发硬过滤（跳过调度），默认 2
+	HardFilterThreshold int `mapstructure:"hard_filter_threshold"`
+	// 连续失败几次触发临时隔离，默认 3
+	TempUnschedThreshold int `mapstructure:"temp_unsched_threshold"`
+	// 首次临时隔离时长（分钟），默认 10
+	TempUnschedInitMinutes int `mapstructure:"temp_unsched_init_minutes"`
+	// 临时隔离最长时长（分钟），默认 60
+	TempUnschedMaxMinutes int `mapstructure:"temp_unsched_max_minutes"`
+	// 补测退避步长（秒），默认 30
+	RetryIntervalStepSeconds int `mapstructure:"retry_interval_step_seconds"`
+	// 补测退避上限（秒），默认 300
+	RetryIntervalMaxSeconds int `mapstructure:"retry_interval_max_seconds"`
+	// 慢请求判定阈值（ms），默认 60000
+	SlowThresholdMs int `mapstructure:"slow_threshold_ms"`
+	// 慢请求滑动窗口（分钟），默认 10
+	SlowWindowMinutes int `mapstructure:"slow_window_minutes"`
+	// 触发慢分桶的最小样本数，默认 5
+	SlowMinSampleCount int `mapstructure:"slow_min_sample_count"`
+	// 慢率超过此值进入 bucket=1（百分比，0-100），默认 20
+	SlowBucketMidPct int `mapstructure:"slow_bucket_mid_pct"`
+	// 慢率超过此值进入 bucket=2（百分比，0-100），默认 50
+	SlowBucketHighPct int `mapstructure:"slow_bucket_high_pct"`
+	// TTFT 低延时分桶上限（ms），低于此值为 bucket=0，默认 4000
+	LatencyBucketFastMs int `mapstructure:"latency_bucket_fast_ms"`
+	// TTFT 中延时分桶上限（ms），低于此值为 bucket=1，超过为 bucket=2，默认 8000
+	LatencyBucketSlowMs int `mapstructure:"latency_bucket_slow_ms"`
 }
 
 func (s *ServerConfig) Address() string {

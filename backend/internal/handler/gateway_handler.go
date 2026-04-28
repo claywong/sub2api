@@ -829,6 +829,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
+			// 上报 Anthropic 真实请求的 TTFT 和 Duration 到健康缓存
+			if account.Platform == service.PlatformAnthropic {
+				h.gatewayService.ReportAnthropicAccountTTFT(account.ID, result.FirstTokenMs)
+				if result.Duration > 0 {
+					h.gatewayService.ReportAnthropicAccountDuration(account.ID, int(result.Duration.Milliseconds()))
+				}
+			}
+
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
