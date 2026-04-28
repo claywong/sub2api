@@ -131,6 +131,8 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/anthropic-account-scheduling.md
+!docs/anthropic-scheduling-health-aware.md
 .serena/
 .codex/
 frontend/coverage/
