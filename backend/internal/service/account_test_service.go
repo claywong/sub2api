@@ -258,6 +258,8 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
 	payloadBytes, _ := json.Marshal(payload)
+	payloadBytes = rewriteSystemForNonClaudeCode(payloadBytes, payload["system"])
+	payloadBytes = signBillingHeaderCCH(payloadBytes)
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
