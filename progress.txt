@@ -6,6 +6,9 @@
 - AccountTestHealth 内部用 sync.Mutex 保护字段，避免并发读写问题
 - ScheduledTestResult.FirstTokenMs 是 *int64 指针，需要判空
 - 在 wire.go 的 ProviderSet 中注册新 Provider 时遵循 New/Provide 命名约定
+- wire_gen.go 需要手动同步更新（非自动生成），新增服务注入时同时修改 wire.go 和 wire_gen.go
+- RateLimitService.SetTempUnschedulableForScheduledTest 是向 DB + Redis 写入 TempUnschedulable 的标准入口
+- ScheduledTestRunnerService 中 AccountTestHealth.mu 为同包内访问，可直接加锁读字段
 
 ---
 
@@ -20,4 +23,30 @@
   - AccountTestHealth 内部用独立 sync.Mutex，GetOrCreate 返回指针，调用方加锁后直接修改字段
   - SlowBucket 慢率阈值 SlowBucketHigh=0.50 是"≥50%"，对应返回 2；SlowBucketMid=0.20 是"<20%返回0，否则返回1"
   - PRD 中 ScheduledTestResult.FirstTokenMs 字段为 *int64，在 scheduled_test_port.go 中可确认
+---
+
+## [2026-04-28] - US-002
+- 修改 backend/internal/service/scheduled_test_runner_service.go：新增 healthCache 字段、更新构造函数签名，实现 launchRetryIfNeeded / runRetryTest / triggerTempUnschedForScheduledTest 三个方法
+- 修改 backend/internal/service/ratelimit_service.go：新增 SetTempUnschedulableForScheduledTest 公开方法
+- 修改 backend/internal/service/wire.go：新增 ProvideAccountTestHealthCache，更新 ProvideScheduledTestRunnerService 签名，在 ProviderSet 注册
+- 修改 backend/cmd/server/wire_gen.go：添加 accountTestHealthCache 单例构造，更新 scheduledTestRunnerService 的创建调用
+- go build ./... 和 go vet ./... 均通过，go test -tags unit ./internal/service/... 全部通过
+- **Learnings for future iterations:**
+  - wire_gen.go 是手动维护的，每次修改 wire.go 中的 Provider 签名，需同步更新 wire_gen.go
+  - 退火三阶段：ConsecFails=1 立即补测、ConsecFails=2 延迟补测（RetryInterval）、ConsecFails>=3 触发 TempUnschedulable
+  - TempUnschedDuration 在 AccountTestHealth 上首次=10min，每次触发翻倍至上限 60min
+  - 补测 goroutine 用 context.WithTimeout(context.Background(), 10*time.Second) 独立 ctx，不使用 cron ctx
+  - launchRetryIfNeeded 只读 ConsecFails 后决策，不修改任何字段；字段修改由 UpdateFromTest 完成
+---
+
+## [2026-04-28] - US-003
+- 修改 backend/internal/service/gateway_service.go：GatewayService 结构体新增 healthCache 字段，NewGatewayService 新增参数，Layer 2 流水线插入 filterByMinLatencyBucket 和 filterByMinSlowBucket（仅 Anthropic），新增两个过滤函数
+- 修改 backend/cmd/server/wire_gen.go：将 accountTestHealthCache 单例构造前移至 gatewayService 之前，同时注入到 GatewayService
+- 修改 backend/internal/service/gateway_record_usage_test.go：测试辅助构造函数补齐新 nil 参数
+- go build ./... 和 go vet ./... 通过，go test -tags unit ./internal/service/... 全部通过
+- **Learnings for future iterations:**
+  - wire_gen.go 中 accountTestHealthCache 已前移至 gatewayService 之前，scheduledTestRunnerService 仍复用同一变量（不再有重复声明）
+  - filterByMinLatencyBucket/filterByMinSlowBucket 遵循与 filterByMinPriority 相同模式，带空切片兜底
+  - NewGatewayService 在多个测试辅助构造函数中被调用，修改签名时需同步更新 gateway_record_usage_test.go（含 //go:build unit 标签）
+  - Anthropic-only 过滤通过 `platform == PlatformAnthropic && s.healthCache != nil` 判断，非 Anthropic 平台不受影响
 ---

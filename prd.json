@@ -42,7 +42,7 @@
         "go build ./... 通过，go vet 通过"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "依赖 US-001"
     },
     {
@@ -61,7 +61,7 @@
         "go build ./... 通过，go vet 通过"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "依赖 US-001"
     },
     {
