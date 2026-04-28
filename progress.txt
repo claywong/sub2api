@@ -1,0 +1,23 @@
+## Codebase Patterns
+- 服务层代码在 backend/internal/service/ 目录，接口定义在 *_port.go 文件
+- wire.go 中的 ProviderSet 是 Wire 依赖注入的核心注册表
+- 缓存类型（如 TempUnschedCache）通常用 interface 定义，在 service/ 层实现
+- sync.Map 是并发安全缓存的标准方式，通过 LoadOrStore 实现 GetOrCreate
+- AccountTestHealth 内部用 sync.Mutex 保护字段，避免并发读写问题
+- ScheduledTestResult.FirstTokenMs 是 *int64 指针，需要判空
+- 在 wire.go 的 ProviderSet 中注册新 Provider 时遵循 New/Provide 命名约定
+
+---
+
+## [2026-04-28] - US-001
+- 实现了 backend/internal/service/account_test_health_cache.go
+- 包含 AccountTestHealth 结构体（含 sync.Mutex 并发保护）和 AccountTestHealthCache（sync.Map 存储）
+- 实现了 Get、GetOrCreate、UpdateFromTest、UpdateTTFT、UpdateDuration、LatencyBucket、SlowBucket、PassesHardFilter 所有方法
+- 定义了所有包级常量（HardFilterThreshold、TempUnschedThreshold 等 13 个）
+- go build ./... 和 go vet ./... 均通过
+- **Learnings for future iterations:**
+  - ScheduledTestResult.FirstTokenMs 是 *int64（非 *int），UpdateFromTest 时需转换为 float64
+  - AccountTestHealth 内部用独立 sync.Mutex，GetOrCreate 返回指针，调用方加锁后直接修改字段
+  - SlowBucket 慢率阈值 SlowBucketHigh=0.50 是"≥50%"，对应返回 2；SlowBucketMid=0.20 是"<20%返回0，否则返回1"
+  - PRD 中 ScheduledTestResult.FirstTokenMs 字段为 *int64，在 scheduled_test_port.go 中可确认
+---
