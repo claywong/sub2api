@@ -163,12 +163,13 @@ func (s *ScheduledTestRunnerService) launchRetryIfNeeded(plan *ScheduledTestPlan
 	retryInterval := h.RetryInterval
 	h.mu.Unlock()
 
+	cfg := s.healthCache.Cfg()
 	switch {
 	case consecFails == 1:
 		go s.runRetryTest(plan, 0)
-	case consecFails >= 2 && consecFails < TempUnschedThreshold:
+	case consecFails >= 2 && consecFails < cfg.tempUnschedThreshold:
 		go s.runRetryTest(plan, retryInterval)
-	case consecFails >= TempUnschedThreshold:
+	case consecFails >= cfg.tempUnschedThreshold:
 		s.triggerTempUnschedForScheduledTest(plan.AccountID)
 	}
 }
@@ -180,7 +181,11 @@ func (s *ScheduledTestRunnerService) runRetryTest(plan *ScheduledTestPlan, delay
 		time.Sleep(delay)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	retryTimeout := 10 * time.Second
+	if s.cfg != nil && s.cfg.Gateway.ResponseHeaderTimeout > 0 {
+		retryTimeout = time.Duration(s.cfg.Gateway.ResponseHeaderTimeout) * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retryTimeout)
 	defer cancel()
 
 	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
@@ -200,13 +205,14 @@ func (s *ScheduledTestRunnerService) runRetryTest(plan *ScheduledTestPlan, delay
 // triggerTempUnschedForScheduledTest 计算退避时长并持久化 TempUnschedulable。
 func (s *ScheduledTestRunnerService) triggerTempUnschedForScheduledTest(accountID int64) {
 	h := s.healthCache.GetOrCreate(accountID)
+	cfg := s.healthCache.Cfg()
 	h.mu.Lock()
 	if h.TempUnschedDuration == 0 {
-		h.TempUnschedDuration = TempUnschedInitDuration
+		h.TempUnschedDuration = cfg.tempUnschedInit
 	} else {
 		h.TempUnschedDuration *= 2
-		if h.TempUnschedDuration > TempUnschedMaxDuration {
-			h.TempUnschedDuration = TempUnschedMaxDuration
+		if h.TempUnschedDuration > cfg.tempUnschedMax {
+			h.TempUnschedDuration = cfg.tempUnschedMax
 		}
 	}
 	duration := h.TempUnschedDuration
@@ -214,7 +220,7 @@ func (s *ScheduledTestRunnerService) triggerTempUnschedForScheduledTest(accountI
 
 	until := time.Now().Add(duration)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second) // DB 写操作，固定 10s
 	defer cancel()
 
 	if s.rateLimitSvc == nil {

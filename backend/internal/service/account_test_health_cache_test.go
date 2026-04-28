@@ -11,7 +11,7 @@ import (
 )
 
 func TestUpdateFromTest_SuccessPath(t *testing.T) {
-	c := NewAccountTestHealthCache()
+	c := NewAccountTestHealthCache(nil)
 
 	// 先制造两次失败
 	failResult := &ScheduledTestResult{Status: "failed"}
@@ -37,7 +37,7 @@ func TestUpdateFromTest_SuccessPath(t *testing.T) {
 }
 
 func TestUpdateFromTest_SuccessEWMA(t *testing.T) {
-	c := NewAccountTestHealthCache()
+	c := NewAccountTestHealthCache(nil)
 
 	// 首次 success：直接赋值
 	ttft1 := int64(800)
@@ -57,7 +57,7 @@ func TestUpdateFromTest_SuccessEWMA(t *testing.T) {
 }
 
 func TestUpdateFromTest_FailurePath(t *testing.T) {
-	c := NewAccountTestHealthCache()
+	c := NewAccountTestHealthCache(nil)
 	failResult := &ScheduledTestResult{Status: "failed"}
 
 	// 第 1 次失败
@@ -89,10 +89,23 @@ func TestUpdateFromTest_FailurePath(t *testing.T) {
 	h.mu.Lock()
 	require.LessOrEqual(t, h.RetryInterval, RetryIntervalMax)
 	h.mu.Unlock()
+
+	// 手动模拟触发过隔离后 TempUnschedDuration 被设置
+	h.mu.Lock()
+	h.TempUnschedDuration = TempUnschedInitDuration * 4
+	h.mu.Unlock()
+
+	// 成功后三个退避字段全部归零
+	c.UpdateFromTest(1, &ScheduledTestResult{Status: "success"})
+	h.mu.Lock()
+	require.Equal(t, 0, h.ConsecFails)
+	require.Equal(t, time.Duration(0), h.RetryInterval)
+	require.Equal(t, time.Duration(0), h.TempUnschedDuration)
+	h.mu.Unlock()
 }
 
 func TestUpdateTTFT_EWMA(t *testing.T) {
-	c := NewAccountTestHealthCache()
+	c := NewAccountTestHealthCache(nil)
 
 	// 首次直接赋值
 	c.UpdateTTFT(1, 1000)
@@ -125,7 +138,7 @@ func TestLatencyBucket(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := NewAccountTestHealthCache()
+			c := NewAccountTestHealthCache(nil)
 			h := c.GetOrCreate(1)
 			h.mu.Lock()
 			h.TTFTEwma = tt.ttftEwma
@@ -135,13 +148,13 @@ func TestLatencyBucket(t *testing.T) {
 	}
 
 	t.Run("no data returns 1", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		require.Equal(t, 1, c.LatencyBucket(999))
 	})
 }
 
 func TestUpdateDuration_WindowExpiry(t *testing.T) {
-	c := NewAccountTestHealthCache()
+	c := NewAccountTestHealthCache(nil)
 
 	// 记录几次慢请求
 	c.UpdateDuration(1, 70000) // slow
@@ -168,12 +181,12 @@ func TestUpdateDuration_WindowExpiry(t *testing.T) {
 
 func TestSlowBucket(t *testing.T) {
 	t.Run("no data returns 0", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		require.Equal(t, 0, c.SlowBucket(999))
 	})
 
 	t.Run("sample < 5 returns 0", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		for i := 0; i < 4; i++ {
 			c.UpdateDuration(1, 70000) // all slow
 		}
@@ -181,7 +194,7 @@ func TestSlowBucket(t *testing.T) {
 	})
 
 	t.Run("slow rate < 20% returns 0", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		c.UpdateDuration(1, 70000) // slow
 		for i := 0; i < 9; i++ {
 			c.UpdateDuration(1, 1000) // fast
@@ -191,7 +204,7 @@ func TestSlowBucket(t *testing.T) {
 	})
 
 	t.Run("slow rate 20%-49% returns 1", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		for i := 0; i < 3; i++ {
 			c.UpdateDuration(1, 70000) // slow
 		}
@@ -203,7 +216,7 @@ func TestSlowBucket(t *testing.T) {
 	})
 
 	t.Run("slow rate >= 50% returns 2", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		for i := 0; i < 5; i++ {
 			c.UpdateDuration(1, 70000) // slow
 		}
@@ -213,10 +226,33 @@ func TestSlowBucket(t *testing.T) {
 		// 5/10 = 50%
 		require.Equal(t, 2, c.SlowBucket(1))
 	})
+
+	t.Run("expired window returns 0 and resets counters", func(t *testing.T) {
+		c := NewAccountTestHealthCache(nil)
+		// 注入足够样本使 SlowBucket 返回 2
+		for i := 0; i < 5; i++ {
+			c.UpdateDuration(1, 70000)
+		}
+		require.Equal(t, 2, c.SlowBucket(1))
+
+		// 手动将 WindowStart 拨到窗口之前
+		h := c.GetOrCreate(1)
+		h.mu.Lock()
+		h.WindowStart = time.Now().Add(-(SlowWindowDuration + time.Second))
+		h.mu.Unlock()
+
+		// 窗口已过期：应返回 0，并清空计数
+		require.Equal(t, 0, c.SlowBucket(1))
+		h.mu.Lock()
+		require.Equal(t, 0, h.TotalReqCount)
+		require.Equal(t, 0, h.SlowReqCount)
+		require.True(t, h.WindowStart.IsZero())
+		h.mu.Unlock()
+	})
 }
 
 func TestPassesHardFilter(t *testing.T) {
-	c := NewAccountTestHealthCache()
+	c := NewAccountTestHealthCache(nil)
 
 	// 无数据：通过
 	require.True(t, c.PassesHardFilter(1))
@@ -236,13 +272,13 @@ func TestPassesHardFilter(t *testing.T) {
 
 func TestFilterByMinLatencyBucket(t *testing.T) {
 	t.Run("empty slice", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		result := filterByMinLatencyBucket(nil, c)
 		require.Empty(t, result)
 	})
 
 	t.Run("all same bucket returns all", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		accounts := []accountWithLoad{
 			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
 			{account: &Account{ID: 2}, loadInfo: &AccountLoadInfo{}},
@@ -253,7 +289,7 @@ func TestFilterByMinLatencyBucket(t *testing.T) {
 	})
 
 	t.Run("filters to min latency bucket", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		// account 1: fast bucket=0
 		c.UpdateTTFT(1, 500)
 		// account 2: mid bucket=1 (NaN)
@@ -274,7 +310,7 @@ func TestFilterByMinLatencyBucket(t *testing.T) {
 	})
 
 	t.Run("empty result falls back to original", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		accounts := []accountWithLoad{
 			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
 		}
@@ -285,13 +321,13 @@ func TestFilterByMinLatencyBucket(t *testing.T) {
 
 func TestFilterByMinSlowBucket(t *testing.T) {
 	t.Run("empty slice", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		result := filterByMinSlowBucket(nil, c)
 		require.Empty(t, result)
 	})
 
 	t.Run("all same slow bucket returns all", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		accounts := []accountWithLoad{
 			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
 			{account: &Account{ID: 2}, loadInfo: &AccountLoadInfo{}},
@@ -302,7 +338,7 @@ func TestFilterByMinSlowBucket(t *testing.T) {
 	})
 
 	t.Run("filters to min slow bucket", func(t *testing.T) {
-		c := NewAccountTestHealthCache()
+		c := NewAccountTestHealthCache(nil)
 		// account 1: slow bucket=0（无数据）
 		// account 2: slow bucket=2（50% 慢请求）
 		for i := 0; i < 5; i++ {

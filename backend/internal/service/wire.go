@@ -340,8 +340,12 @@ func ProvideScheduledTestService(
 }
 
 // ProvideAccountTestHealthCache creates an AccountTestHealthCache singleton.
-func ProvideAccountTestHealthCache() *AccountTestHealthCache {
-	return NewAccountTestHealthCache()
+func ProvideAccountTestHealthCache(cfg *config.Config) *AccountTestHealthCache {
+	var healthCfg *config.AccountHealthConfig
+	if cfg != nil {
+		healthCfg = &cfg.Gateway.Scheduling.AccountHealth
+	}
+	return NewAccountTestHealthCache(healthCfg)
 }
 
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
