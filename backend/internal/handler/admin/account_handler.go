@@ -752,6 +752,11 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 		return
 	}
 
+	// 同时清除内存健康缓存，使 HealthExcluded/StickyOnly 立即解除
+	if h.healthCache != nil {
+		h.healthCache.Reset(accountID)
+	}
+
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)

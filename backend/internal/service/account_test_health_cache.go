@@ -632,6 +632,15 @@ func (c *AccountTestHealthCache) Cfg() healthCfg {
 	return c.cfg
 }
 
+// Reset 清除指定账号的健康缓存（滑动窗口 + ConsecFails），使 HealthVerdict 立即返回 OK。
+// 供 admin 手动恢复 Excluded/StickyOnly 状态时调用。
+func (c *AccountTestHealthCache) Reset(accountID int64) {
+	if c == nil || accountID <= 0 {
+		return
+	}
+	c.m.Delete(accountID)
+}
+
 // ListTrackedAccountIDs 返回当前有记录的所有账号 ID（仅供 admin 监控接口使用）。
 // 不保证顺序；返回快照之后新写入的不影响结果。
 func (c *AccountTestHealthCache) ListTrackedAccountIDs() []int64 {
