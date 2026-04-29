@@ -2607,7 +2607,10 @@ export default {
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
         overloadedUntil: 'Overloaded until {time}',
-        viewTempUnschedDetails: 'View temp unschedulable details'
+        viewTempUnschedDetails: 'View temp unschedulable details',
+        healthStickyOnly: 'Health degraded: sticky only',
+        healthExcluded: 'Health degraded: excluded',
+        healthVerdictReason: 'Reason: {reason}'
       },
       columns: {
         name: 'Name',

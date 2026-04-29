@@ -133,6 +133,28 @@
       </div>
     </div>
 
+    <!-- Health Verdict Indicator -->
+    <div v-if="healthVerdict" class="group relative">
+      <span
+        :class="[
+          'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium',
+          healthVerdict === 'Excluded'
+            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+            : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+        ]"
+      >
+        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+        {{ healthVerdict === 'Excluded' ? t('admin.accounts.status.healthExcluded') : t('admin.accounts.status.healthStickyOnly') }}
+      </span>
+      <div
+        v-if="account.health_verdict_reason"
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+      >
+        {{ t('admin.accounts.status.healthVerdictReason', { reason: account.health_verdict_reason }) }}
+        <div class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"></div>
+      </div>
+    </div>
+
     <!-- Overload Indicator (529) -->
     <div v-if="isOverloaded" class="group relative">
       <span
@@ -272,6 +294,9 @@ const isOverloaded = computed(() => {
   if (!props.account.overload_until) return false
   return new Date(props.account.overload_until) > new Date()
 })
+
+// Computed: health verdict (StickyOnly / Excluded)
+const healthVerdict = computed(() => props.account.health_verdict ?? null)
 
 // Computed: is temp unschedulable
 const isTempUnschedulable = computed(() => {

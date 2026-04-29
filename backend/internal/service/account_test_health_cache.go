@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -489,10 +490,8 @@ func (c *AccountTestHealthCache) HealthVerdict(accountID int64, cfg HealthVerdic
 	return HealthOK
 }
 
-// HealthVerdictWithDefaults 使用内置默认阈值计算健康三态，等价于 gateway 调度时的判断结果。
-// 供 admin handler 等无法获取调度配置的调用方使用。
-func (c *AccountTestHealthCache) HealthVerdictWithDefaults(accountID int64) HealthVerdict {
-	return c.HealthVerdict(accountID, HealthVerdictConfig{
+func defaultHealthVerdictConfig() HealthVerdictConfig {
+	return HealthVerdictConfig{
 		WindowSeconds:     10 * 60,
 		MinSamples:        5,
 		ErrCountSoft:      5,
@@ -501,7 +500,59 @@ func (c *AccountTestHealthCache) HealthVerdictWithDefaults(accountID int64) Heal
 		ErrRateHard:       0.5,
 		TTFTStickyOnlyMs:  10000,
 		OTPSStickyOnlyMin: 10,
-	})
+	}
+}
+
+// HealthVerdictWithDefaults 使用内置默认阈值计算健康三态，等价于 gateway 调度时的判断结果。
+// 供 admin handler 等无法获取调度配置的调用方使用。
+func (c *AccountTestHealthCache) HealthVerdictWithDefaults(accountID int64) HealthVerdict {
+	return c.HealthVerdict(accountID, defaultHealthVerdictConfig())
+}
+
+// HealthVerdictWithReason 在 HealthVerdictWithDefaults 基础上同时返回触发原因描述。
+// reason 格式示例："err_rate=45.0%(≥30%)" / "err_count=12(≥10)" / "ttft_avg=11200ms(≥10000ms)"
+// verdict 为 HealthOK 时 reason 为空字符串。
+func (c *AccountTestHealthCache) HealthVerdictWithReason(accountID int64) (verdict HealthVerdict, reason string) {
+	cfg := defaultHealthVerdictConfig()
+	if c == nil || accountID <= 0 {
+		return HealthOK, ""
+	}
+	h := c.Get(accountID)
+	if h == nil {
+		return HealthOK, ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	windowSec := cfg.WindowSeconds
+	if windowSec <= 0 {
+		windowSec = healthBucketCount * healthBucketSeconds
+	}
+	s := h.snapshotLocked(time.Now(), windowSec)
+
+	if cfg.MinSamples > 0 && s.ReqCount < cfg.MinSamples {
+		return HealthOK, ""
+	}
+
+	if cfg.ErrCountHard > 0 && s.ErrCount >= cfg.ErrCountHard {
+		return HealthExcluded, fmt.Sprintf("err_count=%d(≥%d)", s.ErrCount, cfg.ErrCountHard)
+	}
+	if cfg.ErrRateHard > 0 && s.ErrRate() >= cfg.ErrRateHard {
+		return HealthExcluded, fmt.Sprintf("err_rate=%.1f%%(≥%.0f%%)", s.ErrRate()*100, cfg.ErrRateHard*100)
+	}
+	if cfg.ErrCountSoft > 0 && s.ErrCount >= cfg.ErrCountSoft {
+		return HealthStickyOnly, fmt.Sprintf("err_count=%d(≥%d)", s.ErrCount, cfg.ErrCountSoft)
+	}
+	if cfg.ErrRateSoft > 0 && s.ErrRate() >= cfg.ErrRateSoft {
+		return HealthStickyOnly, fmt.Sprintf("err_rate=%.1f%%(≥%.0f%%)", s.ErrRate()*100, cfg.ErrRateSoft*100)
+	}
+	if cfg.TTFTStickyOnlyMs > 0 && s.HasTTFT() && s.TTFTAvg() >= float64(cfg.TTFTStickyOnlyMs) {
+		return HealthStickyOnly, fmt.Sprintf("ttft_avg=%.0fms(≥%dms)", s.TTFTAvg(), cfg.TTFTStickyOnlyMs)
+	}
+	if cfg.OTPSStickyOnlyMin > 0 && s.HasOTPS() && s.OTPSAvg() < cfg.OTPSStickyOnlyMin {
+		return HealthStickyOnly, fmt.Sprintf("otps_avg=%.1f(<%g)", s.OTPSAvg(), cfg.OTPSStickyOnlyMin)
+	}
+	return HealthOK, ""
 }
 
 // HealthVerdictWithChange 在 HealthVerdict() 基础上返回是否发生状态切换。

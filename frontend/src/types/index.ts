@@ -859,6 +859,8 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+  health_verdict?: 'StickyOnly' | 'Excluded' | null // 健康三态降级状态，OK 时不返回
+  health_verdict_reason?: string | null // 触发原因，如 err_rate=45.0%(≥30%)
 }
 
 // Account Usage types

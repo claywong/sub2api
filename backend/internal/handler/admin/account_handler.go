@@ -177,7 +177,8 @@ type AccountWithConcurrency struct {
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
-	HealthVerdict     *string  `json:"health_verdict,omitempty"`      // 健康三态：StickyOnly / Excluded（OK 时不返回）
+	HealthVerdict       *string `json:"health_verdict,omitempty"`        // 健康三态：StickyOnly / Excluded（OK 时不返回）
+	HealthVerdictReason *string `json:"health_verdict_reason,omitempty"` // 触发原因，如 err_rate=45.0%(≥30%)
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -223,9 +224,12 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 
 		if h.healthCache != nil {
-			if v := h.healthCache.HealthVerdictWithDefaults(account.ID); v != service.HealthOK {
+			if v, reason := h.healthCache.HealthVerdictWithReason(account.ID); v != service.HealthOK {
 				s := v.String()
 				item.HealthVerdict = &s
+				if reason != "" {
+					item.HealthVerdictReason = &reason
+				}
 			}
 		}
 	}
@@ -2194,4 +2198,36 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// GetHealthStats returns the sliding-window health metrics for a single account.
+// GET /api/v1/admin/accounts/:id/health-stats
+func (h *AccountHandler) GetHealthStats(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	if h.healthCache == nil {
+		response.Success(c, gin.H{"available": false})
+		return
+	}
+
+	snap := h.healthCache.Snapshot(accountID)
+	verdict, reason := h.healthCache.HealthVerdictWithReason(accountID)
+
+	response.Success(c, gin.H{
+		"available":      true,
+		"window_seconds": 600,
+		"req_count":      snap.ReqCount,
+		"err_count":      snap.ErrCount,
+		"err_rate":       snap.ErrRate(),
+		"slow_count":     snap.SlowCount,
+		"slow_rate":      snap.SlowRate(),
+		"ttft_avg_ms":    snap.TTFTAvg(),
+		"otps_avg":       snap.OTPSAvg(),
+		"verdict":        verdict.String(),
+		"verdict_reason": reason,
+	})
 }
