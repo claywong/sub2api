@@ -35,6 +35,9 @@ const (
 const (
 	healthBucketCount   = 10 // 10 个桶
 	healthBucketSeconds = 60 // 每桶 1 分钟，总窗口 10 分钟
+
+	// DefaultHealthWindowSeconds 滑动窗口总长度（秒），供外部引用。
+	DefaultHealthWindowSeconds = healthBucketCount * healthBucketSeconds
 )
 
 // healthCfg 持有从 config.AccountHealthConfig 解析后的有效值（已完成零值回退）
@@ -251,8 +254,12 @@ func (c *AccountTestHealthCache) Get(accountID int64) *AccountTestHealth {
 	return v.(*AccountTestHealth)
 }
 
-// GetOrCreate 返回指定账号的健康状态，不存在时创建一个新的
+// GetOrCreate 返回指定账号的健康状态，不存在时创建一个新的。
+// 先 Load 再 LoadOrStore，避免在热路径上每次都分配临时对象。
 func (c *AccountTestHealthCache) GetOrCreate(accountID int64) *AccountTestHealth {
+	if v, ok := c.m.Load(accountID); ok {
+		return v.(*AccountTestHealth)
+	}
 	h := &AccountTestHealth{}
 	actual, _ := c.m.LoadOrStore(accountID, h)
 	return actual.(*AccountTestHealth)
@@ -553,6 +560,49 @@ func (c *AccountTestHealthCache) HealthVerdictWithReason(accountID int64) (verdi
 		return HealthStickyOnly, fmt.Sprintf("otps_avg=%.1f(<%g)", s.OTPSAvg(), cfg.OTPSStickyOnlyMin)
 	}
 	return HealthOK, ""
+}
+
+// SnapshotAndVerdict 一次加锁同时返回滑动窗口快照和健康三态判定，避免两次独立调用的重复计算。
+func (c *AccountTestHealthCache) SnapshotAndVerdict(accountID int64) (snap HealthSnapshot, verdict HealthVerdict, reason string) {
+	cfg := defaultHealthVerdictConfig()
+	if c == nil || accountID <= 0 {
+		return HealthSnapshot{}, HealthOK, ""
+	}
+	h := c.Get(accountID)
+	if h == nil {
+		return HealthSnapshot{}, HealthOK, ""
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	windowSec := cfg.WindowSeconds
+	if windowSec <= 0 {
+		windowSec = healthBucketCount * healthBucketSeconds
+	}
+	snap = h.snapshotLocked(time.Now(), windowSec)
+
+	if cfg.MinSamples > 0 && snap.ReqCount < cfg.MinSamples {
+		return snap, HealthOK, ""
+	}
+	if cfg.ErrCountHard > 0 && snap.ErrCount >= cfg.ErrCountHard {
+		return snap, HealthExcluded, fmt.Sprintf("err_count=%d(≥%d)", snap.ErrCount, cfg.ErrCountHard)
+	}
+	if cfg.ErrRateHard > 0 && snap.ErrRate() >= cfg.ErrRateHard {
+		return snap, HealthExcluded, fmt.Sprintf("err_rate=%.1f%%(≥%.0f%%)", snap.ErrRate()*100, cfg.ErrRateHard*100)
+	}
+	if cfg.ErrCountSoft > 0 && snap.ErrCount >= cfg.ErrCountSoft {
+		return snap, HealthStickyOnly, fmt.Sprintf("err_count=%d(≥%d)", snap.ErrCount, cfg.ErrCountSoft)
+	}
+	if cfg.ErrRateSoft > 0 && snap.ErrRate() >= cfg.ErrRateSoft {
+		return snap, HealthStickyOnly, fmt.Sprintf("err_rate=%.1f%%(≥%.0f%%)", snap.ErrRate()*100, cfg.ErrRateSoft*100)
+	}
+	if cfg.TTFTStickyOnlyMs > 0 && snap.HasTTFT() && snap.TTFTAvg() >= float64(cfg.TTFTStickyOnlyMs) {
+		return snap, HealthStickyOnly, fmt.Sprintf("ttft_avg=%.0fms(≥%dms)", snap.TTFTAvg(), cfg.TTFTStickyOnlyMs)
+	}
+	if cfg.OTPSStickyOnlyMin > 0 && snap.HasOTPS() && snap.OTPSAvg() < cfg.OTPSStickyOnlyMin {
+		return snap, HealthStickyOnly, fmt.Sprintf("otps_avg=%.1f(<%g)", snap.OTPSAvg(), cfg.OTPSStickyOnlyMin)
+	}
+	return snap, HealthOK, ""
 }
 
 // HealthVerdictWithChange 在 HealthVerdict() 基础上返回是否发生状态切换。

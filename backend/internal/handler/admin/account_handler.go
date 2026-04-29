@@ -392,6 +392,17 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 		}
 
+		// 添加健康三态（纯内存计算，仅 Anthropic OAuth/SetupToken 账号）
+		if h.healthCache != nil && acc.IsAnthropicOAuthOrSetupToken() {
+			if v, reason := h.healthCache.HealthVerdictWithReason(acc.ID); v != service.HealthOK {
+				s := v.String()
+				item.HealthVerdict = &s
+				if reason != "" {
+					item.HealthVerdictReason = &reason
+				}
+			}
+		}
+
 		result[i] = item
 	}
 
@@ -2214,12 +2225,11 @@ func (h *AccountHandler) GetHealthStats(c *gin.Context) {
 		return
 	}
 
-	snap := h.healthCache.Snapshot(accountID)
-	verdict, reason := h.healthCache.HealthVerdictWithReason(accountID)
+	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(accountID)
 
 	response.Success(c, gin.H{
 		"available":      true,
-		"window_seconds": 600,
+		"window_seconds": service.DefaultHealthWindowSeconds,
 		"req_count":      snap.ReqCount,
 		"err_count":      snap.ErrCount,
 		"err_rate":       snap.ErrRate(),

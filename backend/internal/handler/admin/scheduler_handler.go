@@ -31,9 +31,10 @@ func (h *SchedulerAdminHandler) GetMetrics(c *gin.Context) {
 
 // SchedulerSnapshotItem 单账号的调度视图。
 type SchedulerSnapshotItem struct {
-	AccountID int64                  `json:"account_id"`
-	Verdict   string                 `json:"verdict"`
-	Window    SchedulerSnapshotStats `json:"window"`
+	AccountID     int64                  `json:"account_id"`
+	Verdict       string                 `json:"verdict"`
+	VerdictReason string                 `json:"verdict_reason,omitempty"`
+	Window        SchedulerSnapshotStats `json:"window"`
 }
 
 // SchedulerSnapshotStats 滑动窗口聚合数据。
@@ -87,10 +88,11 @@ func (h *SchedulerAdminHandler) GetSnapshot(c *gin.Context) {
 // buildSnapshotItem 把 cache.Snapshot(id) + verdict 拼装成 admin 视图。
 func buildSnapshotItem(cache *service.AccountTestHealthCache, accountID int64) SchedulerSnapshotItem {
 	s := cache.Snapshot(accountID)
-	v := cache.HealthVerdict(accountID, service.HealthVerdictConfig{}) // 调度器配置由 gateway 内部使用，此处仅 snapshot 维度
+	v, reason := cache.HealthVerdictWithReason(accountID)
 	return SchedulerSnapshotItem{
-		AccountID: accountID,
-		Verdict:   v.String(),
+		AccountID:     accountID,
+		Verdict:       v.String(),
+		VerdictReason: reason,
 		Window: SchedulerSnapshotStats{
 			ReqCount:        s.ReqCount,
 			ErrCount:        s.ErrCount,
