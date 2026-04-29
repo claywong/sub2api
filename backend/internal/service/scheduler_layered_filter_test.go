@@ -11,7 +11,7 @@ import (
 
 func TestFilterByMinPriority(t *testing.T) {
 	t.Run("empty slice", func(t *testing.T) {
-		result := filterByMinPriority(nil)
+		result := filterByMinPriority(nil, 0)
 		require.Empty(t, result)
 	})
 
@@ -19,7 +19,7 @@ func TestFilterByMinPriority(t *testing.T) {
 		accounts := []accountWithLoad{
 			{account: &Account{ID: 1, Priority: 5}, loadInfo: &AccountLoadInfo{}},
 		}
-		result := filterByMinPriority(accounts)
+		result := filterByMinPriority(accounts, 0)
 		require.Len(t, result, 1)
 		require.Equal(t, int64(1), result[0].account.ID)
 	})
@@ -30,7 +30,7 @@ func TestFilterByMinPriority(t *testing.T) {
 			{account: &Account{ID: 2, Priority: 3}, loadInfo: &AccountLoadInfo{}},
 			{account: &Account{ID: 3, Priority: 3}, loadInfo: &AccountLoadInfo{}},
 		}
-		result := filterByMinPriority(accounts)
+		result := filterByMinPriority(accounts, 0)
 		require.Len(t, result, 3)
 	})
 
@@ -41,10 +41,54 @@ func TestFilterByMinPriority(t *testing.T) {
 			{account: &Account{ID: 3, Priority: 3}, loadInfo: &AccountLoadInfo{}},
 			{account: &Account{ID: 4, Priority: 1}, loadInfo: &AccountLoadInfo{}},
 		}
-		result := filterByMinPriority(accounts)
+		result := filterByMinPriority(accounts, 0)
 		require.Len(t, result, 2)
 		require.Equal(t, int64(2), result[0].account.ID)
 		require.Equal(t, int64(4), result[1].account.ID)
+	})
+
+	// 价格倍率正相关场景：priority 10 / 12 / 25 / 45 模拟倍率 0.10 / 0.12 / 0.25 / 0.45。
+	// tolerance=5 时，倍率差 ≤ 0.05 的账号一起进入下一层（priority 10 和 12），
+	// 防止 12 这种"几乎同价"的账号被字典序剔除。
+	t.Run("tolerance allows nearby priorities through", func(t *testing.T) {
+		accounts := []accountWithLoad{
+			{account: &Account{ID: 1, Priority: 10}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 2, Priority: 12}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 3, Priority: 25}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 4, Priority: 45}, loadInfo: &AccountLoadInfo{}},
+		}
+		result := filterByMinPriority(accounts, 5)
+		require.Len(t, result, 2)
+		require.Equal(t, int64(1), result[0].account.ID)
+		require.Equal(t, int64(2), result[1].account.ID)
+	})
+
+	t.Run("tolerance zero retains strict equality", func(t *testing.T) {
+		accounts := []accountWithLoad{
+			{account: &Account{ID: 1, Priority: 10}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 2, Priority: 11}, loadInfo: &AccountLoadInfo{}},
+		}
+		result := filterByMinPriority(accounts, 0)
+		require.Len(t, result, 1)
+		require.Equal(t, int64(1), result[0].account.ID)
+	})
+
+	t.Run("tolerance large enough keeps all", func(t *testing.T) {
+		accounts := []accountWithLoad{
+			{account: &Account{ID: 1, Priority: 10}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 2, Priority: 45}, loadInfo: &AccountLoadInfo{}},
+		}
+		result := filterByMinPriority(accounts, 100)
+		require.Len(t, result, 2)
+	})
+
+	t.Run("negative tolerance treated as zero", func(t *testing.T) {
+		accounts := []accountWithLoad{
+			{account: &Account{ID: 1, Priority: 10}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 2, Priority: 12}, loadInfo: &AccountLoadInfo{}},
+		}
+		result := filterByMinPriority(accounts, -5)
+		require.Len(t, result, 1)
 	})
 }
 
@@ -230,7 +274,7 @@ func TestLayeredFilterIntegration(t *testing.T) {
 		}
 
 		// 1. 取优先级最小的集合 → ID: 1, 2, 3
-		step1 := filterByMinPriority(accounts)
+		step1 := filterByMinPriority(accounts, 0)
 		require.Len(t, step1, 3)
 
 		// 2. 取负载率最低的集合 → ID: 2, 3
@@ -250,7 +294,7 @@ func TestLayeredFilterIntegration(t *testing.T) {
 			{account: &Account{ID: 3, Priority: 1, LastUsedAt: &muchEarlier}, loadInfo: &AccountLoadInfo{LoadRate: 50}},
 		}
 
-		step1 := filterByMinPriority(accounts)
+		step1 := filterByMinPriority(accounts, 0)
 		require.Len(t, step1, 3)
 
 		step2 := filterByMinLoadRate(step1)

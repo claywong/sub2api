@@ -44,6 +44,10 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 500 * 1024 * 1024
+
+	// 调度算法名称（gateway.scheduling.algorithm）
+	schedulingAlgorithmLegacy   = "legacy"
+	schedulingAlgorithmWeighted = "weighted"
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
 	// separator between system blocks, we add "\n\n" at concatenation time.
@@ -1620,6 +1624,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 									if s.debugModelRoutingEnabled() {
 										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
 									}
+									s.logSchedulerSelected("routed_sticky", stickyAccount, sessionHash, groupID, true)
 									return s.newSelectionResult(ctx, stickyAccount, true, result.ReleaseFunc, nil)
 								}
 							}
@@ -1731,6 +1736,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 						}
+						s.logSchedulerSelected("routed", item.account, sessionHash, groupID, true)
 						return s.newSelectionResult(ctx, item.account, true, result.ReleaseFunc, nil)
 					}
 				}
@@ -1776,7 +1782,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					s.isAccountSchedulableForQuota(account) &&
 					s.isAccountSchedulableForWindowCost(ctx, account, true) &&
 
-					s.isAccountSchedulableForRPM(ctx, account, true) { // 粘性会话窗口费用+RPM 检查
+					s.isAccountSchedulableForRPM(ctx, account, true) && // 粘性会话窗口费用+RPM 检查
+					s.isAccountSchedulableForHealth(account, true) { // 健康三态：Sticky 路径放行 OK + StickyOnly
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -1786,6 +1793,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							if s.cache != nil {
 								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
 							}
+							s.logSchedulerSelected("sticky", account, sessionHash, groupID, true)
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
 					}
@@ -1796,6 +1804,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 							// 会话限制已满，继续到 Layer 2
 						} else {
+							s.logSchedulerSelected("sticky_wait", account, sessionHash, groupID, false)
 							return s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
 								MaxConcurrency: account.Concurrency,
@@ -1810,6 +1819,9 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	// ============ Layer 2: 负载感知选择 ============
+	// 算法分流：weighted（5 因子加权打分 + Top-K 加权随机）vs legacy（priority→LoadRate→LRU 字典序）
+	algorithm := s.chooseSchedulingAlgorithm(groupID)
+
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
@@ -1841,6 +1853,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 		// RPM 检查（非粘性会话路径）
 		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		// 健康三态新会话过滤：HealthExcluded 与 HealthStickyOnly 的账号都跳过
+		// （StickyOnly 仍可被已绑定的 sticky session 走 Layer 1.5 命中）
+		if !s.isAccountSchedulableForHealth(acc, false) {
 			continue
 		}
 		// 健康缓存硬过滤（Anthropic 平台）：连续失败 >= HardFilterThreshold 的账号跳过新会话
@@ -1884,19 +1901,25 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 → 负载率 → LatencyBucket → SlowBucket → LRU
+		// 算法分流：weighted 走 5 因子加权打分；legacy 沿用 priority→LoadRate→LRU。
+		// weighted 仅对 Anthropic 平台生效（healthCache 仅 Anthropic 维护）；其它平台自动降级。
+		if algorithm == schedulingAlgorithmWeighted && platform == PlatformAnthropic && s.healthCache != nil && len(available) > 0 {
+			selection, decided := s.tryWeightedAnthropicSelection(ctx, available, groupID, sessionHash, requestedModel, preferOAuth)
+			if decided {
+				return selection, nil
+			}
+			// decided=false 表示候选全军 acquire 失败，回退到下方 legacy 兜底循环
+		} else {
+			schedulerMetrics.LegacyRequests.Add(1)
+		}
+
+		// 分层过滤选择：优先级 → 负载率 → LRU
 		for len(available) > 0 {
-			// 1. 取优先级最小的集合
-			candidates := filterByMinPriority(available)
+			// 1. 取优先级最小的集合（支持容差，让倍率接近的账号一起进入下一步）
+			candidates := filterByMinPriority(available, cfg.PriorityTolerance)
 			// 2. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
-			// 3. 延时分桶过滤（仅 Anthropic）
-			if platform == PlatformAnthropic && s.healthCache != nil {
-				candidates = filterByMinLatencyBucket(candidates, s.healthCache)
-				// 4. 慢请求率分桶过滤（仅 Anthropic）
-				candidates = filterByMinSlowBucket(candidates, s.healthCache)
-			}
-			// 5. LRU 选择最久未用的账号
+			// 3. LRU 选择最久未用的账号
 			selected := selectByLRU(candidates, preferOAuth)
 			if selected == nil {
 				break
@@ -1911,6 +1934,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 					}
+					s.logSchedulerSelected("legacy", selected.account, sessionHash, groupID, true)
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
 			}
@@ -1934,6 +1958,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
 		}
+		s.logSchedulerSelected("fallback_wait", acc, sessionHash, groupID, false)
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,
 			MaxConcurrency: acc.Concurrency,
@@ -1963,6 +1988,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			if err != nil {
 				return nil, false, err
 			}
+			s.logSchedulerSelected("legacy_order", acc, sessionHash, groupID, true)
 			return selection, true, nil
 		}
 	}
@@ -1982,6 +2008,108 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		LoadBatchEnabled:         true,
 		SlotCleanupInterval:      30 * time.Second,
 	}
+}
+
+// chooseSchedulingAlgorithm 决定指定 group 走哪种调度算法。
+// 优先级：LegacyGroups（豁免） > WeightedGroups（白名单） > 全局 Algorithm。
+// 默认 legacy，保持向后兼容。
+func (s *GatewayService) chooseSchedulingAlgorithm(groupID *int64) string {
+	cfg := s.schedulingConfig()
+	gid := derefGroupID(groupID)
+	for _, id := range cfg.LegacyGroups {
+		if id == gid {
+			return schedulingAlgorithmLegacy
+		}
+	}
+	for _, id := range cfg.WeightedGroups {
+		if id == gid {
+			return schedulingAlgorithmWeighted
+		}
+	}
+	if cfg.Algorithm == schedulingAlgorithmWeighted {
+		return schedulingAlgorithmWeighted
+	}
+	return schedulingAlgorithmLegacy
+}
+
+// resolvedSchedulingHealth 返回 SchedulingHealthConfig，零值字段回退到内置默认。
+func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfig {
+	c := s.schedulingConfig().Health
+	if c.WindowMinutes <= 0 {
+		c.WindowMinutes = 10
+	}
+	if c.MinSamples <= 0 {
+		c.MinSamples = 5
+	}
+	if c.ErrCountSoft <= 0 {
+		c.ErrCountSoft = 5
+	}
+	if c.ErrCountHard <= 0 {
+		c.ErrCountHard = 10
+	}
+	if c.ErrRateSoft <= 0 {
+		c.ErrRateSoft = 0.3
+	}
+	if c.ErrRateHard <= 0 {
+		c.ErrRateHard = 0.5
+	}
+	if c.TTFTStickyOnlyMs <= 0 {
+		c.TTFTStickyOnlyMs = 8000
+	}
+	if c.OTPSStickyOnlyMin <= 0 {
+		c.OTPSStickyOnlyMin = 10
+	}
+	return c
+}
+
+// resolvedScoreWeights 返回 5 因子权重，零值回退到内置默认。
+func (s *GatewayService) resolvedScoreWeights() config.ScoreWeightsConfig {
+	c := s.schedulingConfig().ScoreWeights
+	if c.ErrRate <= 0 {
+		c.ErrRate = 1.5
+	}
+	if c.TTFT <= 0 {
+		c.TTFT = 1.2
+	}
+	if c.OTPS <= 0 {
+		c.OTPS = 1.0
+	}
+	if c.Load <= 0 {
+		c.Load = 0.3
+	}
+	if c.Priority <= 0 {
+		c.Priority = 0.5
+	}
+	return c
+}
+
+// resolvedScoreThresholds 返回因子归一化阈值，零值回退到内置默认。
+func (s *GatewayService) resolvedScoreThresholds() config.ScoreThresholdsConfig {
+	c := s.schedulingConfig().ScoreThresholds
+	if c.TTFTBestMs <= 0 {
+		c.TTFTBestMs = 1500
+	}
+	if c.TTFTWorstMs <= 0 {
+		c.TTFTWorstMs = 6000
+	}
+	if c.OTPSBest <= 0 {
+		c.OTPSBest = 80
+	}
+	if c.OTPSWorst <= 0 {
+		c.OTPSWorst = 10
+	}
+	if c.LoadThresholdPct <= 0 {
+		c.LoadThresholdPct = 70
+	}
+	return c
+}
+
+// resolvedSchedulingTopK 返回 Top-K 加权随机的 K，零值回退默认 5。
+func (s *GatewayService) resolvedSchedulingTopK() int {
+	if k := s.schedulingConfig().TopK; k > 0 {
+		return k
+	}
+	return 5
 }
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
@@ -2609,8 +2737,12 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	}, nil
 }
 
-// filterByMinPriority 过滤出优先级最小的账号集合
-func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
+// filterByMinPriority 过滤出优先级最小的账号集合。
+// tolerance > 0 时，所有 priority <= minPriority+tolerance 的账号都保留，
+// 让"价格差不多"的账号一起进入后续维度（Load/Latency/Slow/LRU）评估，
+// 避免账号 Priority 与价格倍率正相关时的"价格独裁"。
+// tolerance <= 0 时退化为严格相等（旧行为，向后兼容）。
+func filterByMinPriority(accounts []accountWithLoad, tolerance int) []accountWithLoad {
 	if len(accounts) == 0 {
 		return accounts
 	}
@@ -2620,9 +2752,13 @@ func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 			minPriority = acc.account.Priority
 		}
 	}
+	if tolerance < 0 {
+		tolerance = 0
+	}
+	threshold := minPriority + tolerance
 	result := make([]accountWithLoad, 0, len(accounts))
 	for _, acc := range accounts {
-		if acc.account.Priority == minPriority {
+		if acc.account.Priority <= threshold {
 			result = append(result, acc)
 		}
 	}
@@ -2649,66 +2785,113 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 	return result
 }
 
-// filterByMinLatencyBucket 过滤出延时分桶最小的账号集合（仅 Anthropic）
-func filterByMinLatencyBucket(accounts []accountWithLoad, cache *AccountTestHealthCache) []accountWithLoad {
-	if len(accounts) == 0 {
-		return accounts
+// HealthCache 暴露内部健康缓存指针，仅用于 admin 调试 / 监控接口。
+// 调用方不应通过它绕过 gateway 调度路径写入数据。
+func (s *GatewayService) HealthCache() *AccountTestHealthCache {
+	if s == nil {
+		return nil
 	}
-	minBucket := cache.LatencyBucket(accounts[0].account.ID)
-	for _, acc := range accounts[1:] {
-		if b := cache.LatencyBucket(acc.account.ID); b < minBucket {
-			minBucket = b
-		}
-	}
-	result := make([]accountWithLoad, 0, len(accounts))
-	for _, acc := range accounts {
-		if cache.LatencyBucket(acc.account.ID) == minBucket {
-			result = append(result, acc)
-		}
-	}
-	if len(result) == 0 {
-		return accounts
-	}
-	return result
+	return s.healthCache
 }
 
-// filterByMinSlowBucket 过滤出慢请求率分桶最小的账号集合（仅 Anthropic）
-func filterByMinSlowBucket(accounts []accountWithLoad, cache *AccountTestHealthCache) []accountWithLoad {
-	if len(accounts) == 0 {
-		return accounts
-	}
-	minBucket := cache.SlowBucket(accounts[0].account.ID)
-	for _, acc := range accounts[1:] {
-		if b := cache.SlowBucket(acc.account.ID); b < minBucket {
-			minBucket = b
-		}
-	}
-	result := make([]accountWithLoad, 0, len(accounts))
-	for _, acc := range accounts {
-		if cache.SlowBucket(acc.account.ID) == minBucket {
-			result = append(result, acc)
-		}
-	}
-	if len(result) == 0 {
-		return accounts
-	}
-	return result
-}
-
-// ReportAnthropicAccountTTFT 将真实请求的首字时间上报到健康缓存
-func (s *GatewayService) ReportAnthropicAccountTTFT(accountID int64, firstTokenMs *int) {
-	if s.healthCache == nil || firstTokenMs == nil {
+// logSchedulerSelected 统一打"调度选中"日志，覆盖 sticky/weighted/legacy/fallback 各层。
+//
+// 触发规则（满足其一即打）：
+//  1. cfg.Debug.LogDecisions = true（全量）
+//  2. groupID 在 cfg.Debug.LogGroups 白名单内（指定 group 强制 100%）
+//  3. cfg.Debug.LogSampleRate > 0 且 RNG 命中（采样）
+func (s *GatewayService) logSchedulerSelected(layer string, account *Account, sessionHash string, groupID *int64, acquired bool) {
+	if s == nil || account == nil {
 		return
 	}
-	s.healthCache.UpdateTTFT(accountID, *firstTokenMs)
+	cfg := s.schedulingConfig().Debug
+	if !cfg.LogDecisions && !groupContainedInLogList(groupID, cfg.LogGroups) {
+		// 未启用且不在白名单 → 按采样率
+		if cfg.LogSampleRate <= 0 || mathrand.Float64() > cfg.LogSampleRate {
+			return
+		}
+	}
+	logger.LegacyPrintf("service.gateway",
+		"[SchedulerSelected] layer=%s group=%v session=%s account=%d priority=%d acquired=%v",
+		layer, derefGroupID(groupID), shortSessionHash(sessionHash),
+		account.ID, account.Priority, acquired)
 }
 
-// ReportAnthropicAccountDuration 将真实请求的总耗时上报到健康缓存
-func (s *GatewayService) ReportAnthropicAccountDuration(accountID int64, durationMs int) {
+// RecordAnthropicCall 上报一次真实 Anthropic 请求的完整样本到健康缓存。
+// 与"主动 test"路径融合，进入同一份滑动窗口，供 HealthVerdict 三态判定使用。
+//
+// 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
+//   - 上游错误（4xx/5xx/429/超时、UpstreamFailoverError 等）→ Success=false
+//   - 客户端中断（context.Canceled）→ 调用方应跳过，不上报
+//   - 请求内容问题（PromptTooLong/BetaBlocked）→ 调用方应跳过
+func (s *GatewayService) RecordAnthropicCall(accountID int64, sample CallSample) {
 	if s.healthCache == nil {
 		return
 	}
-	s.healthCache.UpdateDuration(accountID, durationMs)
+	s.healthCache.RecordRealCall(accountID, sample)
+}
+
+// ReportAnthropicAccountResult 将真实请求的成败结果上报到健康缓存。
+// 与 ReportAnthropicAccountTTFT/Duration 配合使用，让"用户真实调用"和"主动 test"
+// 在 ConsecFails 维度上融合，使 HealthVerdict 三态判定能感知真实流量的失败。
+//
+// 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
+//   - 上游错误（4xx/5xx/429/超时）→ success=false
+//   - 客户端中断（context.Canceled）→ 调用方应跳过，不上报
+//   - 请求内容问题（PromptTooLong 等）→ 调用方应跳过，不上报
+func (s *GatewayService) ReportAnthropicAccountResult(accountID int64, success bool) {
+	if s.healthCache == nil {
+		return
+	}
+	s.healthCache.ReportRealCall(accountID, success)
+}
+
+// healthVerdictConfig 把 SchedulingHealthConfig 转换为
+// AccountTestHealthCache.HealthVerdict() 的入参。
+// 基于滑动窗口快照的窗口指标判定（errCount/errRate/ttftAvg/otpsAvg）。
+func (s *GatewayService) healthVerdictConfig() HealthVerdictConfig {
+	c := s.resolvedSchedulingHealth()
+	return HealthVerdictConfig{
+		WindowSeconds:     int64(c.WindowMinutes) * 60,
+		MinSamples:        c.MinSamples,
+		ErrCountSoft:      c.ErrCountSoft,
+		ErrCountHard:      c.ErrCountHard,
+		ErrRateSoft:       c.ErrRateSoft,
+		ErrRateHard:       c.ErrRateHard,
+		TTFTStickyOnlyMs:  c.TTFTStickyOnlyMs,
+		OTPSStickyOnlyMin: c.OTPSStickyOnlyMin,
+	}
+}
+
+// isAccountSchedulableForHealth 与 isAccountSchedulableForWindowCost / RPM 同款签名风格。
+// 仅作用于 Anthropic 平台账号，沿用 WindowCostStickyOnly 三态语义：
+//   - HealthOK         → 始终放行
+//   - HealthStickyOnly → 仅 isSticky=true 路径放行（Layer 1.5 sticky 命中时通过；
+//                       Layer 2 新会话路径拒绝）
+//   - HealthExcluded   → 任何路径都拦截
+func (s *GatewayService) isAccountSchedulableForHealth(account *Account, isSticky bool) bool {
+	if account == nil || account.Platform != PlatformAnthropic {
+		return true
+	}
+	if s == nil || s.healthCache == nil {
+		return true
+	}
+	verdict, _, changed := s.healthCache.HealthVerdictWithChange(account.ID, s.healthVerdictConfig())
+	if changed {
+		// 状态切换日志（去抖：每个账号每次切换打一次）
+		logger.LegacyPrintf("service.gateway",
+			"[HealthVerdictChange] account_id=%d -> %s (sticky_path=%v)",
+			account.ID, verdict.String(), isSticky)
+	}
+	switch verdict {
+	case HealthOK:
+		return true
+	case HealthStickyOnly:
+		return isSticky
+	case HealthExcluded:
+		return false
+	}
+	return true
 }
 
 // selectByLRU 从集合中选择最久未用的账号

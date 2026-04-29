@@ -17,15 +17,6 @@ const (
 	defaultRetryIntervalStep       = 15 * time.Second
 	defaultRetryIntervalMax        = 5 * time.Minute
 	defaultSlowThresholdMs         = 20000
-	defaultSlowWindowDuration      = 10 * time.Minute
-	defaultSlowMinSampleCount      = 5
-	defaultSlowBucketMidPct        = 20
-	defaultSlowBucketHighPct       = 50
-
-	// 算法常量，不对外暴露配置（调整影响面太大）
-	TTFTEwmaAlpha     = 0.3
-	LatencyBucketFast = 4000
-	LatencyBucketSlow = 8000
 )
 
 // 向后兼容的包级别常量，供外部直接引用的代码过渡期使用
@@ -37,10 +28,12 @@ const (
 	RetryIntervalStep       = defaultRetryIntervalStep // 15s
 	RetryIntervalMax        = defaultRetryIntervalMax
 	SlowThreshold           = defaultSlowThresholdMs
-	SlowWindowDuration      = defaultSlowWindowDuration
-	SlowMinSampleCount      = defaultSlowMinSampleCount
-	SlowBucketMid           = 0.20
-	SlowBucketHigh          = 0.50
+)
+
+// 滑动窗口（bucketed rolling window）
+const (
+	healthBucketCount   = 10 // 10 个桶
+	healthBucketSeconds = 60 // 每桶 1 分钟，总窗口 10 分钟
 )
 
 // healthCfg 持有从 config.AccountHealthConfig 解析后的有效值（已完成零值回退）
@@ -52,12 +45,6 @@ type healthCfg struct {
 	retryIntervalStep    time.Duration
 	retryIntervalMax     time.Duration
 	slowThresholdMs      int
-	slowWindow           time.Duration
-	slowMinSampleCount   int
-	slowBucketMid        float64
-	slowBucketHigh       float64
-	latencyBucketFastMs  int
-	latencyBucketSlowMs  int
 }
 
 func resolveHealthCfg(c *config.AccountHealthConfig) healthCfg {
@@ -69,12 +56,6 @@ func resolveHealthCfg(c *config.AccountHealthConfig) healthCfg {
 		retryIntervalStep:    defaultRetryIntervalStep,
 		retryIntervalMax:     defaultRetryIntervalMax,
 		slowThresholdMs:      defaultSlowThresholdMs,
-		slowWindow:           defaultSlowWindowDuration,
-		slowMinSampleCount:   defaultSlowMinSampleCount,
-		slowBucketMid:        SlowBucketMid,
-		slowBucketHigh:       SlowBucketHigh,
-		latencyBucketFastMs:  LatencyBucketFast,
-		latencyBucketSlowMs:  LatencyBucketSlow,
 	}
 	if c == nil {
 		return r
@@ -100,40 +81,152 @@ func resolveHealthCfg(c *config.AccountHealthConfig) healthCfg {
 	if c.SlowThresholdMs > 0 {
 		r.slowThresholdMs = c.SlowThresholdMs
 	}
-	if c.SlowWindowMinutes > 0 {
-		r.slowWindow = time.Duration(c.SlowWindowMinutes) * time.Minute
-	}
-	if c.SlowMinSampleCount > 0 {
-		r.slowMinSampleCount = c.SlowMinSampleCount
-	}
-	if c.SlowBucketMidPct > 0 {
-		r.slowBucketMid = float64(c.SlowBucketMidPct) / 100.0
-	}
-	if c.SlowBucketHighPct > 0 {
-		r.slowBucketHigh = float64(c.SlowBucketHighPct) / 100.0
-	}
-	if c.LatencyBucketFastMs > 0 {
-		r.latencyBucketFastMs = c.LatencyBucketFastMs
-	}
-	if c.LatencyBucketSlowMs > 0 {
-		r.latencyBucketSlowMs = c.LatencyBucketSlowMs
-	}
 	return r
 }
 
-// AccountTestHealth 存储单个账号的健康状态
+// metricBucket 单个时间桶，记录一段（healthBucketSeconds）内的累计指标。
+type metricBucket struct {
+	startSec  int64   // 桶起点 unix 秒；0 表示未使用
+	reqCount  int     // 总请求数
+	errCount  int     // 失败次数
+	slowCount int     // 慢请求数（duration ≥ slowThresholdMs）
+	ttftSum   int64   // TTFT 累加（ms）
+	ttftN     int     // 有 TTFT 样本的次数
+	otpsSum   float64 // OTPS 累加（tokens/s）
+	otpsN     int     // 有 OTPS 样本的次数
+}
+
+func (b *metricBucket) reset(startSec int64) {
+	b.startSec = startSec
+	b.reqCount = 0
+	b.errCount = 0
+	b.slowCount = 0
+	b.ttftSum = 0
+	b.ttftN = 0
+	b.otpsSum = 0
+	b.otpsN = 0
+}
+
+// CallSample 一次调用（主动 test 或真实 gateway 调用）的样本。
+// TTFTMs/DurationMs/OutputTokens 为 0 表示该字段无样本（不计入相应指标）。
+type CallSample struct {
+	Success      bool
+	TTFTMs       int
+	DurationMs   int
+	OutputTokens int
+}
+
+// HealthSnapshot 滑动窗口聚合后的健康指标快照。
+type HealthSnapshot struct {
+	ReqCount        int
+	ErrCount        int
+	SlowCount       int
+	TTFTSampleCount int
+	OTPSSampleCount int
+	ttftSumMs       int64
+	otpsSum         float64
+}
+
+// ErrRate 窗口内错误率（0~1）；ReqCount=0 时返回 0。
+func (s HealthSnapshot) ErrRate() float64 {
+	if s.ReqCount <= 0 {
+		return 0
+	}
+	return float64(s.ErrCount) / float64(s.ReqCount)
+}
+
+// SlowRate 窗口内慢请求率（0~1）。
+func (s HealthSnapshot) SlowRate() float64 {
+	if s.ReqCount <= 0 {
+		return 0
+	}
+	return float64(s.SlowCount) / float64(s.ReqCount)
+}
+
+// TTFTAvg 窗口内 TTFT 平均（ms）；无样本时返回 0。
+func (s HealthSnapshot) TTFTAvg() float64 {
+	if s.TTFTSampleCount <= 0 {
+		return 0
+	}
+	return float64(s.ttftSumMs) / float64(s.TTFTSampleCount)
+}
+
+// OTPSAvg 窗口内 OTPS 平均（tokens/s）；无样本时返回 0。
+func (s HealthSnapshot) OTPSAvg() float64 {
+	if s.OTPSSampleCount <= 0 {
+		return 0
+	}
+	return s.otpsSum / float64(s.OTPSSampleCount)
+}
+
+// HasTTFT 窗口内是否有 TTFT 样本。
+func (s HealthSnapshot) HasTTFT() bool { return s.TTFTSampleCount > 0 }
+
+// HasOTPS 窗口内是否有 OTPS 样本。
+func (s HealthSnapshot) HasOTPS() bool { return s.OTPSSampleCount > 0 }
+
+// AccountTestHealth 存储单个账号的健康状态。
+// 滑动窗口（buckets）记录最近 10 分钟的请求/错误/TTFT/OTPS/慢率聚合数据，
+// 主动 test 与真实调用共用同一份窗口（融合视图）。
+//
+// 退避状态机字段（ConsecFails/RetryInterval/NextRetryAt/TempUnschedDuration）
+// 是 ScheduledTestRunner 专用的窗口外状态，不参与 Snapshot 聚合。
 type AccountTestHealth struct {
-	mu                  sync.Mutex
+	mu sync.Mutex
+
+	// 滑动窗口（环形 buffer）
+	buckets [healthBucketCount]metricBucket
+	cursor  int
+
+	// test runner 退避状态机（窗口外）
 	ConsecFails         int
 	RetryInterval       time.Duration
 	NextRetryAt         time.Time
-	TTFTEwma            float64
-	SlowReqCount        int
-	TotalReqCount       int
-	WindowStart         time.Time
 	TempUnschedDuration time.Duration
 	LastStatus          string
 	LastTestedAt        time.Time
+
+	// lastVerdict 记录上一次 HealthVerdict() 返回值，用于状态变化日志去抖。
+	lastVerdict HealthVerdict
+}
+
+// HealthVerdict 健康判定三态。复用 WindowCostStickyOnly 的设计语义。
+type HealthVerdict int
+
+const (
+	// HealthOK 正常调度
+	HealthOK HealthVerdict = iota
+	// HealthStickyOnly 仅允许粘性会话（已粘上的 session 继续，新会话避开）
+	HealthStickyOnly
+	// HealthExcluded 完全排除（含 sticky 也踢出）
+	HealthExcluded
+)
+
+// String 返回 verdict 的可读名称。
+func (v HealthVerdict) String() string {
+	switch v {
+	case HealthOK:
+		return "OK"
+	case HealthStickyOnly:
+		return "StickyOnly"
+	case HealthExcluded:
+		return "Excluded"
+	default:
+		return "Unknown"
+	}
+}
+
+// HealthVerdictConfig 调用 HealthVerdict() 时由 gateway service 传入的阈值。
+// 基于滑动窗口快照（HealthSnapshot）做三态判定。
+type HealthVerdictConfig struct {
+	WindowSeconds     int64   // 评估窗口长度，<=0 时使用默认 healthBucketCount*healthBucketSeconds
+	MinSamples        int     // 触发判定的最小样本数；窗口内 reqCount 不足时返回 OK
+	ErrCountSoft      int     // 错误数 ≥ 此值 → StickyOnly
+	ErrCountHard      int     // 错误数 ≥ 此值 → Excluded
+	ErrRateSoft       float64 // 错误率 ≥ 此值 → StickyOnly
+	ErrRateHard       float64 // 错误率 ≥ 此值 → Excluded
+	TTFTStickyOnlyMs  int     // TTFTAvg ≥ 此值 → StickyOnly
+	OTPSStickyOnlyMin float64 // OTPSAvg < 此值（且有样本）→ StickyOnly
 }
 
 // AccountTestHealthCache 使用 sync.Map 存储账号健康状态，key 为 accountID int64
@@ -159,35 +252,131 @@ func (c *AccountTestHealthCache) Get(accountID int64) *AccountTestHealth {
 
 // GetOrCreate 返回指定账号的健康状态，不存在时创建一个新的
 func (c *AccountTestHealthCache) GetOrCreate(accountID int64) *AccountTestHealth {
-	h := &AccountTestHealth{
-		TTFTEwma: math.NaN(),
-	}
+	h := &AccountTestHealth{}
 	actual, _ := c.m.LoadOrStore(accountID, h)
 	return actual.(*AccountTestHealth)
 }
 
-// UpdateFromTest 根据测试结果更新健康状态
+// advanceBucketLocked 将 cursor 推进到 now 所属的桶。需在 h.mu.Lock 内调用。
+// 返回当前活动桶的指针。
+func (h *AccountTestHealth) advanceBucketLocked(now time.Time) *metricBucket {
+	nowSec := now.Unix()
+	bucketStart := nowSec - (nowSec % healthBucketSeconds)
+	cur := &h.buckets[h.cursor]
+	if cur.startSec == bucketStart {
+		return cur
+	}
+	// 推进 cursor 一格，无论 idle 多久，环形 buffer 自然滚动
+	h.cursor = (h.cursor + 1) % healthBucketCount
+	next := &h.buckets[h.cursor]
+	next.reset(bucketStart)
+	return next
+}
+
+// snapshotLocked 聚合窗口内所有桶。需在 h.mu.Lock 内调用。
+func (h *AccountTestHealth) snapshotLocked(now time.Time, windowSec int64) HealthSnapshot {
+	if windowSec <= 0 {
+		windowSec = healthBucketCount * healthBucketSeconds
+	}
+	cutoff := now.Unix() - windowSec
+	var s HealthSnapshot
+	for i := range h.buckets {
+		b := &h.buckets[i]
+		if b.startSec == 0 || b.startSec < cutoff {
+			continue
+		}
+		s.ReqCount += b.reqCount
+		s.ErrCount += b.errCount
+		s.SlowCount += b.slowCount
+		s.ttftSumMs += b.ttftSum
+		s.TTFTSampleCount += b.ttftN
+		s.otpsSum += b.otpsSum
+		s.OTPSSampleCount += b.otpsN
+	}
+	return s
+}
+
+// recordSampleLocked 把一次 sample 写入活动桶。需在 h.mu.Lock 内调用。
+// 计算 OTPS 时遵循业内标准：(output_tokens-1) * 1000 / (duration_ms - ttft_ms)，
+// 仅在 OutputTokens >= 10 且 DurationMs > TTFTMs > 0 时纳入样本。
+func (h *AccountTestHealth) recordSampleLocked(sample CallSample, now time.Time, slowThresholdMs int) {
+	b := h.advanceBucketLocked(now)
+	b.reqCount++
+	if !sample.Success {
+		b.errCount++
+	}
+	if sample.TTFTMs > 0 {
+		b.ttftSum += int64(sample.TTFTMs)
+		b.ttftN++
+	}
+	if sample.DurationMs > 0 && slowThresholdMs > 0 && sample.DurationMs >= slowThresholdMs {
+		b.slowCount++
+	}
+	// OTPS：业内标准 (output_tokens - 1) * 1000 / (duration - ttft)
+	// 过滤条件：output ≥ 10、duration > ttft（避免除零或负值）。
+	if sample.OutputTokens >= 10 && sample.TTFTMs > 0 && sample.DurationMs > sample.TTFTMs {
+		decodeMs := sample.DurationMs - sample.TTFTMs
+		otps := float64(sample.OutputTokens-1) * 1000.0 / float64(decodeMs)
+		if otps > 0 && !math.IsNaN(otps) && !math.IsInf(otps, 0) {
+			b.otpsSum += otps
+			b.otpsN++
+		}
+	}
+}
+
+// Record 上报一次调用样本（主动 test 或真实 gateway 调用）。
+// 这是窗口数据的统一入口；ConsecFails 由 UpdateFromTest/ReportRealCall 各自维护。
+func (c *AccountTestHealthCache) Record(accountID int64, sample CallSample) {
+	if c == nil || accountID <= 0 {
+		return
+	}
+	h := c.GetOrCreate(accountID)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recordSampleLocked(sample, time.Now(), c.cfg.slowThresholdMs)
+}
+
+// Snapshot 返回窗口聚合的健康指标快照。
+// windowSeconds <= 0 时使用默认 600s。
+func (c *AccountTestHealthCache) Snapshot(accountID int64) HealthSnapshot {
+	if c == nil || accountID <= 0 {
+		return HealthSnapshot{}
+	}
+	h := c.Get(accountID)
+	if h == nil {
+		return HealthSnapshot{}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.snapshotLocked(time.Now(), healthBucketCount*healthBucketSeconds)
+}
+
+// UpdateFromTest 根据测试结果更新健康状态。
+// 同时维护：(a) test 退避状态机（ConsecFails/RetryInterval/NextRetryAt）；
+// (b) 滑动窗口（通过 Record-语义写入活动桶，与真实调用融合）。
 func (c *AccountTestHealthCache) UpdateFromTest(accountID int64, result *ScheduledTestResult) {
+	if result == nil {
+		return
+	}
 	h := c.GetOrCreate(accountID)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.LastTestedAt = time.Now()
+	now := time.Now()
+	h.LastTestedAt = now
 	h.LastStatus = result.Status
 
-	if result.Status == "success" {
+	sample := CallSample{Success: result.Status == "success"}
+	if result.FirstTokenMs != nil && *result.FirstTokenMs > 0 {
+		sample.TTFTMs = int(*result.FirstTokenMs)
+	}
+	// ScheduledTestResult 当前未携带 duration/output tokens；OTPS 待 test runner 后续扩展。
+	h.recordSampleLocked(sample, now, c.cfg.slowThresholdMs)
+
+	if sample.Success {
 		h.ConsecFails = 0
 		h.RetryInterval = 0
 		h.TempUnschedDuration = 0
-		if result.FirstTokenMs != nil {
-			ewma := h.TTFTEwma
-			ttft := float64(*result.FirstTokenMs)
-			if math.IsNaN(ewma) {
-				h.TTFTEwma = ttft
-			} else {
-				h.TTFTEwma = TTFTEwmaAlpha*ttft + (1-TTFTEwmaAlpha)*ewma
-			}
-		}
 	} else {
 		h.ConsecFails++
 		if h.RetryInterval == 0 {
@@ -198,93 +387,8 @@ func (c *AccountTestHealthCache) UpdateFromTest(accountID int64, result *Schedul
 				h.RetryInterval = c.cfg.retryIntervalMax
 			}
 		}
-		h.NextRetryAt = time.Now().Add(h.RetryInterval)
+		h.NextRetryAt = now.Add(h.RetryInterval)
 	}
-}
-
-// UpdateTTFT 使用 EWMA 更新首字时间（alpha=0.3），NaN 时直接赋值
-func (c *AccountTestHealthCache) UpdateTTFT(accountID int64, ttftMs int) {
-	h := c.GetOrCreate(accountID)
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if math.IsNaN(h.TTFTEwma) {
-		h.TTFTEwma = float64(ttftMs)
-	} else {
-		h.TTFTEwma = TTFTEwmaAlpha*float64(ttftMs) + (1-TTFTEwmaAlpha)*h.TTFTEwma
-	}
-}
-
-// UpdateDuration 使用滑动窗口统计慢请求
-func (c *AccountTestHealthCache) UpdateDuration(accountID int64, durationMs int) {
-	h := c.GetOrCreate(accountID)
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	now := time.Now()
-	if h.WindowStart.IsZero() || now.Sub(h.WindowStart) > c.cfg.slowWindow {
-		h.WindowStart = now
-		h.SlowReqCount = 0
-		h.TotalReqCount = 0
-	}
-
-	h.TotalReqCount++
-	if durationMs >= c.cfg.slowThresholdMs {
-		h.SlowReqCount++
-	}
-}
-
-// LatencyBucket 返回 TTFT 延时分桶：NaN→1，<4000ms→0，4000-7999ms→1，≥8000ms→2
-func (c *AccountTestHealthCache) LatencyBucket(accountID int64) int {
-	h := c.Get(accountID)
-	if h == nil {
-		return 1
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	if math.IsNaN(h.TTFTEwma) {
-		return 1
-	}
-	if h.TTFTEwma < float64(c.cfg.latencyBucketFastMs) {
-		return 0
-	}
-	if h.TTFTEwma < float64(c.cfg.latencyBucketSlowMs) {
-		return 1
-	}
-	return 2
-}
-
-// SlowBucket 返回慢请求分桶：样本不足或无数据→0，慢率低→0，中→1，高→2
-// 若当前时间已超出窗口，重置统计并返回 0（窗口内无有效样本）。
-func (c *AccountTestHealthCache) SlowBucket(accountID int64) int {
-	h := c.Get(accountID)
-	if h == nil {
-		return 0
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	// 窗口已过期：清空旧数据，不惩罚账号
-	if !h.WindowStart.IsZero() && time.Since(h.WindowStart) > c.cfg.slowWindow {
-		h.WindowStart = time.Time{}
-		h.SlowReqCount = 0
-		h.TotalReqCount = 0
-		return 0
-	}
-
-	if h.TotalReqCount < c.cfg.slowMinSampleCount {
-		return 0
-	}
-
-	slowRate := float64(h.SlowReqCount) / float64(h.TotalReqCount)
-	if slowRate < c.cfg.slowBucketMid {
-		return 0
-	}
-	if slowRate < c.cfg.slowBucketHigh {
-		return 1
-	}
-	return 2
 }
 
 // PassesHardFilter 返回账号是否通过硬过滤
@@ -298,7 +402,132 @@ func (c *AccountTestHealthCache) PassesHardFilter(accountID int64) bool {
 	return h.ConsecFails < c.cfg.hardFilterThreshold
 }
 
+// ReportRealCall 记录一次真实业务调用结果（gateway 层，区别于主动 test）。
+// 内部调用 Record 写入窗口桶，并维护 ConsecFails（成功清零、失败累加）。
+//
+// 行为：
+//   - success=true 时，如 ConsecFails > 0 则清零（真实流量验证账号可用，重置 test 累计的失败）
+//   - success=false 时 ConsecFails++
+//
+// 调用方应在上报前过滤 context.Canceled / 客户端中断等"非账号问题"，避免误报。
+func (c *AccountTestHealthCache) ReportRealCall(accountID int64, success bool) {
+	c.RecordRealCall(accountID, CallSample{Success: success})
+}
+
+// RecordRealCall 真实调用上报的扩展版本，可同时携带 TTFT/Duration/OutputTokens。
+// 与 ReportRealCall 行为一致：写入窗口桶 + 维护 ConsecFails。
+func (c *AccountTestHealthCache) RecordRealCall(accountID int64, sample CallSample) {
+	if c == nil || accountID <= 0 {
+		return
+	}
+	h := c.GetOrCreate(accountID)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recordSampleLocked(sample, time.Now(), c.cfg.slowThresholdMs)
+	if sample.Success {
+		if h.ConsecFails > 0 {
+			h.ConsecFails = 0
+		}
+	} else {
+		h.ConsecFails++
+	}
+}
+
+// HealthVerdict 基于滑动窗口快照返回三态判定结果。
+//
+// 优先级：Hard > Soft > OK。窗口样本数不足 minSamples 时返回 OK（避免新账号被误判）。
+//
+// 配套的 gateway 层封装 isAccountSchedulableForHealth(account, isSticky) 应根据
+// 三态返回值决定是否放行：
+//   - HealthOK         → 任何路径放行
+//   - HealthStickyOnly → 仅 isSticky=true 路径放行
+//   - HealthExcluded   → 全部拦截
+func (c *AccountTestHealthCache) HealthVerdict(accountID int64, cfg HealthVerdictConfig) HealthVerdict {
+	if c == nil || accountID <= 0 {
+		return HealthOK
+	}
+	h := c.Get(accountID)
+	if h == nil {
+		return HealthOK
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	windowSec := cfg.WindowSeconds
+	if windowSec <= 0 {
+		windowSec = healthBucketCount * healthBucketSeconds
+	}
+	s := h.snapshotLocked(time.Now(), windowSec)
+
+	// 样本数不足：除了 ConsecFails 外不做"窗口"判定
+	if cfg.MinSamples > 0 && s.ReqCount < cfg.MinSamples {
+		return HealthOK
+	}
+
+	// Hard 阈值：彻底排除
+	if cfg.ErrCountHard > 0 && s.ErrCount >= cfg.ErrCountHard {
+		return HealthExcluded
+	}
+	if cfg.ErrRateHard > 0 && s.ErrRate() >= cfg.ErrRateHard {
+		return HealthExcluded
+	}
+
+	// Soft 阈值：仅粘性
+	if cfg.ErrCountSoft > 0 && s.ErrCount >= cfg.ErrCountSoft {
+		return HealthStickyOnly
+	}
+	if cfg.ErrRateSoft > 0 && s.ErrRate() >= cfg.ErrRateSoft {
+		return HealthStickyOnly
+	}
+	if cfg.TTFTStickyOnlyMs > 0 && s.HasTTFT() && s.TTFTAvg() >= float64(cfg.TTFTStickyOnlyMs) {
+		return HealthStickyOnly
+	}
+	if cfg.OTPSStickyOnlyMin > 0 && s.HasOTPS() && s.OTPSAvg() < cfg.OTPSStickyOnlyMin {
+		return HealthStickyOnly
+	}
+
+	return HealthOK
+}
+
+// HealthVerdictWithChange 在 HealthVerdict() 基础上返回是否发生状态切换。
+// gateway 层可据此打"状态变化"日志，避免重复刷屏。
+// 第二个返回值 prev 是切换前的旧 verdict（仅在 changed=true 时有意义）。
+func (c *AccountTestHealthCache) HealthVerdictWithChange(accountID int64, cfg HealthVerdictConfig) (current HealthVerdict, prev HealthVerdict, changed bool) {
+	current = c.HealthVerdict(accountID, cfg)
+	if c == nil || accountID <= 0 {
+		return current, HealthOK, false
+	}
+	h := c.Get(accountID)
+	if h == nil {
+		return current, HealthOK, false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	prev = h.lastVerdict
+	if prev != current {
+		h.lastVerdict = current
+		return current, prev, true
+	}
+	return current, prev, false
+}
+
 // Cfg 暴露已解析的有效配置，供 ScheduledTestRunnerService 等外部组件读取
 func (c *AccountTestHealthCache) Cfg() healthCfg {
 	return c.cfg
+}
+
+// ListTrackedAccountIDs 返回当前有记录的所有账号 ID（仅供 admin 监控接口使用）。
+// 不保证顺序；返回快照之后新写入的不影响结果。
+func (c *AccountTestHealthCache) ListTrackedAccountIDs() []int64 {
+	if c == nil {
+		return nil
+	}
+	out := make([]int64, 0, 16)
+	c.m.Range(func(key, _ any) bool {
+		if id, ok := key.(int64); ok {
+			out = append(out, id)
+		}
+		return true
+	})
+	return out
 }

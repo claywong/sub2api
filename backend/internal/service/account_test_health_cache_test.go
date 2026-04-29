@@ -3,7 +3,6 @@
 package service
 
 import (
-	"math"
 	"testing"
 	"time"
 
@@ -32,28 +31,20 @@ func TestUpdateFromTest_SuccessPath(t *testing.T) {
 	defer h.mu.Unlock()
 	require.Equal(t, 0, h.ConsecFails)
 	require.Equal(t, time.Duration(0), h.RetryInterval)
-	// TTFTEwma 直接赋值（之前为 NaN）
-	require.InDelta(t, float64(ttft), h.TTFTEwma, 0.001)
 }
 
-func TestUpdateFromTest_SuccessEWMA(t *testing.T) {
+func TestUpdateFromTest_WritesIntoBucketWindow(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 
-	// 首次 success：直接赋值
-	ttft1 := int64(800)
-	c.UpdateFromTest(1, &ScheduledTestResult{Status: "success", FirstTokenMs: &ttft1})
-	h := c.Get(1)
-	h.mu.Lock()
-	require.InDelta(t, 800.0, h.TTFTEwma, 0.001)
-	h.mu.Unlock()
+	ttft := int64(800)
+	c.UpdateFromTest(1, &ScheduledTestResult{Status: "success", FirstTokenMs: &ttft})
+	c.UpdateFromTest(1, &ScheduledTestResult{Status: "failed"})
 
-	// 第二次 success：EWMA 更新
-	ttft2 := int64(200)
-	c.UpdateFromTest(1, &ScheduledTestResult{Status: "success", FirstTokenMs: &ttft2})
-	h.mu.Lock()
-	expected := TTFTEwmaAlpha*200.0 + (1-TTFTEwmaAlpha)*800.0
-	require.InDelta(t, expected, h.TTFTEwma, 0.001)
-	h.mu.Unlock()
+	s := c.Snapshot(1)
+	require.Equal(t, 2, s.ReqCount)
+	require.Equal(t, 1, s.ErrCount)
+	require.True(t, s.HasTTFT())
+	require.InDelta(t, 800.0, s.TTFTAvg(), 0.001)
 }
 
 func TestUpdateFromTest_FailurePath(t *testing.T) {
@@ -104,153 +95,6 @@ func TestUpdateFromTest_FailurePath(t *testing.T) {
 	h.mu.Unlock()
 }
 
-func TestUpdateTTFT_EWMA(t *testing.T) {
-	c := NewAccountTestHealthCache(nil)
-
-	// 首次直接赋值
-	c.UpdateTTFT(1, 1000)
-	h := c.Get(1)
-	h.mu.Lock()
-	require.InDelta(t, 1000.0, h.TTFTEwma, 0.001)
-	h.mu.Unlock()
-
-	// 后续 EWMA: 0.3*sample + 0.7*ewma
-	c.UpdateTTFT(1, 400)
-	h.mu.Lock()
-	expected := 0.3*400.0 + 0.7*1000.0
-	require.InDelta(t, expected, h.TTFTEwma, 0.001)
-	h.mu.Unlock()
-}
-
-func TestLatencyBucket(t *testing.T) {
-	tests := []struct {
-		name     string
-		ttftEwma float64
-		want     int
-	}{
-		{"NaN returns 1", math.NaN(), 1},
-		{"<1000ms returns 0", 999.9, 0},
-		{"exactly 1000ms returns 1", 1000.0, 1},
-		{"1000-2999ms returns 1", 2000.0, 1},
-		{"exactly 3000ms returns 2", 3000.0, 2},
-		{">3000ms returns 2", 5000.0, 2},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c := NewAccountTestHealthCache(nil)
-			h := c.GetOrCreate(1)
-			h.mu.Lock()
-			h.TTFTEwma = tt.ttftEwma
-			h.mu.Unlock()
-			require.Equal(t, tt.want, c.LatencyBucket(1))
-		})
-	}
-
-	t.Run("no data returns 1", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		require.Equal(t, 1, c.LatencyBucket(999))
-	})
-}
-
-func TestUpdateDuration_WindowExpiry(t *testing.T) {
-	c := NewAccountTestHealthCache(nil)
-
-	// 记录几次慢请求
-	c.UpdateDuration(1, 70000) // slow
-	c.UpdateDuration(1, 70000) // slow
-	c.UpdateDuration(1, 10000) // fast
-
-	h := c.Get(1)
-	h.mu.Lock()
-	require.Equal(t, 3, h.TotalReqCount)
-	require.Equal(t, 2, h.SlowReqCount)
-
-	// 手动将 WindowStart 设置为超过 10min 前，模拟窗口过期
-	h.WindowStart = time.Now().Add(-(SlowWindowDuration + time.Second))
-	h.mu.Unlock()
-
-	// 新请求进来，窗口应重置
-	c.UpdateDuration(1, 5000)
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	require.Equal(t, 1, h.TotalReqCount, "窗口过期后应重置为 1")
-	require.Equal(t, 0, h.SlowReqCount, "窗口过期后慢请求数应清零")
-}
-
-func TestSlowBucket(t *testing.T) {
-	t.Run("no data returns 0", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		require.Equal(t, 0, c.SlowBucket(999))
-	})
-
-	t.Run("sample < 5 returns 0", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		for i := 0; i < 4; i++ {
-			c.UpdateDuration(1, 70000) // all slow
-		}
-		require.Equal(t, 0, c.SlowBucket(1))
-	})
-
-	t.Run("slow rate < 20% returns 0", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		c.UpdateDuration(1, 70000) // slow
-		for i := 0; i < 9; i++ {
-			c.UpdateDuration(1, 1000) // fast
-		}
-		// 1/10 = 10% < 20%
-		require.Equal(t, 0, c.SlowBucket(1))
-	})
-
-	t.Run("slow rate 20%-49% returns 1", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		for i := 0; i < 3; i++ {
-			c.UpdateDuration(1, 70000) // slow
-		}
-		for i := 0; i < 7; i++ {
-			c.UpdateDuration(1, 1000) // fast
-		}
-		// 3/10 = 30%
-		require.Equal(t, 1, c.SlowBucket(1))
-	})
-
-	t.Run("slow rate >= 50% returns 2", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		for i := 0; i < 5; i++ {
-			c.UpdateDuration(1, 70000) // slow
-		}
-		for i := 0; i < 5; i++ {
-			c.UpdateDuration(1, 1000) // fast
-		}
-		// 5/10 = 50%
-		require.Equal(t, 2, c.SlowBucket(1))
-	})
-
-	t.Run("expired window returns 0 and resets counters", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		// 注入足够样本使 SlowBucket 返回 2
-		for i := 0; i < 5; i++ {
-			c.UpdateDuration(1, 70000)
-		}
-		require.Equal(t, 2, c.SlowBucket(1))
-
-		// 手动将 WindowStart 拨到窗口之前
-		h := c.GetOrCreate(1)
-		h.mu.Lock()
-		h.WindowStart = time.Now().Add(-(SlowWindowDuration + time.Second))
-		h.mu.Unlock()
-
-		// 窗口已过期：应返回 0，并清空计数
-		require.Equal(t, 0, c.SlowBucket(1))
-		h.mu.Lock()
-		require.Equal(t, 0, h.TotalReqCount)
-		require.Equal(t, 0, h.SlowReqCount)
-		require.True(t, h.WindowStart.IsZero())
-		h.mu.Unlock()
-	})
-}
-
 func TestPassesHardFilter(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 
@@ -270,90 +114,148 @@ func TestPassesHardFilter(t *testing.T) {
 	require.False(t, c.PassesHardFilter(1))
 }
 
-func TestFilterByMinLatencyBucket(t *testing.T) {
-	t.Run("empty slice", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		result := filterByMinLatencyBucket(nil, c)
-		require.Empty(t, result)
-	})
+func TestRecord_AccumulatesIntoSnapshot(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
 
-	t.Run("all same bucket returns all", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		accounts := []accountWithLoad{
-			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
-			{account: &Account{ID: 2}, loadInfo: &AccountLoadInfo{}},
-		}
-		// 无数据时 LatencyBucket 均为 1
-		result := filterByMinLatencyBucket(accounts, c)
-		require.Len(t, result, 2)
-	})
+	c.Record(1, CallSample{Success: true, TTFTMs: 1000, DurationMs: 5000})
+	c.Record(1, CallSample{Success: true, TTFTMs: 2000, DurationMs: 25000})
+	c.Record(1, CallSample{Success: false})
 
-	t.Run("filters to min latency bucket", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		// account 1: fast bucket=0
-		c.UpdateTTFT(1, 500)
-		// account 2: mid bucket=1 (NaN)
-		// account 3: slow bucket=2
-		h3 := c.GetOrCreate(3)
-		h3.mu.Lock()
-		h3.TTFTEwma = 4000.0
-		h3.mu.Unlock()
-
-		accounts := []accountWithLoad{
-			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
-			{account: &Account{ID: 2}, loadInfo: &AccountLoadInfo{}},
-			{account: &Account{ID: 3}, loadInfo: &AccountLoadInfo{}},
-		}
-		result := filterByMinLatencyBucket(accounts, c)
-		require.Len(t, result, 1)
-		require.Equal(t, int64(1), result[0].account.ID)
-	})
-
-	t.Run("empty result falls back to original", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		accounts := []accountWithLoad{
-			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
-		}
-		result := filterByMinLatencyBucket(accounts, c)
-		require.Len(t, result, 1)
-	})
+	s := c.Snapshot(1)
+	require.Equal(t, 3, s.ReqCount)
+	require.Equal(t, 1, s.ErrCount)
+	require.InDelta(t, 1.0/3.0, s.ErrRate(), 1e-6)
+	require.Equal(t, 2, s.TTFTSampleCount)
+	require.InDelta(t, 1500.0, s.TTFTAvg(), 0.001)
+	// slowThresholdMs 默认 20000，2 次 duration 中 25000 算慢请求
+	require.Equal(t, 1, s.SlowCount)
+	require.InDelta(t, 1.0/3.0, s.SlowRate(), 1e-6)
 }
 
-func TestFilterByMinSlowBucket(t *testing.T) {
-	t.Run("empty slice", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		result := filterByMinSlowBucket(nil, c)
-		require.Empty(t, result)
-	})
+func TestRecord_OTPSStandardFormula(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
 
-	t.Run("all same slow bucket returns all", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		accounts := []accountWithLoad{
-			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
-			{account: &Account{ID: 2}, loadInfo: &AccountLoadInfo{}},
-		}
-		// 无数据时 SlowBucket 均为 0
-		result := filterByMinSlowBucket(accounts, c)
-		require.Len(t, result, 2)
-	})
+	// output_tokens=21, ttft=1000, duration=2000 → decode=1000ms
+	// otps = (21-1) * 1000 / 1000 = 20
+	c.Record(1, CallSample{Success: true, TTFTMs: 1000, DurationMs: 2000, OutputTokens: 21})
 
-	t.Run("filters to min slow bucket", func(t *testing.T) {
-		c := NewAccountTestHealthCache(nil)
-		// account 1: slow bucket=0（无数据）
-		// account 2: slow bucket=2（50% 慢请求）
-		for i := 0; i < 5; i++ {
-			c.UpdateDuration(2, 70000)
-		}
-		for i := 0; i < 5; i++ {
-			c.UpdateDuration(2, 1000)
-		}
+	s := c.Snapshot(1)
+	require.True(t, s.HasOTPS())
+	require.InDelta(t, 20.0, s.OTPSAvg(), 0.001)
+}
 
-		accounts := []accountWithLoad{
-			{account: &Account{ID: 1}, loadInfo: &AccountLoadInfo{}},
-			{account: &Account{ID: 2}, loadInfo: &AccountLoadInfo{}},
-		}
-		result := filterByMinSlowBucket(accounts, c)
-		require.Len(t, result, 1)
-		require.Equal(t, int64(1), result[0].account.ID)
-	})
+func TestRecord_OTPSDropsShortSamples(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+
+	// output_tokens=5 < 10 → 不计入 OTPS
+	c.Record(1, CallSample{Success: true, TTFTMs: 500, DurationMs: 1500, OutputTokens: 5})
+
+	s := c.Snapshot(1)
+	require.False(t, s.HasOTPS())
+	// 但 TTFT 仍计入
+	require.True(t, s.HasTTFT())
+}
+
+func TestRecord_OTPSGuardsAgainstDivisionByZero(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+
+	// duration <= ttft → 不计入 OTPS（避免除零或负值）
+	c.Record(1, CallSample{Success: true, TTFTMs: 1000, DurationMs: 1000, OutputTokens: 50})
+	c.Record(1, CallSample{Success: true, TTFTMs: 2000, DurationMs: 1000, OutputTokens: 50})
+
+	s := c.Snapshot(1)
+	require.False(t, s.HasOTPS())
+}
+
+func TestSnapshot_NoEntryReturnsZero(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	s := c.Snapshot(999)
+	require.Equal(t, 0, s.ReqCount)
+	require.Equal(t, 0, s.ErrCount)
+	require.False(t, s.HasTTFT())
+	require.False(t, s.HasOTPS())
+	require.Equal(t, 0.0, s.ErrRate())
+	require.Equal(t, 0.0, s.SlowRate())
+}
+
+func TestSnapshot_ExcludesExpiredBuckets(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	h := c.GetOrCreate(1)
+
+	// 手动注入一个 11 分钟前的桶
+	now := time.Now()
+	h.mu.Lock()
+	old := &h.buckets[0]
+	old.startSec = now.Unix() - 11*60
+	old.reqCount = 100
+	old.errCount = 50
+	h.cursor = 0
+	h.mu.Unlock()
+
+	// 当前桶写入新数据
+	c.Record(1, CallSample{Success: true})
+
+	s := c.Snapshot(1)
+	// 旧桶不应被算入
+	require.Equal(t, 1, s.ReqCount)
+	require.Equal(t, 0, s.ErrCount)
+}
+
+func TestSnapshot_BucketRollOver(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	h := c.GetOrCreate(1)
+
+	// 注入桶 0 = 现在；桶 1 模拟 1 分钟后
+	now := time.Now()
+	bucketStart := now.Unix() - (now.Unix() % healthBucketSeconds)
+	h.mu.Lock()
+	h.buckets[0].startSec = bucketStart
+	h.buckets[0].reqCount = 5
+	h.cursor = 0
+	h.mu.Unlock()
+
+	// Record 应该感知到 cursor 已对齐当前桶，不滚动
+	c.Record(1, CallSample{Success: true})
+
+	h.mu.Lock()
+	require.Equal(t, 6, h.buckets[0].reqCount, "同一桶内不应滚动")
+	h.mu.Unlock()
+}
+
+func TestRecordRealCall_TracksConsecFails(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+
+	c.RecordRealCall(1, CallSample{Success: false})
+	c.RecordRealCall(1, CallSample{Success: false})
+	require.Equal(t, 2, c.Get(1).ConsecFails)
+
+	c.RecordRealCall(1, CallSample{Success: true})
+	require.Equal(t, 0, c.Get(1).ConsecFails)
+}
+
+func TestReportRealCall_BackwardsCompatible(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+
+	c.ReportRealCall(1, false)
+	c.ReportRealCall(1, false)
+	c.ReportRealCall(1, false)
+	require.Equal(t, 3, c.Get(1).ConsecFails)
+
+	c.ReportRealCall(1, true)
+	require.Equal(t, 0, c.Get(1).ConsecFails)
+
+	// ReportRealCall 也应该写入窗口（每次都计为 reqCount）
+	s := c.Snapshot(1)
+	require.Equal(t, 4, s.ReqCount)
+	require.Equal(t, 3, s.ErrCount)
+}
+
+func TestSnapshotPercentageMethods(t *testing.T) {
+	s := HealthSnapshot{ReqCount: 0}
+	require.Equal(t, 0.0, s.ErrRate())
+	require.Equal(t, 0.0, s.SlowRate())
+
+	s = HealthSnapshot{ReqCount: 100, ErrCount: 25, SlowCount: 10}
+	require.InDelta(t, 0.25, s.ErrRate(), 1e-9)
+	require.InDelta(t, 0.10, s.SlowRate(), 1e-9)
 }

@@ -716,6 +716,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 			}
 
+			// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+			// 让"主动 test"和"用户真实调用"的失败信号融合，
+			// 用于 HealthVerdict 三态判定（StickyOnly/Excluded）。
+			h.reportAnthropicForwardResult(account, err, result)
+
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
 			if queueRelease != nil {
 				queueRelease()
@@ -829,13 +834,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 
-			// 上报 Anthropic 真实请求的 TTFT 和 Duration 到健康缓存
-			if account.Platform == service.PlatformAnthropic {
-				h.gatewayService.ReportAnthropicAccountTTFT(account.ID, result.FirstTokenMs)
-				if result.Duration > 0 {
-					h.gatewayService.ReportAnthropicAccountDuration(account.ID, int(result.Duration.Milliseconds()))
-				}
-			}
+			// 注：成功路径下的 TTFT/Duration/Success 上报已合并到 forward 调用之后的
+			// h.reportAnthropicForwardResult(...)。详见该 helper 的 sample 字段处理。
 
 			// 捕获请求信息（用于异步记录，避免在 goroutine 中访问 gin.Context）
 			userAgent := c.GetHeader("User-Agent")
@@ -1767,6 +1767,52 @@ func (h *GatewayHandler) metadataBridgeEnabled() bool {
 		return true
 	}
 	return h.cfg.Gateway.OpenAIWS.MetadataBridgeEnabled
+}
+
+// reportAnthropicForwardResult 把单次 Forward 调用的样本（成败 + TTFT + Duration + OutputTokens）
+// 上报给健康缓存，进入 10 分钟滑动窗口。让"主动 test"和"用户真实调用"在窗口指标上融合，
+// 供 HealthVerdict 三态判定与 weighted 算法的加权打分使用。
+//
+// 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
+//   - 上游错误（4xx/5xx/429/超时、UpstreamFailoverError 等）→ Success=false
+//   - 客户端中断（context.Canceled）→ 跳过（不是账号问题）
+//   - 请求内容问题（PromptTooLongError/BetaBlockedError）→ 跳过
+//   - 流正常但客户端中途断开（result.ClientDisconnect）→ 跳过
+func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, err error, result *service.ForwardResult) {
+	if h == nil || h.gatewayService == nil {
+		return
+	}
+	if account == nil || account.Platform != service.PlatformAnthropic {
+		return
+	}
+
+	// 不上报的几种情况
+	if err != nil {
+		var betaBlocked *service.BetaBlockedError
+		var promptTooLong *service.PromptTooLongError
+		if errors.As(err, &betaBlocked) || errors.As(err, &promptTooLong) {
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+	} else if result != nil && result.ClientDisconnect {
+		return
+	}
+
+	sample := service.CallSample{Success: err == nil}
+	if result != nil {
+		if result.FirstTokenMs != nil && *result.FirstTokenMs > 0 {
+			sample.TTFTMs = *result.FirstTokenMs
+		}
+		if result.Duration > 0 {
+			sample.DurationMs = int(result.Duration.Milliseconds())
+		}
+		if result.Usage.OutputTokens > 0 {
+			sample.OutputTokens = result.Usage.OutputTokens
+		}
+	}
+	h.gatewayService.RecordAnthropicCall(account.ID, sample)
 }
 
 func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger) {

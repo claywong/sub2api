@@ -62,6 +62,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// 调度器观测（weighted 算法 metrics + 健康快照）
+		registerSchedulerRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -101,6 +104,14 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+	}
+}
+
+func registerSchedulerRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	scheduler := admin.Group("/scheduler")
+	{
+		scheduler.GET("/metrics", h.Admin.Scheduler.GetMetrics)
+		scheduler.GET("/snapshot", h.Admin.Scheduler.GetSnapshot)
 	}
 }
 
