@@ -972,7 +972,7 @@ type SchedulingHealthConfig struct {
 	ErrCountHard       int     `mapstructure:"err_count_hard"`        // 错误数硬阈值 → Excluded，默认 10
 	ErrRateSoft        float64 `mapstructure:"err_rate_soft"`         // 错误率软阈值，默认 0.3
 	ErrRateHard        float64 `mapstructure:"err_rate_hard"`         // 错误率硬阈值，默认 0.5
-	TTFTStickyOnlyMs   int     `mapstructure:"ttft_sticky_only_ms"`   // TTFT 进入 StickyOnly 的阈值，默认 8000
+	TTFTStickyOnlyMs   int     `mapstructure:"ttft_sticky_only_ms"`   // TTFT 进入 StickyOnly 的阈值，默认 10000
 	OTPSStickyOnlyMin  float64 `mapstructure:"otps_sticky_only_min"`  // OTPS 进入 StickyOnly 的下限，默认 10
 }
 

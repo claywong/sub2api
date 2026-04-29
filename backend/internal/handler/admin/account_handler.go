@@ -58,6 +58,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	healthCache             *service.AccountTestHealthCache
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -75,6 +76,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	healthCache *service.AccountTestHealthCache,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -90,6 +92,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		healthCache:             healthCache,
 	}
 }
 
@@ -174,6 +177,7 @@ type AccountWithConcurrency struct {
 	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
 	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
 	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+	HealthVerdict     *string  `json:"health_verdict,omitempty"`      // 健康三态：StickyOnly / Excluded（OK 时不返回）
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -215,6 +219,13 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		if h.rpmCache != nil && account.GetBaseRPM() > 0 {
 			if rpm, err := h.rpmCache.GetRPM(ctx, account.ID); err == nil {
 				item.CurrentRPM = &rpm
+			}
+		}
+
+		if h.healthCache != nil {
+			if v := h.healthCache.HealthVerdictWithDefaults(account.ID); v != service.HealthOK {
+				s := v.String()
+				item.HealthVerdict = &s
 			}
 		}
 	}

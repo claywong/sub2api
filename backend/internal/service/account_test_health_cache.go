@@ -489,6 +489,21 @@ func (c *AccountTestHealthCache) HealthVerdict(accountID int64, cfg HealthVerdic
 	return HealthOK
 }
 
+// HealthVerdictWithDefaults 使用内置默认阈值计算健康三态，等价于 gateway 调度时的判断结果。
+// 供 admin handler 等无法获取调度配置的调用方使用。
+func (c *AccountTestHealthCache) HealthVerdictWithDefaults(accountID int64) HealthVerdict {
+	return c.HealthVerdict(accountID, HealthVerdictConfig{
+		WindowSeconds:     10 * 60,
+		MinSamples:        5,
+		ErrCountSoft:      5,
+		ErrCountHard:      10,
+		ErrRateSoft:       0.3,
+		ErrRateHard:       0.5,
+		TTFTStickyOnlyMs:  10000,
+		OTPSStickyOnlyMin: 10,
+	})
+}
+
 // HealthVerdictWithChange 在 HealthVerdict() 基础上返回是否发生状态切换。
 // gateway 层可据此打"状态变化"日志，避免重复刷屏。
 // 第二个返回值 prev 是切换前的旧 verdict（仅在 changed=true 时有意义）。

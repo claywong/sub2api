@@ -2056,7 +2056,7 @@ func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfi
 		c.ErrRateHard = 0.5
 	}
 	if c.TTFTStickyOnlyMs <= 0 {
-		c.TTFTStickyOnlyMs = 8000
+		c.TTFTStickyOnlyMs = 10000
 	}
 	if c.OTPSStickyOnlyMin <= 0 {
 		c.OTPSStickyOnlyMin = 10
