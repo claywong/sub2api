@@ -1859,11 +1859,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 		// 健康三态新会话过滤：HealthExcluded 与 HealthStickyOnly 的账号都跳过
 		// （StickyOnly 仍可被已绑定的 sticky session 走 Layer 1.5 命中）
-		if !s.isAccountSchedulableForHealth(acc, false) {
+		// 需要 account_health.enabled=true 才生效
+		if s.isAccountHealthEnabled() && !s.isAccountSchedulableForHealth(acc, false) {
 			continue
 		}
 		// 健康缓存硬过滤（Anthropic 平台）：连续失败 >= HardFilterThreshold 的账号跳过新会话
-		if platform == PlatformAnthropic && s.healthCache != nil && !s.healthCache.PassesHardFilter(acc.ID) {
+		if s.isAccountHealthEnabled() && platform == PlatformAnthropic && s.healthCache != nil && !s.healthCache.PassesHardFilter(acc.ID) {
 			continue
 		}
 		candidates = append(candidates, acc)
@@ -2863,6 +2864,11 @@ func (s *GatewayService) healthVerdictConfig() HealthVerdictConfig {
 		TTFTStickyOnlyMs:  c.TTFTStickyOnlyMs,
 		OTPSStickyOnlyMin: c.OTPSStickyOnlyMin,
 	}
+}
+
+// isAccountHealthEnabled 返回是否启用账号健康感知调度（三态 + 硬过滤），默认 false。
+func (s *GatewayService) isAccountHealthEnabled() bool {
+	return s.schedulingConfig().AccountHealth.Enabled
 }
 
 // isAccountSchedulableForHealth 与 isAccountSchedulableForWindowCost / RPM 同款签名风格。

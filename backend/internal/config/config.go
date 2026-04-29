@@ -1008,6 +1008,8 @@ type SchedulingDebugConfig struct {
 // 仅保留 ScheduledTestRunner 退避状态机相关参数；
 // 滑动窗口与三态判定的阈值见 GatewaySchedulingConfig.Health（SchedulingHealthConfig）。
 type AccountHealthConfig struct {
+	// 是否启用账号健康感知调度（HealthVerdict 三态 + ConsecFails 硬过滤），默认 false。
+	Enabled bool `mapstructure:"enabled"`
 	// 连续失败几次触发硬过滤（跳过调度），默认 2
 	HardFilterThreshold int `mapstructure:"hard_filter_threshold"`
 	// 连续失败几次触发临时隔离，默认 3
