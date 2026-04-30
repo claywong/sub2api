@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -216,7 +217,11 @@ func (s *ScheduledTestRunnerService) triggerTempUnschedForScheduledTest(accountI
 		}
 	}
 	duration := h.TempUnschedDuration
+	consecFails := h.ConsecFails
+	lastStatus := h.LastStatus
 	h.mu.Unlock()
+
+	errorMessage := fmt.Sprintf("定时测试连续失败：连续失败 %d 次，最后状态: %s", consecFails, lastStatus)
 
 	until := time.Now().Add(duration)
 
@@ -226,7 +231,7 @@ func (s *ScheduledTestRunnerService) triggerTempUnschedForScheduledTest(accountI
 	if s.rateLimitSvc == nil {
 		return
 	}
-	if err := s.rateLimitSvc.SetTempUnschedulableForScheduledTest(ctx, accountID, until); err != nil {
+	if err := s.rateLimitSvc.SetTempUnschedulableForScheduledTest(ctx, accountID, until, errorMessage); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] SetTempUnschedulable account=%d error: %v", accountID, err)
 	} else {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] account=%d temp-unschedulable until=%s (duration=%s)", accountID, until.Format(time.RFC3339), duration)

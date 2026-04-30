@@ -1785,7 +1785,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					s.isAccountSchedulableForWindowCost(ctx, account, true) &&
 
 					s.isAccountSchedulableForRPM(ctx, account, true) && // 粘性会话窗口费用+RPM 检查
-					s.isAccountSchedulableForHealth(account, true) { // 健康三态：Sticky 路径放行 OK + StickyOnly
+					(!s.isAccountHealthEnabled() || s.isAccountSchedulableForHealth(account, true)) { // 健康三态：Sticky 路径放行 OK + StickyOnly
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查

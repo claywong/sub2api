@@ -838,7 +838,9 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.rate_limit_reset_at !== next.rate_limit_reset_at ||
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
-    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next)
+    buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
+    current.health_verdict !== next.health_verdict ||
+    current.health_verdict_reason !== next.health_verdict_reason
   )
 }
 
