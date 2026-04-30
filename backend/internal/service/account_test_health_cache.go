@@ -563,8 +563,14 @@ func (c *AccountTestHealthCache) HealthVerdictWithReason(accountID int64) (verdi
 }
 
 // SnapshotAndVerdict 一次加锁同时返回滑动窗口快照和健康三态判定，避免两次独立调用的重复计算。
+// 使用默认配置，适合 admin 展示等不依赖运行时配置的场景。
 func (c *AccountTestHealthCache) SnapshotAndVerdict(accountID int64) (snap HealthSnapshot, verdict HealthVerdict, reason string) {
-	cfg := defaultHealthVerdictConfig()
+	return c.SnapshotAndVerdictWithConfig(accountID, defaultHealthVerdictConfig())
+}
+
+// SnapshotAndVerdictWithConfig 与 SnapshotAndVerdict 相同，但使用调用方传入的配置。
+// gateway 层在打状态切换日志时应使用此方法，确保 reason 与 HealthVerdictWithChange 的判定一致。
+func (c *AccountTestHealthCache) SnapshotAndVerdictWithConfig(accountID int64, cfg HealthVerdictConfig) (snap HealthSnapshot, verdict HealthVerdict, reason string) {
 	if c == nil || accountID <= 0 {
 		return HealthSnapshot{}, HealthOK, ""
 	}

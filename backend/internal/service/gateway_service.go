@@ -2962,6 +2962,22 @@ func (s *GatewayService) RecordAnthropicCall(accountID int64, sample CallSample)
 	s.healthCache.RecordRealCall(accountID, sample)
 }
 
+// AnthropicHealthSnapshot 返回账号当前 10min 滑动窗口的指标快照，供日志和监控使用。
+// healthCache 为 nil 时返回零值快照（不影响调用方）。
+func (s *GatewayService) AnthropicHealthSnapshot(accountID int64) HealthSnapshot {
+	if s.healthCache == nil {
+		return HealthSnapshot{}
+	}
+	snap, _, _ := s.healthCache.SnapshotAndVerdict(accountID)
+	return snap
+}
+
+// AnthropicHealthVerdictThresholds 返回当前生效的 HealthVerdict 判定阈值，
+// 供 handler 层日志使用，避免硬编码魔法值。
+func (s *GatewayService) AnthropicHealthVerdictThresholds() HealthVerdictConfig {
+	return s.healthVerdictConfig()
+}
+
 // ReportAnthropicAccountResult 将真实请求的成败结果上报到健康缓存。
 // 与 ReportAnthropicAccountTTFT/Duration 配合使用，让"用户真实调用"和"主动 test"
 // 在 ConsecFails 维度上融合，使 HealthVerdict 三态判定能感知真实流量的失败。
@@ -3012,12 +3028,14 @@ func (s *GatewayService) isAccountSchedulableForHealth(account *Account, isStick
 	if s == nil || s.healthCache == nil {
 		return true
 	}
-	verdict, _, changed := s.healthCache.HealthVerdictWithChange(account.ID, s.healthVerdictConfig())
+	verdict, prev, changed := s.healthCache.HealthVerdictWithChange(account.ID, s.healthVerdictConfig())
 	if changed {
-		// 状态切换日志（去抖：每个账号每次切换打一次）
+		snap, _, reason := s.healthCache.SnapshotAndVerdictWithConfig(account.ID, s.healthVerdictConfig())
 		logger.LegacyPrintf("service.gateway",
-			"[HealthVerdictChange] account_id=%d -> %s (sticky_path=%v)",
-			account.ID, verdict.String(), isSticky)
+			"[HealthVerdictChange] account_id=%d %s->%s reason=%q req=%d err=%d err_rate=%.1f%% ttft_avg=%.0fms otps_avg=%.1f slow_rate=%.1f%%",
+			account.ID, prev.String(), verdict.String(), reason,
+			snap.ReqCount, snap.ErrCount, snap.ErrRate()*100,
+			snap.TTFTAvg(), snap.OTPSAvg(), snap.SlowRate()*100)
 	}
 	switch verdict {
 	case HealthOK:

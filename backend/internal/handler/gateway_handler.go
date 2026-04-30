@@ -1856,6 +1856,44 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 			sample.OutputTokens = result.Usage.OutputTokens
 		}
 	}
+
+	// 失败样本写入健康缓存时打 warn，便于排查账号进入 StickyOnly/Excluded 的原因。
+	// 注意：failover 路径下每次切换账号都会调用此函数，所以一次用户请求可能产生多条 warn。
+	if !sample.Success {
+		fields := []zap.Field{
+			zap.Int64("account_id", account.ID),
+			zap.String("account_name", account.Name),
+			zap.Error(err),
+		}
+		if sample.TTFTMs > 0 {
+			fields = append(fields, zap.Int("ttft_ms", sample.TTFTMs))
+		}
+		if sample.DurationMs > 0 {
+			fields = append(fields, zap.Int("duration_ms", sample.DurationMs))
+		}
+		logger.L().Warn("gateway.anthropic_health_failure_recorded", fields...)
+	} else if sample.TTFTMs > 0 || sample.DurationMs > 0 {
+		// 成功但窗口指标异常（TTFT 或 OTPS 可能触发 StickyOnly 判定）时记录，便于关联分析。
+		// 阈值直接取 HealthVerdict 配置，与判定逻辑保持一致，避免魔法值。
+		snap := h.gatewayService.AnthropicHealthSnapshot(account.ID)
+		thresholds := h.gatewayService.AnthropicHealthVerdictThresholds()
+		ttfgDegraded := snap.TTFTSampleCount > 0 && snap.TTFTAvg() >= float64(thresholds.TTFTStickyOnlyMs)
+		otpsDegraded := snap.OTPSSampleCount > 0 && snap.OTPSAvg() < thresholds.OTPSStickyOnlyMin
+		if ttfgDegraded || otpsDegraded {
+			logger.L().Warn("gateway.anthropic_health_degraded",
+				zap.Int64("account_id", account.ID),
+				zap.String("account_name", account.Name),
+				zap.Int("ttft_ms", sample.TTFTMs),
+				zap.Int("duration_ms", sample.DurationMs),
+				zap.Int("output_tokens", sample.OutputTokens),
+				zap.Float64("window_ttft_avg_ms", snap.TTFTAvg()),
+				zap.Float64("window_otps_avg", snap.OTPSAvg()),
+				zap.Float64("window_err_rate", snap.ErrRate()),
+				zap.Int("window_req_count", snap.ReqCount),
+			)
+		}
+	}
+
 	h.gatewayService.RecordAnthropicCall(account.ID, sample)
 }
 
