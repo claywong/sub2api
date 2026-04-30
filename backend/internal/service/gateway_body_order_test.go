@@ -206,3 +206,47 @@ func TestGatewayCacheTTLGlobalSetting_RequestInjectionScope(t *testing.T) {
 	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
 	require.False(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth}))
 }
+
+func TestAccountCacheTTLOverrideEnabled(t *testing.T) {
+	// API Key 账号启用账号级 Override
+	apiKeyAccount := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]interface{}{
+			"cache_ttl_override_enabled": true,
+			"cache_ttl_override_target":  "1h",
+		},
+	}
+	require.True(t, apiKeyAccount.IsCacheTTLOverrideEnabled())
+	require.Equal(t, "1h", apiKeyAccount.GetCacheTTLOverrideTarget())
+
+	// OAuth 账号同样支持
+	oauthAccount := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]interface{}{
+			"cache_ttl_override_enabled": true,
+			"cache_ttl_override_target":  "5m",
+		},
+	}
+	require.True(t, oauthAccount.IsCacheTTLOverrideEnabled())
+	require.Equal(t, "5m", oauthAccount.GetCacheTTLOverrideTarget())
+
+	// 非 Anthropic 平台不生效
+	openaiAccount := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]interface{}{
+			"cache_ttl_override_enabled": true,
+		},
+	}
+	require.False(t, openaiAccount.IsCacheTTLOverrideEnabled())
+
+	// 未启用时返回 false
+	disabledAccount := &Account{
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]interface{}{},
+	}
+	require.False(t, disabledAccount.IsCacheTTLOverrideEnabled())
+}

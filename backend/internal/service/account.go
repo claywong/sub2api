@@ -1564,10 +1564,10 @@ func (a *Account) GetCustomBaseURL() string {
 }
 
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 适用于所有 Anthropic 平台账号（含 API Key）
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）
 func (a *Account) IsCacheTTLOverrideEnabled() bool {
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if a.Platform != PlatformAnthropic {
 		return false
 	}
 	if a.Extra == nil {
