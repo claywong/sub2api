@@ -2176,10 +2176,10 @@ func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfi
 		c.MinSamples = 5
 	}
 	if c.ErrCountSoft <= 0 {
-		c.ErrCountSoft = 5
+		c.ErrCountSoft = 3
 	}
 	if c.ErrCountHard <= 0 {
-		c.ErrCountHard = 10
+		c.ErrCountHard = 5
 	}
 	if c.ErrRateSoft <= 0 {
 		c.ErrRateSoft = 0.3
@@ -2191,7 +2191,7 @@ func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfi
 		c.TTFTStickyOnlyMs = 10000
 	}
 	if c.OTPSStickyOnlyMin <= 0 {
-		c.OTPSStickyOnlyMin = 10
+		c.OTPSStickyOnlyMin = 20
 	}
 	return c
 }
