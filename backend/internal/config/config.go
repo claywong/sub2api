@@ -966,14 +966,15 @@ type GatewaySchedulingConfig struct {
 
 // SchedulingHealthConfig HealthVerdict 三态判定阈值。
 type SchedulingHealthConfig struct {
-	WindowMinutes      int     `mapstructure:"window_minutes"`        // 滑动窗口长度（分钟），默认 10
-	MinSamples         int     `mapstructure:"min_samples"`           // 触发判定的最小样本数，默认 5
-	ErrCountSoft       int     `mapstructure:"err_count_soft"`        // 错误数软阈值 → StickyOnly，默认 5
-	ErrCountHard       int     `mapstructure:"err_count_hard"`        // 错误数硬阈值 → Excluded，默认 10
-	ErrRateSoft        float64 `mapstructure:"err_rate_soft"`         // 错误率软阈值，默认 0.3
-	ErrRateHard        float64 `mapstructure:"err_rate_hard"`         // 错误率硬阈值，默认 0.5
-	TTFTStickyOnlyMs   int     `mapstructure:"ttft_sticky_only_ms"`   // TTFT 进入 StickyOnly 的阈值，默认 10000
-	OTPSStickyOnlyMin  float64 `mapstructure:"otps_sticky_only_min"`  // OTPS 进入 StickyOnly 的下限，默认 10
+	WindowMinutes               int     `mapstructure:"window_minutes"`                  // 滑动窗口长度（分钟），默认 10
+	MinSamples                  int     `mapstructure:"min_samples"`                     // 触发判定的最小样本数，默认 5
+	ErrCountSoft                int     `mapstructure:"err_count_soft"`                  // 错误数软阈值 → StickyOnly，默认 5
+	ErrCountHard                int     `mapstructure:"err_count_hard"`                  // 错误数硬阈值 → Excluded，默认 10
+	ErrRateSoft                 float64 `mapstructure:"err_rate_soft"`                   // 错误率软阈值，默认 0.3
+	ErrRateHard                 float64 `mapstructure:"err_rate_hard"`                   // 错误率硬阈值，默认 0.5
+	TTFTStickyOnlyMs            int     `mapstructure:"ttft_sticky_only_ms"`             // TTFT 进入 StickyOnly 的阈值，默认 10000
+	OTPSStickyOnlyMin           float64 `mapstructure:"otps_sticky_only_min"`            // OTPS 进入 StickyOnly 的下限，默认 10
+	ExcludedTempUnschedMinutes  int     `mapstructure:"excluded_temp_unsched_minutes"`   // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
 }
 
 // ScoreWeightsConfig 5 因子加权权重。

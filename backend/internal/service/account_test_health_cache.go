@@ -235,8 +235,11 @@ type HealthVerdictConfig struct {
 
 // AccountTestHealthCache 使用 sync.Map 存储账号健康状态，key 为 accountID int64
 type AccountTestHealthCache struct {
-	m   sync.Map
-	cfg healthCfg
+	m              sync.Map
+	cfg            healthCfg
+	// OnVerdictChange 在账号健康状态发生切换时调用（异步，不阻塞调度路径）。
+	// 参数：accountID、切换前状态、切换后状态。
+	OnVerdictChange func(accountID int64, prev, current HealthVerdict)
 }
 
 // NewAccountTestHealthCache 创建一个新的 AccountTestHealthCache。
@@ -628,6 +631,9 @@ func (c *AccountTestHealthCache) HealthVerdictWithChange(accountID int64, cfg He
 	prev = h.lastVerdict
 	if prev != current {
 		h.lastVerdict = current
+		if c.OnVerdictChange != nil {
+			go c.OnVerdictChange(accountID, prev, current)
+		}
 		return current, prev, true
 	}
 	return current, prev, false

@@ -647,6 +647,9 @@ func NewGatewayService(
 		balanceNotifyService: balanceNotifyService,
 		healthCache:          healthCache,
 	}
+	if healthCache != nil && rateLimitService != nil {
+		healthCache.OnVerdictChange = svc.onHealthVerdictChange
+	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
 		svc.userGroupRateCache,
@@ -3015,12 +3018,32 @@ func (s *GatewayService) isAccountHealthEnabled() bool {
 	return s.schedulingConfig().AccountHealth.Enabled
 }
 
+// onHealthVerdictChange 在账号健康状态切换时由 AccountTestHealthCache 异步回调。
+// 当状态切换为 HealthExcluded 时触发 TempUnschedulable，时长由配置决定（默认 30 分钟）。
+func (s *GatewayService) onHealthVerdictChange(accountID int64, prev, current HealthVerdict) {
+	if current != HealthExcluded {
+		return
+	}
+	minutes := s.resolvedSchedulingHealth().ExcludedTempUnschedMinutes
+	if minutes <= 0 {
+		minutes = 30
+	}
+	until := time.Now().Add(time.Duration(minutes) * time.Minute)
+	snap, _, reason := s.healthCache.SnapshotAndVerdictWithConfig(accountID, s.healthVerdictConfig())
+	msg := fmt.Sprintf("health_excluded(%s) req=%d err=%d err_rate=%.1f%% ttft_avg=%.0fms otps_avg=%.1f",
+		reason, snap.ReqCount, snap.ErrCount, snap.ErrRate()*100, snap.TTFTAvg(), snap.OTPSAvg())
+	if err := s.rateLimitService.SetTempUnschedulableForScheduledTest(context.Background(), accountID, until, msg); err != nil {
+		logger.LegacyPrintf("service.gateway", "[HealthExcluded] SetTempUnschedulable failed account_id=%d err=%v", accountID, err)
+	}
+}
+
 // isAccountSchedulableForHealth 与 isAccountSchedulableForWindowCost / RPM 同款签名风格。
 // 仅作用于 Anthropic 平台账号，沿用 WindowCostStickyOnly 三态语义：
 //   - HealthOK         → 始终放行
 //   - HealthStickyOnly → 仅 isSticky=true 路径放行（Layer 1.5 sticky 命中时通过；
 //                       Layer 2 新会话路径拒绝）
-//   - HealthExcluded   → 任何路径都拦截
+//   - HealthExcluded   → 触发 TempUnschedulable（由 OnVerdictChange 回调异步处理），
+//                       调度层与 StickyOnly 行为相同，后续由 TempUnschedulable 接管
 func (s *GatewayService) isAccountSchedulableForHealth(account *Account, isSticky bool) bool {
 	if account == nil || account.Platform != PlatformAnthropic {
 		return true
@@ -3043,6 +3066,9 @@ func (s *GatewayService) isAccountSchedulableForHealth(account *Account, isStick
 	case HealthStickyOnly:
 		return isSticky
 	case HealthExcluded:
+		// TempUnschedulable 由 OnVerdictChange 异步触发，生效前这里继续同步拦截。
+		// TempUnschedulable 生效后 shouldClearStickySession 会清除 sticky 绑定，
+		// 后续请求不再走到这里。
 		return false
 	}
 	return true
