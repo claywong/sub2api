@@ -504,12 +504,12 @@ func defaultHealthVerdictConfig() HealthVerdictConfig {
 	return HealthVerdictConfig{
 		WindowSeconds:     10 * 60,
 		MinSamples:        5,
-		ErrCountSoft:      5,
-		ErrCountHard:      10,
+		ErrCountSoft:      3,
+		ErrCountHard:      5,
 		ErrRateSoft:       0.3,
 		ErrRateHard:       0.5,
 		TTFTStickyOnlyMs:  10000,
-		OTPSStickyOnlyMin: 10,
+		OTPSStickyOnlyMin: 20,
 	}
 }
 
