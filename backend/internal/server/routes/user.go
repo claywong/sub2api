@@ -15,6 +15,9 @@ func RegisterUserRoutes(
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	// 公开接口（无需认证）
+	v1.GET("/key-rate", h.APIKey.GetKeyRate)
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))

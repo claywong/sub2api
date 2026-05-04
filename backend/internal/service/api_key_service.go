@@ -806,6 +806,35 @@ func (s *APIKeyService) GetUserGroupRates(ctx context.Context, userID int64) (ma
 	return rates, nil
 }
 
+// GetKeyRateMultiplier 根据 key 字符串返回该 key 的有效倍率。
+// 优先级：用户专属 > 分组默认 > 1.0。key 不存在时返回 1.0。
+func (s *APIKeyService) GetKeyRateMultiplier(ctx context.Context, key string) (float64, error) {
+	apiKey, err := s.GetByKey(ctx, key)
+	if err != nil {
+		if infraerrors.IsNotFound(err) {
+			return 1.0, nil
+		}
+		return 1.0, fmt.Errorf("get key rate multiplier: %w", err)
+	}
+
+	if apiKey.GroupID == nil || apiKey.Group == nil {
+		return 1.0, nil
+	}
+
+	if s.userGroupRateRepo == nil {
+		return apiKey.Group.RateMultiplier, nil
+	}
+
+	userRate, err := s.userGroupRateRepo.GetByUserAndGroup(ctx, apiKey.UserID, *apiKey.GroupID)
+	if err != nil {
+		return apiKey.Group.RateMultiplier, nil
+	}
+	if userRate != nil {
+		return *userRate, nil
+	}
+	return apiKey.Group.RateMultiplier, nil
+}
+
 // CheckAPIKeyQuotaAndExpiry checks if the API key is valid for use (not expired, quota not exhausted)
 // Returns nil if valid, error if invalid
 func (s *APIKeyService) CheckAPIKeyQuotaAndExpiry(apiKey *APIKey) error {
