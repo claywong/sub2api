@@ -166,24 +166,19 @@ func TestInjectAnthropicCacheControlTTL1h_OnlyUpdatesExistingEphemeralCacheContr
 }
 
 func TestGatewayCacheTTLGlobalSetting_TargetResolution(t *testing.T) {
-	repo := &gatewayTTLSettingRepo{data: map[string]string{
-		SettingKeyEnableAnthropicCacheTTL1hInjection: "true",
-	}}
-	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{})
-	svc := &GatewayService{
-		settingService: NewSettingService(repo, &config.Config{}),
-	}
+	svc := &GatewayService{}
+
+	// 全局注入开关不再影响 usage override，账号未配置时返回 false
 	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuth}
+	_, ok := svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
+	require.False(t, ok)
 
-	target, ok := svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
-	require.True(t, ok)
-	require.Equal(t, cacheTTLTarget5m, target)
-
+	// 账号级 override 配置生效
 	account.Extra = map[string]any{
 		"cache_ttl_override_enabled": true,
 		"cache_ttl_override_target":  "1h",
 	}
-	target, ok = svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
+	target, ok := svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
 	require.True(t, ok)
 	require.Equal(t, cacheTTLTarget1h, target)
 }
