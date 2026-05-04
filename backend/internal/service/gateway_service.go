@@ -4824,6 +4824,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
 
+	// Anthropic 专属响应头超时：配置非零时覆盖全局超时，快速失败以便 failover
+	if account.Platform == PlatformAnthropic && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout)*time.Second)
+		defer cancel()
+	}
+
 	// 重试循环
 	var resp *http.Response
 	retryStart := time.Now()

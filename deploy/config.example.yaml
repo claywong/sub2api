@@ -149,6 +149,10 @@ gateway:
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
+  # Anthropic-specific response header timeout (seconds), 0 = use response_header_timeout
+  # Anthropic 专属响应头超时（秒），0 表示沿用 response_header_timeout
+  # 设置较小值可在 Anthropic 不稳定时快速失败并切换渠道，不影响 OpenAI 等其他平台
+  anthropic_response_header_timeout: 0
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
