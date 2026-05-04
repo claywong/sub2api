@@ -1817,10 +1817,12 @@ func (h *GatewayHandler) metadataBridgeEnabled() bool {
 // 上报给健康缓存，进入 10 分钟滑动窗口。让"主动 test"和"用户真实调用"在窗口指标上融合，
 // 供 HealthVerdict 三态判定与 weighted 算法的加权打分使用。
 //
-// 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
-//   - 上游错误（4xx/5xx/429/超时、UpstreamFailoverError 等）→ Success=false
+// 失败语义与 ops error_owner 分类对齐——只有 error_owner='provider' 的情况才计为失败：
+//   - UpstreamFailoverError（上游 4xx/5xx/429/超时触发 failover）→ 计为失败
+//   - 网络/传输层错误 → 计为失败
+//   - context.DeadlineExceeded（响应头超时等）→ 计为失败
 //   - 客户端中断（context.Canceled）→ 跳过（不是账号问题）
-//   - 请求内容问题（PromptTooLongError/BetaBlockedError）→ 跳过
+//   - 请求内容问题（BetaBlockedError / ClientRequestError）→ 跳过（error_owner='client'）
 //   - 流正常但客户端中途断开（result.ClientDisconnect）→ 跳过
 func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, err error, result *service.ForwardResult) {
 	if h == nil || h.gatewayService == nil {
@@ -1830,11 +1832,15 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 		return
 	}
 
-	// 不上报的几种情况
+	// 不上报的几种情况（对应 error_owner='client' 或非账号问题）
 	if err != nil {
 		var betaBlocked *service.BetaBlockedError
-		var promptTooLong *service.PromptTooLongError
-		if errors.As(err, &betaBlocked) || errors.As(err, &promptTooLong) {
+		if errors.As(err, &betaBlocked) {
+			return
+		}
+		// 客户端请求内容问题（400 invalid_request_error 等），error_owner='client'
+		var clientReqErr *service.ClientRequestError
+		if errors.As(err, &clientReqErr) {
 			return
 		}
 		if errors.Is(err, context.Canceled) {

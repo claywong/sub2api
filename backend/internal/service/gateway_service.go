@@ -522,6 +522,22 @@ func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
 
+// ClientRequestError 表示由客户端请求内容导致的错误（如 invalid_request_error），
+// 不应计入账号健康统计，与 ops error_owner = 'client' 的分类语义对齐。
+type ClientRequestError struct {
+	StatusCode int
+	cause      error
+}
+
+func (e *ClientRequestError) Error() string {
+	if e.cause != nil {
+		return e.cause.Error()
+	}
+	return fmt.Sprintf("upstream error: %d", e.StatusCode)
+}
+
+func (e *ClientRequestError) Unwrap() error { return e.cause }
+
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
 func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *UpstreamFailoverError) {
@@ -7453,10 +7469,15 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		if summary == "" {
 			summary = truncateForLog(body, 512)
 		}
+		// 400 属于客户端请求内容问题（invalid_request_error），与 error_owner='client' 对齐
+		// 使用 ClientRequestError 包装，使健康统计可以识别并排除
+		var cause error
 		if summary == "" {
-			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
+			cause = fmt.Errorf("upstream error: %d", resp.StatusCode)
+		} else {
+			cause = fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
 		}
-		return nil, fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, summary)
+		return nil, &ClientRequestError{StatusCode: 400, cause: cause}
 	case 401:
 		statusCode = http.StatusBadGateway
 		errType = "upstream_error"
