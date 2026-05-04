@@ -767,19 +767,30 @@ if cfg.Debug.CompareMode {
 
 ## 10. 失败语义定义
 
-`gateway_handler.go` 上报真实调用 `Success` 字段：
+`gateway_handler.go` 上报真实调用 `Success` 字段，语义与 ops `error_owner` 分类对齐：**只有 `error_owner = 'provider'` 的情况才计为失败**，客户端请求问题不应影响账号健康评分。
 
-| 场景 | success |
-|---|:---:|
-| HTTP 2xx 且流正常结束（`message_stop`）| ✅ true |
-| HTTP 2xx 但流中途 error event | ❌ false |
-| HTTP 4xx 客户端错误（401/403/422）| ❌ false |
-| HTTP 429 rate limited | ❌ false |
-| HTTP 5xx 服务端错误 | ❌ false |
-| 超时 / 连接错误 | ❌ false |
-| 客户端主动中断（context canceled）| ⚠️ **不上报**（不是账号问题）|
+| 场景 | success | 说明 |
+|---|:---:|---|
+| HTTP 2xx 且流正常结束（`message_stop`）| ✅ true | — |
+| HTTP 2xx 但流中途 error event | ❌ false | `UpstreamFailoverError{StatusCode:403}` |
+| HTTP 401 / 403 认证/授权失败 | ❌ false | 账号凭证问题，`error_owner='provider'` |
+| HTTP 429 rate limited（上游限流）| ❌ false | 账号被限速，`error_owner='provider'` |
+| HTTP 5xx 服务端错误 | ❌ false | 上游不可用，`error_owner='provider'` |
+| 网络 / 连接错误 | ❌ false | 传输层失败，`error_owner='provider'` |
+| 响应头超时（`context.DeadlineExceeded`）| ❌ false | 上游响应过慢，`error_owner='provider'` |
+| HTTP 400（服务端临时限流，isRetryLater400）| ❌ false | 上游瞬时限流，返回 `UpstreamFailoverError` |
+| HTTP 400 `invalid_request_error`（用户请求格式问题）| ⚠️ **不上报** | `ClientRequestError`，`error_owner='client'` |
+| `BetaBlockedError`（不支持的 Beta 特性）| ⚠️ **不上报** | 用户请求内容问题，`error_owner='client'` |
+| 客户端主动中断（`context.Canceled`）| ⚠️ **不上报** | 非账号问题 |
+| 流正常但客户端中途断开（`ClientDisconnect`）| ⚠️ **不上报** | 非账号问题 |
 
-实现要点：在上报前先判断 `errors.Is(err, context.Canceled)`，是则跳过 `ReportRealCall`。
+**实现要点**（`reportAnthropicForwardResult`）：
+1. 平台检查：非 `PlatformAnthropic` 直接返回
+2. 排除 `BetaBlockedError`（`errors.As`）
+3. 排除 `ClientRequestError`（`errors.As`）——`handleErrorResponse` 对 400 `invalid_request_error` 返回此类型
+4. 排除 `context.Canceled`（`errors.Is`）
+5. 排除 `result.ClientDisconnect`
+6. 其余 `err != nil` 均视为 `Success=false` 写入滑动窗口
 
 ## 11. 调参指南
 

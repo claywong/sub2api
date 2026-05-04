@@ -333,10 +333,14 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 
 `RecordAnthropicCall` → `healthCache.RecordRealCall`，写入完整 CallSample（Success + TTFTMs + DurationMs + OutputTokens）。
 
-**不上报的情况**（避免误报）：
+**不上报的情况**（对应 `error_owner = 'client'` 或非账号问题，避免用户请求问题污染账号健康评分）：
 - `context.Canceled`（客户端中断，非账号问题）
-- `BetaBlockedError` / `PromptTooLongError`（请求内容问题）
+- `BetaBlockedError`（请求使用了不支持的 Beta 特性）
+- `ClientRequestError`（上游返回 400 `invalid_request_error`，属于用户请求格式问题）
 - `result.ClientDisconnect`（流正常但客户端中途断开）
+
+> **注**：`PromptTooLongError` 仅由 Antigravity 路径返回，Anthropic 平台账号不会产生此错误，无需在此排除。
+> 上游触发 failover 的 400（如 `isRetryLater400` 服务端临时限流）仍返回 `UpstreamFailoverError`，会正常计入失败。
 
 ---
 
