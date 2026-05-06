@@ -237,6 +237,7 @@ type HealthVerdictConfig struct {
 type AccountTestHealthCache struct {
 	m              sync.Map
 	cfg            healthCfg
+	verdictCfg     HealthVerdictConfig
 	// OnVerdictChange 在账号健康状态发生切换时调用（异步，不阻塞调度路径）。
 	// 参数：accountID、切换前状态、切换后状态。
 	OnVerdictChange func(accountID int64, prev, current HealthVerdict)
@@ -245,7 +246,16 @@ type AccountTestHealthCache struct {
 // NewAccountTestHealthCache 创建一个新的 AccountTestHealthCache。
 // cfg 为 nil 时所有阈值使用内置默认值。
 func NewAccountTestHealthCache(cfg *config.AccountHealthConfig) *AccountTestHealthCache {
-	return &AccountTestHealthCache{cfg: resolveHealthCfg(cfg)}
+	return &AccountTestHealthCache{
+		cfg:        resolveHealthCfg(cfg),
+		verdictCfg: defaultHealthVerdictConfig(),
+	}
+}
+
+// SetVerdictConfig 更新三态判定阈值，由 GatewayService 在初始化后调用以注入运行时配置。
+// 配置为静态加载，只需在启动时设置一次。
+func (c *AccountTestHealthCache) SetVerdictConfig(cfg HealthVerdictConfig) {
+	c.verdictCfg = cfg
 }
 
 // Get 返回指定账号的健康状态，不存在时返回 nil
@@ -567,10 +577,10 @@ func (c *AccountTestHealthCache) HealthVerdictWithDefaults(accountID int64) Heal
 // reason 格式示例："err_rate=45.0%(≥30%)" / "err_count=12(≥10)" / "ttft_avg=11200ms(≥10000ms)"
 // verdict 为 HealthOK 时 reason 为空字符串。
 func (c *AccountTestHealthCache) HealthVerdictWithReason(accountID int64) (verdict HealthVerdict, reason string) {
-	cfg := defaultHealthVerdictConfig()
 	if c == nil || accountID <= 0 {
 		return HealthOK, ""
 	}
+	cfg := c.verdictCfg
 	h := c.Get(accountID)
 	if h == nil {
 		return HealthOK, ""
@@ -610,9 +620,9 @@ func (c *AccountTestHealthCache) HealthVerdictWithReason(accountID int64) (verdi
 }
 
 // SnapshotAndVerdict 一次加锁同时返回滑动窗口快照和健康三态判定，避免两次独立调用的重复计算。
-// 使用默认配置，适合 admin 展示等不依赖运行时配置的场景。
+// 使用运行时配置（由 SetVerdictConfig 注入），与实际调度行为一致。
 func (c *AccountTestHealthCache) SnapshotAndVerdict(accountID int64) (snap HealthSnapshot, verdict HealthVerdict, reason string) {
-	return c.SnapshotAndVerdictWithConfig(accountID, defaultHealthVerdictConfig())
+	return c.SnapshotAndVerdictWithConfig(accountID, c.verdictCfg)
 }
 
 // SnapshotAndVerdictWithConfig 与 SnapshotAndVerdict 相同，但使用调用方传入的配置。
