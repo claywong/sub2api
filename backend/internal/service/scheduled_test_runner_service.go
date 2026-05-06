@@ -134,6 +134,12 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
 	}
 
+	if result.Status != "success" {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[WARN] [ScheduledTestRunner] plan=%d account=%d test failed: %s",
+			plan.ID, plan.AccountID, result.ErrorMessage)
+	}
+
 	// 更新健康缓存，并根据健康状态决定是否补测或隔离
 	if s.healthCache != nil {
 		s.healthCache.UpdateFromTest(plan.AccountID, result)
@@ -197,6 +203,12 @@ func (s *ScheduledTestRunnerService) runRetryTest(plan *ScheduledTestPlan, delay
 
 	if err := s.scheduledSvc.SaveResult(ctx, plan.ID, plan.MaxResults, result); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] retry plan=%d SaveResult error: %v", plan.ID, err)
+	}
+
+	if result.Status != "success" {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[WARN] [ScheduledTestRunner] retry plan=%d account=%d test failed: %s",
+			plan.ID, plan.AccountID, result.ErrorMessage)
 	}
 
 	s.healthCache.UpdateFromTest(plan.AccountID, result)

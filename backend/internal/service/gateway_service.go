@@ -3071,7 +3071,7 @@ func (s *GatewayService) isAccountSchedulableForHealth(account *Account, isStick
 	if changed {
 		snap, _, reason := s.healthCache.SnapshotAndVerdictWithConfig(account.ID, s.healthVerdictConfig())
 		logger.LegacyPrintf("service.gateway",
-			"[HealthVerdictChange] account_id=%d %s->%s reason=%q req=%d err=%d err_rate=%.1f%% ttft_avg=%.0fms otps_avg=%.1f slow_rate=%.1f%%",
+			"[WARN] [HealthVerdictChange] account_id=%d %s->%s reason=%q req=%d err=%d err_rate=%.1f%% ttft_avg=%.0fms otps_avg=%.1f slow_rate=%.1f%%",
 			account.ID, prev.String(), verdict.String(), reason,
 			snap.ReqCount, snap.ErrCount, snap.ErrRate()*100,
 			snap.TTFTAvg(), snap.OTPSAvg(), snap.SlowRate()*100)

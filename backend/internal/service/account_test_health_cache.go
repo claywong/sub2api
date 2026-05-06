@@ -400,6 +400,50 @@ func (c *AccountTestHealthCache) UpdateFromTest(accountID int64, result *Schedul
 		}
 		h.NextRetryAt = now.Add(h.RetryInterval)
 	}
+	c.checkVerdictChangeLocked(accountID, h)
+}
+
+// checkVerdictChangeLocked 在写入数据后检查 verdict 是否变化，变化则异步触发 OnVerdictChange。
+// 必须在 h.mu.Lock() 内调用。
+func (c *AccountTestHealthCache) checkVerdictChangeLocked(accountID int64, h *AccountTestHealth) {
+	if c.OnVerdictChange == nil {
+		return
+	}
+	cfg := defaultHealthVerdictConfig()
+	s := h.snapshotLocked(time.Now(), cfg.WindowSeconds)
+	current := verdictFromSnapshot(s, cfg)
+	prev := h.lastVerdict
+	if prev == current {
+		return
+	}
+	h.lastVerdict = current
+	go c.OnVerdictChange(accountID, prev, current)
+}
+
+// verdictFromSnapshot 根据快照和配置计算三态判定，避免在锁内重复调用带锁的 HealthVerdict。
+func verdictFromSnapshot(s HealthSnapshot, cfg HealthVerdictConfig) HealthVerdict {
+	if cfg.MinSamples > 0 && s.ReqCount < cfg.MinSamples {
+		return HealthOK
+	}
+	if cfg.ErrCountHard > 0 && s.ErrCount >= cfg.ErrCountHard {
+		return HealthExcluded
+	}
+	if cfg.ErrRateHard > 0 && s.ErrRate() >= cfg.ErrRateHard {
+		return HealthExcluded
+	}
+	if cfg.ErrCountSoft > 0 && s.ErrCount >= cfg.ErrCountSoft {
+		return HealthStickyOnly
+	}
+	if cfg.ErrRateSoft > 0 && s.ErrRate() >= cfg.ErrRateSoft {
+		return HealthStickyOnly
+	}
+	if cfg.TTFTStickyOnlyMs > 0 && s.HasTTFT() && s.TTFTAvg() >= float64(cfg.TTFTStickyOnlyMs) {
+		return HealthStickyOnly
+	}
+	if cfg.OTPSStickyOnlyMin > 0 && s.HasOTPS() && s.OTPSAvg() < cfg.OTPSStickyOnlyMin {
+		return HealthStickyOnly
+	}
+	return HealthOK
 }
 
 // PassesHardFilter 返回账号是否通过硬过滤
