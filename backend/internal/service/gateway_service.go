@@ -665,6 +665,7 @@ func NewGatewayService(
 	}
 	if healthCache != nil && rateLimitService != nil {
 		healthCache.OnVerdictChange = svc.onHealthVerdictChange
+		healthCache.SetVerdictConfig(svc.healthVerdictConfig())
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
