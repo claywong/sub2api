@@ -670,9 +670,9 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 		}
 	}
 
-	limit := 50
+	limit := 300
 	if v := c.Query("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 300 {
 			limit = n
 		}
 	}
