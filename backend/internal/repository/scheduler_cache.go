@@ -546,6 +546,31 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"responses_websockets_v2_enabled",
 		"openai_ws_enabled",
 		"openai_ws_force_http",
+		// 配额相关：IsQuotaExceeded() 在调度循环中需要这些字段
+		"quota_limit",
+		"quota_used",
+		"quota_daily_limit",
+		"quota_daily_used",
+		"quota_daily_start",
+		"quota_daily_reset_mode",
+		"quota_daily_reset_at",
+		"quota_daily_reset_hour",
+		"quota_weekly_limit",
+		"quota_weekly_used",
+		"quota_weekly_start",
+		"quota_weekly_reset_mode",
+		"quota_weekly_reset_at",
+		"quota_weekly_reset_day",
+		"quota_weekly_reset_hour",
+		"quota_reset_timezone",
+		// 模型级限流：IsSchedulableForModelWithContext() 需要此字段
+		"model_rate_limits",
+		// RPM 限流：isAccountSchedulableForRPM() 需要这些字段
+		"base_rpm",
+		"rpm_strategy",
+		"rpm_sticky_buffer",
+		// Antigravity 积分透支：IsOveragesEnabled() 和 IsSchedulableForModelWithContext() 需要
+		"allow_overages",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {
