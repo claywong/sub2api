@@ -3057,8 +3057,8 @@ export default {
         creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情',
-        healthStickyOnly: '健康降级：仅粘性会话',
-        healthExcluded: '健康降级：已排除调度',
+        healthStickyOnly: '仅粘性会话',
+        healthExcluded: '已排除调度',
         healthVerdictReason: '触发原因：{reason}'
       },
       tempUnschedulable: {
