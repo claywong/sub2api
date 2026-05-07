@@ -261,6 +261,10 @@ func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, acco
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover failed: %v", planID, err)
 		return
 	}
+	if s.healthCache != nil {
+		s.healthCache.Reset(accountID)
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover: account=%d cleared health verdict state", planID, accountID)
+	}
 	if recovery == nil {
 		return
 	}

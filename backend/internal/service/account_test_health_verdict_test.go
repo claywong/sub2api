@@ -11,7 +11,7 @@ import (
 
 // 默认窗口判定配置：min_samples=5, err 软=5/硬=10、err 率软=0.3/硬=0.5、TTFT 8000ms。
 // 与生产默认值（resolvedSchedulingHealth 默认）一致。
-func defaultHealthVerdictConfig() HealthVerdictConfig {
+func testHealthVerdictConfig() HealthVerdictConfig {
 	return HealthVerdictConfig{
 		MinSamples:        5,
 		ErrCountSoft:      5,
@@ -32,7 +32,7 @@ func TestHealthVerdict_StringRepresentation(t *testing.T) {
 
 func TestHealthVerdict_NoEntryReturnsOK(t *testing.T) {
 	cache := NewAccountTestHealthCache(nil)
-	require.Equal(t, HealthOK, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 样本不足（< MinSamples）时不应触发任何阈值
@@ -41,7 +41,7 @@ func TestHealthVerdict_BelowMinSamplesReturnsOK(t *testing.T) {
 	cache.ReportRealCall(7, false)
 	cache.ReportRealCall(7, false)
 	cache.ReportRealCall(7, false)
-	require.Equal(t, HealthOK, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // errCount=5 但 errRate < 0.5（不触发 Hard）→ 仅 Soft 生效 → StickyOnly
@@ -54,7 +54,7 @@ func TestHealthVerdict_ErrCountSoftProducesStickyOnly(t *testing.T) {
 		cache.ReportRealCall(7, true)
 	}
 	// errCount=5 → 触发 ErrCountSoft；errRate=5/11≈0.45 → 未到 ErrRateHard(0.5)
-	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 10 次失败 → ErrCountHard 触发 → Excluded
@@ -63,7 +63,7 @@ func TestHealthVerdict_ErrCountHardProducesExcluded(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		cache.ReportRealCall(7, false)
 	}
-	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 50% 错误率 → ErrRateHard 触发（≥ 0.5）→ Excluded
@@ -76,7 +76,7 @@ func TestHealthVerdict_ErrRateHardProducesExcluded(t *testing.T) {
 		cache.ReportRealCall(7, true)
 	}
 	// 5/10 = 0.5 → Hard
-	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 30%-49% 错误率 → ErrRateSoft 触发 → StickyOnly
@@ -90,7 +90,7 @@ func TestHealthVerdict_ErrRateSoftProducesStickyOnly(t *testing.T) {
 		cache.ReportRealCall(7, true)
 	}
 	// 4/10 = 0.4：未到 Hard（0.5），但触发 Soft（0.3）；errCount=4 < ErrCountSoft=5 不会触发
-	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // Hard 优先于 Soft：err count 同时满足 Soft 和 Hard 时返回 Excluded
@@ -99,7 +99,7 @@ func TestHealthVerdict_HardOverridesSoft(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		cache.ReportRealCall(7, false)
 	}
-	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 高 TTFT（窗口平均 ≥ 8000ms）→ StickyOnly
@@ -108,7 +108,7 @@ func TestHealthVerdict_HighTTFTStickyOnly(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		cache.Record(7, CallSample{Success: true, TTFTMs: 9000})
 	}
-	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 低 OTPS 触发 StickyOnly
@@ -118,7 +118,7 @@ func TestHealthVerdict_LowOTPSStickyOnly(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		cache.Record(7, CallSample{Success: true, TTFTMs: 1000, DurationMs: 10000, OutputTokens: 50})
 	}
-	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 // 错误数 5 后即使大量成功稀释错误率，errCount 不归零，账号仍处 StickyOnly，
@@ -132,13 +132,13 @@ func TestHealthVerdict_StaysStickyUntilWindowExpires(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		cache.ReportRealCall(7, true)
 	}
-	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, testHealthVerdictConfig()))
 
 	// 即便注入 30 次成功，errCount 仍 = 5（绝对计数）→ 仍 StickyOnly
 	for i := 0; i < 30; i++ {
 		cache.ReportRealCall(7, true)
 	}
-	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, defaultHealthVerdictConfig()),
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, testHealthVerdictConfig()),
 		"窗口未过期且 errCount=5 持续 ≥ ErrCountSoft，账号应保持 StickyOnly")
 
 	// 模拟窗口过期：把所有桶手动拨到 11 分钟前 → Snapshot 应为空 → 回到 OK
@@ -151,12 +151,12 @@ func TestHealthVerdict_StaysStickyUntilWindowExpires(t *testing.T) {
 		}
 	}
 	h.mu.Unlock()
-	require.Equal(t, HealthOK, cache.HealthVerdict(7, defaultHealthVerdictConfig()))
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, testHealthVerdictConfig()))
 }
 
 func TestHealthVerdictWithChange_EmitsTransitionOnce(t *testing.T) {
 	cache := NewAccountTestHealthCache(nil)
-	cfg := defaultHealthVerdictConfig()
+	cfg := testHealthVerdictConfig()
 
 	// 初始无记录
 	v, prev, changed := cache.HealthVerdictWithChange(7, cfg)
