@@ -97,7 +97,12 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 
 	if !validateChallenge(respText, challenge.Expected) {
 		res.Status = MonitorStatusFailed
-		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("challenge mismatch (expected %s, got %q)", challenge.Expected, respText)))
+		// 记录原始响应体以便调试（截断到 500 字符）
+		bodySnippet := rawBody
+		if len(bodySnippet) > 500 {
+			bodySnippet = bodySnippet[:500] + "...(truncated)"
+		}
+		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("challenge mismatch (expected %s, got %q) | raw: %s", challenge.Expected, respText, bodySnippet)))
 		return res
 	}
 
