@@ -58,6 +58,10 @@ type OpsService struct {
 	// cleanupReloader 由 wire 在 OpsCleanupService 构造完成后通过 SetCleanupReloader 注入。
 	// 解耦避免 OpsService -> OpsCleanupService 的硬依赖（cleanup 也读 settings，会循环）。
 	cleanupReloader CleanupReloader
+
+	// webhookDispatcher forwards prepared error events to an external endpoint.
+	// Nil when ops.webhook.url is not configured.
+	webhookDispatcher *OpsErrorWebhookDispatcher
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -72,6 +76,15 @@ func (s *OpsService) SetCleanupReloader(r CleanupReloader) {
 		return
 	}
 	s.cleanupReloader = r
+}
+
+// SetWebhookDispatcher injects the optional webhook dispatcher.
+// Called by wire after construction to avoid circular deps.
+func (s *OpsService) SetWebhookDispatcher(d *OpsErrorWebhookDispatcher) {
+	if s == nil {
+		return
+	}
+	s.webhookDispatcher = d
 }
 
 func NewOpsService(
@@ -178,8 +191,10 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch single insert failed: %v", err)
+			return err
 		}
-		return err
+		s.webhookDispatcher.Enqueue(prepared[0])
+		return nil
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
@@ -191,9 +206,14 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 				if firstErr == nil {
 					firstErr = insertErr
 				}
+				continue
 			}
+			s.webhookDispatcher.Enqueue(entry)
 		}
 		return firstErr
+	}
+	for _, entry := range prepared {
+		s.webhookDispatcher.Enqueue(entry)
 	}
 	return nil
 }

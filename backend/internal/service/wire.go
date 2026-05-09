@@ -270,6 +270,17 @@ func ProvideOpsAlertEvaluatorService(
 	return svc
 }
 
+// ProvideOpsErrorWebhookDispatcher creates, starts, and injects the webhook dispatcher.
+// Returns nil when ops.webhook.url is not configured (dispatcher disabled).
+func ProvideOpsErrorWebhookDispatcher(cfg *config.Config, opsService *OpsService) *OpsErrorWebhookDispatcher {
+	d := NewOpsErrorWebhookDispatcher(cfg.Ops.Webhook)
+	d.Start()
+	if opsService != nil {
+		opsService.SetWebhookDispatcher(d)
+	}
+	return d
+}
+
 // ProvideOpsCleanupService creates and starts OpsCleanupService (cron scheduled).
 // channelMonitorSvc 让维护任务（聚合 + 历史/聚合软删）跟随 ops 清理 cron 一起跑，
 // 共享 leader lock + heartbeat。
@@ -482,6 +493,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
 	NewOpsService,
+	ProvideOpsErrorWebhookDispatcher,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,

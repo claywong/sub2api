@@ -1172,6 +1172,43 @@ type OpsConfig struct {
 
 	// Pre-aggregation configuration.
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+
+	// Webhook pushes raw error events to an external HTTP endpoint.
+	Webhook OpsWebhookConfig `mapstructure:"webhook"`
+}
+
+// OpsWebhookConfig configures the ops error webhook dispatcher.
+// Set url to enable; all other fields are optional.
+//
+// Example config.yaml:
+//
+//	ops:
+//	  webhook:
+//	    url: "https://your-server.com/ops/errors"
+//	    secret: "optional_hmac_secret"
+type OpsWebhookConfig struct {
+	// URL is the destination endpoint. Empty string disables the dispatcher.
+	URL string `mapstructure:"url"`
+
+	// Secret is used to sign each request with HMAC-SHA256.
+	// Receivers should verify the X-Sub2Api-Signature header.
+	Secret string `mapstructure:"secret"`
+
+	// TimeoutSeconds is the per-request HTTP timeout (default 5).
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+
+	// MaxRetries is the number of additional attempts on 5xx / network error (default 2).
+	MaxRetries int `mapstructure:"max_retries"`
+
+	// BufferSize is the internal channel capacity (default 2048).
+	// Events are dropped (not blocking) when the buffer is full.
+	BufferSize int `mapstructure:"buffer_size"`
+
+	// BatchSize is the max number of errors sent per HTTP request (default 50).
+	BatchSize int `mapstructure:"batch_size"`
+
+	// FlushIntervalMs is how often the buffer is flushed even when not full (default 500ms).
+	FlushIntervalMs int `mapstructure:"flush_interval_ms"`
 }
 
 type OpsCleanupConfig struct {
@@ -1670,6 +1707,14 @@ func setDefaults() {
 	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
 	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
+	// Webhook dispatcher defaults (disabled by default; set ops.webhook.url to enable).
+	viper.SetDefault("ops.webhook.url", "")
+	viper.SetDefault("ops.webhook.secret", "")
+	viper.SetDefault("ops.webhook.timeout_seconds", 5)
+	viper.SetDefault("ops.webhook.max_retries", 2)
+	viper.SetDefault("ops.webhook.buffer_size", 2048)
+	viper.SetDefault("ops.webhook.batch_size", 50)
+	viper.SetDefault("ops.webhook.flush_interval_ms", 500)
 
 	// JWT
 	viper.SetDefault("jwt.secret", "")
