@@ -41,7 +41,7 @@ func makeEntry(phase, errType, platform string) *OpsInsertErrorLogInput {
 	}
 }
 
-func waitFor(counter *atomic.Int64, n int64, deadline time.Duration) bool {
+func waitForCount(counter *atomic.Int64, n int64, deadline time.Duration) bool {
 	end := time.Now().Add(deadline)
 	for time.Now().Before(end) {
 		if counter.Load() >= n {
@@ -109,7 +109,7 @@ func TestDispatcher_SendsOnePostPerError(t *testing.T) {
 		d.Enqueue(makeEntry("upstream", "upstream_error", "openai"))
 	}
 
-	if !waitFor(&received, n, 3*time.Second) {
+	if !waitForCount(&received, n, 3*time.Second) {
 		t.Fatalf("expected %d requests, got %d", n, received.Load())
 	}
 }
@@ -220,7 +220,7 @@ func TestDispatcher_RetriesOn5xx(t *testing.T) {
 
 	d.Enqueue(makeEntry("upstream", "upstream_error", "openai"))
 
-	if !waitFor(&calls, 3, 5*time.Second) {
+	if !waitForCount(&calls, 3, 5*time.Second) {
 		t.Fatalf("expected at least 3 calls (2 failures + 1 success), got %d", calls.Load())
 	}
 }

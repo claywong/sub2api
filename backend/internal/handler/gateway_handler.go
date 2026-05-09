@@ -757,11 +757,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result, err = h.gatewayService.Forward(requestCtx, c, account, parsedReq)
 			}
 
-			// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
-			// 让"主动 test"和"用户真实调用"的失败信号融合，
-			// 用于 HealthVerdict 三态判定（StickyOnly/Excluded）。
-			h.reportAnthropicForwardResult(account, err, result)
-
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
 			if queueRelease != nil {
 				queueRelease()
@@ -830,10 +825,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
+						// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+						h.reportAnthropicForwardResult(account, err, result)
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					// 同账号重试：本次失败是中间重试，不计入健康窗口，避免虚高 errCount。
+					// 最终失败（重试耗尽切换账号或 Exhausted）时 IsSameAccountRetry=false，正常上报。
+					if !fs.IsSameAccountRetry {
+						h.reportAnthropicForwardResult(account, err, result)
+					}
 					switch action {
 					case FailoverContinue:
 						continue
@@ -844,6 +846,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
+				// 非 failoverErr 的普通错误（网络层、未知错误等），直接上报。
+				h.reportAnthropicForwardResult(account, err, result)
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
@@ -866,6 +870,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				return
 			}
 
+			// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+			// 成功路径无条件上报（含经历同账号重试后最终成功的情况）。
+			h.reportAnthropicForwardResult(account, nil, result)
+
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
@@ -874,9 +882,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
-
-			// 注：成功路径下的 TTFT/Duration/Success 上报已合并到 forward 调用之后的
-			// h.reportAnthropicForwardResult(...)。详见该 helper 的 sample 字段处理。
 
 			// 绑定粘性会话（成功转发后绑定/刷新）
 			// - 无现有绑定（首次请求）：创建绑定

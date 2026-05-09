@@ -3026,7 +3026,9 @@ func (s *GatewayService) healthVerdictConfig() HealthVerdictConfig {
 		ErrRateSoft:       c.ErrRateSoft,
 		ErrRateHard:       c.ErrRateHard,
 		TTFTStickyOnlyMs:  c.TTFTStickyOnlyMs,
+		TTFTExcludedMs:    c.TTFTExcludedMs,
 		OTPSStickyOnlyMin: c.OTPSStickyOnlyMin,
+		OTPSExcludedMin:   c.OTPSExcludedMin,
 	}
 }
 

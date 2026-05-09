@@ -1018,7 +1018,9 @@ type SchedulingHealthConfig struct {
 	ErrRateSoft                 float64 `mapstructure:"err_rate_soft"`                   // 错误率软阈值，默认 0.3
 	ErrRateHard                 float64 `mapstructure:"err_rate_hard"`                   // 错误率硬阈值，默认 0.5
 	TTFTStickyOnlyMs            int     `mapstructure:"ttft_sticky_only_ms"`             // TTFT 进入 StickyOnly 的阈值，默认 10000
+	TTFTExcludedMs              int     `mapstructure:"ttft_excluded_ms"`                // TTFT 进入 Excluded 的阈值，0 表示禁用
 	OTPSStickyOnlyMin           float64 `mapstructure:"otps_sticky_only_min"`            // OTPS 进入 StickyOnly 的下限，默认 10
+	OTPSExcludedMin             float64 `mapstructure:"otps_excluded_min"`               // OTPS 进入 Excluded 的下限，0 表示禁用
 	ExcludedTempUnschedMinutes  int     `mapstructure:"excluded_temp_unsched_minutes"`   // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
 }
 

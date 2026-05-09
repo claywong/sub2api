@@ -213,3 +213,173 @@ func TestHealthVerdict_MinSamplesZeroAlwaysApplies(t *testing.T) {
 	}
 	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, cfg))
 }
+
+// ---- TTFTExcludedMs 新增判定逻辑 ----
+
+// TTFT 均值达到 Excluded 阈值时返回 Excluded
+func TestHealthVerdict_TTFTExcludedMs_AtThreshold_Excluded(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 30000})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:       5,
+		TTFTStickyOnlyMs: 10000,
+		TTFTExcludedMs:   30000,
+	}
+	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, cfg))
+}
+
+// TTFT 均值在 StickyOnly 阈值以上、Excluded 阈值以下时返回 StickyOnly
+func TestHealthVerdict_TTFTExcludedMs_BetweenThresholds_StickyOnly(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 15000})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:       5,
+		TTFTStickyOnlyMs: 8000,
+		TTFTExcludedMs:   30000,
+	}
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, cfg))
+}
+
+// TTFTExcludedMs=0 时禁用该阈值，再高的 TTFT 均值也不触发 Excluded
+func TestHealthVerdict_TTFTExcludedMs_Disabled_NoExcluded(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 60000})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:     5,
+		TTFTExcludedMs: 0, // 禁用
+	}
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, cfg))
+}
+
+// 无 TTFT 样本时，TTFTExcludedMs 不触发（HasTTFT() == false）
+func TestHealthVerdict_TTFTExcludedMs_NoSamples_NoEffect(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true}) // TTFTMs=0 不计入样本
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:     5,
+		TTFTExcludedMs: 1, // 极低阈值，若有样本必然触发
+	}
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, cfg))
+}
+
+// TTFTExcluded 优先于 ErrCountSoft（Hard 组在 Soft 组之前判断）
+func TestHealthVerdict_TTFTExcluded_HasHigherPriorityThanErrCountSoft(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	// 5 次成功（含高 TTFT）+ 5 次失败，errCount=5 触发 ErrCountSoft
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 35000})
+	}
+	for i := 0; i < 5; i++ {
+		cache.ReportRealCall(7, false)
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:       5,
+		ErrCountSoft:     5,
+		ErrCountHard:     100,
+		TTFTStickyOnlyMs: 10000,
+		TTFTExcludedMs:   30000,
+	}
+	// TTFTExcluded 先于 ErrCountSoft，应返回 Excluded
+	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, cfg))
+}
+
+// ---- OTPSExcludedMin 新增判定逻辑 ----
+
+// OTPS 均值低于 Excluded 阈值时返回 Excluded
+// OTPS = (20-1)*1000 / (30000-2000) = 19000/28000 ≈ 0.68
+func TestHealthVerdict_OTPSExcludedMin_BelowThreshold_Excluded(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 2000, DurationMs: 30000, OutputTokens: 20})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:      5,
+		OTPSStickyOnlyMin: 10,
+		OTPSExcludedMin: 1.0,
+	}
+	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, cfg))
+}
+
+// OTPS 均值在 StickyOnly 阈值以下、Excluded 阈值以上时返回 StickyOnly
+// OTPS = (50-1)*1000 / (10000-1000) = 49000/9000 ≈ 5.44
+func TestHealthVerdict_OTPSExcludedMin_BetweenThresholds_StickyOnly(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 1000, DurationMs: 10000, OutputTokens: 50})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:        5,
+		OTPSStickyOnlyMin: 10,
+		OTPSExcludedMin:   3.0,
+	}
+	require.Equal(t, HealthStickyOnly, cache.HealthVerdict(7, cfg))
+}
+
+// OTPSExcludedMin=0 时禁用该阈值
+func TestHealthVerdict_OTPSExcludedMin_Disabled_NoExcluded(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 2000, DurationMs: 30000, OutputTokens: 20})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:      5,
+		OTPSExcludedMin: 0, // 禁用
+	}
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, cfg))
+}
+
+// 无 OTPS 样本时，OTPSExcludedMin 不触发（HasOTPS() == false）
+func TestHealthVerdict_OTPSExcludedMin_NoSamples_NoEffect(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	// 样本缺少 OutputTokens（<10）或 Duration <= TTFTMs，不会产生 OTPS 样本
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 500, DurationMs: 400}) // DurationMs < TTFTMs
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:      5,
+		OTPSExcludedMin: 999, // 极高阈值，若有样本必然触发
+	}
+	require.Equal(t, HealthOK, cache.HealthVerdict(7, cfg))
+}
+
+// ---- SnapshotAndVerdictWithConfig reason 字符串验证 ----
+
+// TTFTExcludedMs 触发时 reason 包含 "excluded" 标记
+func TestSnapshotAndVerdictWithConfig_TTFTExcluded_ReasonContainsExcluded(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 35000})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:     5,
+		TTFTExcludedMs: 30000,
+	}
+	_, verdict, reason := cache.SnapshotAndVerdictWithConfig(7, cfg)
+	require.Equal(t, HealthExcluded, verdict)
+	require.Contains(t, reason, "excluded")
+	require.Contains(t, reason, "ttft_avg")
+}
+
+// OTPSExcludedMin 触发时 reason 包含 "excluded" 标记
+func TestSnapshotAndVerdictWithConfig_OTPSExcluded_ReasonContainsExcluded(t *testing.T) {
+	cache := NewAccountTestHealthCache(nil)
+	for i := 0; i < 5; i++ {
+		cache.Record(7, CallSample{Success: true, TTFTMs: 2000, DurationMs: 30000, OutputTokens: 20})
+	}
+	cfg := HealthVerdictConfig{
+		MinSamples:      5,
+		OTPSExcludedMin: 1.0,
+	}
+	_, verdict, reason := cache.SnapshotAndVerdictWithConfig(7, cfg)
+	require.Equal(t, HealthExcluded, verdict)
+	require.Contains(t, reason, "excluded")
+	require.Contains(t, reason, "otps_avg")
+}

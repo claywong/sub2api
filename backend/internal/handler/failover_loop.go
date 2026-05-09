@@ -48,6 +48,9 @@ type FailoverState struct {
 	LastFailoverErr       *service.UpstreamFailoverError
 	ForceCacheBilling     bool
 	hasBoundSession       bool
+	// IsSameAccountRetry 标记本次 HandleFailoverError 决定在同一账号上重试。
+	// gateway_handler 用此标记跳过中间次的健康上报，避免一次用户请求虚高 errCount。
+	IsSameAccountRetry bool
 }
 
 // NewFailoverState 创建 failover 状态
@@ -79,6 +82,7 @@ func (s *FailoverState) HandleFailoverError(
 	// 同账号重试：对 RetryableOnSameAccount 的临时性错误，先在同一账号上重试
 	if failoverErr.RetryableOnSameAccount && s.SameAccountRetryCount[accountID] < maxSameAccountRetries {
 		s.SameAccountRetryCount[accountID]++
+		s.IsSameAccountRetry = true
 		logger.FromContext(ctx).Warn("gateway.failover_same_account_retry",
 			zap.Int64("account_id", accountID),
 			zap.Int("upstream_status", failoverErr.StatusCode),
@@ -90,6 +94,8 @@ func (s *FailoverState) HandleFailoverError(
 		}
 		return FailoverContinue
 	}
+
+	s.IsSameAccountRetry = false
 
 	// 同账号重试用尽，执行临时封禁
 	if failoverErr.RetryableOnSameAccount {

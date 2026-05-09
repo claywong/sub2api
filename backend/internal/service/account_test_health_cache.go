@@ -230,7 +230,9 @@ type HealthVerdictConfig struct {
 	ErrRateSoft       float64 // 错误率 ≥ 此值 → StickyOnly
 	ErrRateHard       float64 // 错误率 ≥ 此值 → Excluded
 	TTFTStickyOnlyMs  int     // TTFTAvg ≥ 此值 → StickyOnly
+	TTFTExcludedMs    int     // TTFTAvg ≥ 此值（且有样本）→ Excluded；0 表示禁用
 	OTPSStickyOnlyMin float64 // OTPSAvg < 此值（且有样本）→ StickyOnly
+	OTPSExcludedMin   float64 // OTPSAvg < 此值（且有样本）→ Excluded；0 表示禁用
 }
 
 // AccountTestHealthCache 使用 sync.Map 存储账号健康状态，key 为 accountID int64
@@ -441,6 +443,12 @@ func verdictFromSnapshot(s HealthSnapshot, cfg HealthVerdictConfig) HealthVerdic
 	if cfg.ErrRateHard > 0 && s.ErrRate() >= cfg.ErrRateHard {
 		return HealthExcluded
 	}
+	if cfg.TTFTExcludedMs > 0 && s.HasTTFT() && s.TTFTAvg() >= float64(cfg.TTFTExcludedMs) {
+		return HealthExcluded
+	}
+	if cfg.OTPSExcludedMin > 0 && s.HasOTPS() && s.OTPSAvg() < cfg.OTPSExcludedMin {
+		return HealthExcluded
+	}
 	if cfg.ErrCountSoft > 0 && s.ErrCount >= cfg.ErrCountSoft {
 		return HealthStickyOnly
 	}
@@ -536,6 +544,12 @@ func (c *AccountTestHealthCache) HealthVerdict(accountID int64, cfg HealthVerdic
 	if cfg.ErrRateHard > 0 && s.ErrRate() >= cfg.ErrRateHard {
 		return HealthExcluded
 	}
+	if cfg.TTFTExcludedMs > 0 && s.HasTTFT() && s.TTFTAvg() >= float64(cfg.TTFTExcludedMs) {
+		return HealthExcluded
+	}
+	if cfg.OTPSExcludedMin > 0 && s.HasOTPS() && s.OTPSAvg() < cfg.OTPSExcludedMin {
+		return HealthExcluded
+	}
 
 	// Soft 阈值：仅粘性
 	if cfg.ErrCountSoft > 0 && s.ErrCount >= cfg.ErrCountSoft {
@@ -604,6 +618,12 @@ func (c *AccountTestHealthCache) HealthVerdictWithReason(accountID int64) (verdi
 	if cfg.ErrRateHard > 0 && s.ErrRate() >= cfg.ErrRateHard {
 		return HealthExcluded, fmt.Sprintf("err_rate=%.1f%%(≥%.0f%%)", s.ErrRate()*100, cfg.ErrRateHard*100)
 	}
+	if cfg.TTFTExcludedMs > 0 && s.HasTTFT() && s.TTFTAvg() >= float64(cfg.TTFTExcludedMs) {
+		return HealthExcluded, fmt.Sprintf("ttft_avg=%.0fms(≥%dms,excluded)", s.TTFTAvg(), cfg.TTFTExcludedMs)
+	}
+	if cfg.OTPSExcludedMin > 0 && s.HasOTPS() && s.OTPSAvg() < cfg.OTPSExcludedMin {
+		return HealthExcluded, fmt.Sprintf("otps_avg=%.1f(<%g,excluded)", s.OTPSAvg(), cfg.OTPSExcludedMin)
+	}
 	if cfg.ErrCountSoft > 0 && s.ErrCount >= cfg.ErrCountSoft {
 		return HealthStickyOnly, fmt.Sprintf("err_count=%d(≥%d)", s.ErrCount, cfg.ErrCountSoft)
 	}
@@ -652,6 +672,12 @@ func (c *AccountTestHealthCache) SnapshotAndVerdictWithConfig(accountID int64, c
 	}
 	if cfg.ErrRateHard > 0 && snap.ErrRate() >= cfg.ErrRateHard {
 		return snap, HealthExcluded, fmt.Sprintf("err_rate=%.1f%%(≥%.0f%%)", snap.ErrRate()*100, cfg.ErrRateHard*100)
+	}
+	if cfg.TTFTExcludedMs > 0 && snap.HasTTFT() && snap.TTFTAvg() >= float64(cfg.TTFTExcludedMs) {
+		return snap, HealthExcluded, fmt.Sprintf("ttft_avg=%.0fms(≥%dms,excluded)", snap.TTFTAvg(), cfg.TTFTExcludedMs)
+	}
+	if cfg.OTPSExcludedMin > 0 && snap.HasOTPS() && snap.OTPSAvg() < cfg.OTPSExcludedMin {
+		return snap, HealthExcluded, fmt.Sprintf("otps_avg=%.1f(<%g,excluded)", snap.OTPSAvg(), cfg.OTPSExcludedMin)
 	}
 	if cfg.ErrCountSoft > 0 && snap.ErrCount >= cfg.ErrCountSoft {
 		return snap, HealthStickyOnly, fmt.Sprintf("err_count=%d(≥%d)", snap.ErrCount, cfg.ErrCountSoft)
