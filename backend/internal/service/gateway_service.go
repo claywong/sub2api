@@ -47,10 +47,9 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 500 * 1024 * 1024
+	// 调度算法常量 schedulingAlgorithmLegacy / schedulingAlgorithmWeighted
+	// 已搬到 gateway_service_scheduling.go（私有扩展）。
 
-	// 调度算法名称（gateway.scheduling.algorithm）
-	schedulingAlgorithmLegacy   = "legacy"
-	schedulingAlgorithmWeighted = "weighted"
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
 	// separator between system blocks, we add "\n\n" at concatenation time.
@@ -530,21 +529,7 @@ func (e *UpstreamFailoverError) Error() string {
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
 
-// ClientRequestError 表示由客户端请求内容导致的错误（如 invalid_request_error），
-// 不应计入账号健康统计，与 ops error_owner = 'client' 的分类语义对齐。
-type ClientRequestError struct {
-	StatusCode int
-	cause      error
-}
-
-func (e *ClientRequestError) Error() string {
-	if e.cause != nil {
-		return e.cause.Error()
-	}
-	return fmt.Sprintf("upstream error: %d", e.StatusCode)
-}
-
-func (e *ClientRequestError) Unwrap() error { return e.cause }
+// ClientRequestError 已搬到 gateway_service_errors.go（私有扩展）。
 
 // TempUnscheduleRetryableError 对 RetryableOnSameAccount 类型的 failover 错误触发临时封禁。
 // 由 handler 层在同账号重试全部用尽、切换账号时调用。
@@ -691,89 +676,6 @@ func NewGatewayService(
 		svc.initDebugGatewayBodyFile(path)
 	}
 	return svc
-}
-
-// ResolveRequestID 解析请求级 request_id（client:/local:/upstream/generated 优先级），
-// 用于在 handler 同步路径上提前固定 ID，确保 usage_logs 与 request_logs 使用同一 ID。
-func (s *GatewayService) ResolveRequestID(ctx context.Context, upstreamRequestID string) string {
-	return resolveUsageBillingRequestID(ctx, upstreamRequestID)
-}
-
-// ExtractClientSessionID 提取客户端原始会话标识，用于写入 request_logs.session_id。
-// 优先级：HTTP header session_id / conversation_id → metadata.user_id 中的 SessionID
-// → header anthropic-session-id（部分 SDK 自定义）→ 空串。
-//
-// 该值不做 hash，只规范化（trim + 截断到 256 字节）。这样跨协议同一会话的多次请求
-// 在 request_logs 中拥有相同 session_id，便于按会话聚合查询。
-func (s *GatewayService) ExtractClientSessionID(c *gin.Context, parsed *ParsedRequest) string {
-	if c != nil {
-		if v := strings.TrimSpace(c.GetHeader("session_id")); v != "" {
-			return requestlog.NormalizeSessionID(v)
-		}
-		if v := strings.TrimSpace(c.GetHeader("conversation_id")); v != "" {
-			return requestlog.NormalizeSessionID(v)
-		}
-	}
-	if parsed != nil && parsed.MetadataUserID != "" {
-		if uid := ParseMetadataUserID(parsed.MetadataUserID); uid != nil && uid.SessionID != "" {
-			return requestlog.NormalizeSessionID(uid.SessionID)
-		}
-	}
-	return ""
-}
-
-// finalizeRespCollector 安全地从可空 collector 取出聚合结果。
-func finalizeRespCollector(c *requestlog.AnthropicCollector) string {
-	if c == nil {
-		return ""
-	}
-	return c.Finalize()
-}
-
-// WriteRequestLog 异步写入请求内容日志，仅当 gateway.request_log.enabled=true 时生效。
-//
-// 入参约定：
-//   - sessionID：原始客户端会话标识（不 hash），由 NormalizeSessionID 截断到 256；
-//     上层应通过 ExtractClientSessionID 获取，保证跨协议含义一致。
-//   - reqBody：原始请求体；函数会调用 SimplifyRequestBody 只保留 messages/input 最后一条，
-//     无法识别协议时原样保留，最后用 MaxBodyBytes 兜底（仅在已经无法精简时）。
-//   - respBody：调用方应已经经过 collector / Simplify*Response 精简；本函数也兜底 MaxBodyBytes。
-func (s *GatewayService) WriteRequestLog(ctx context.Context, requestID, sessionID string, userID int64, reqBody, respBody string) {
-	if s.requestLogRepo == nil || s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled {
-		return
-	}
-	if requestID == "" {
-		requestID = resolveUsageBillingRequestID(ctx, "")
-	}
-	sessionID = requestlog.NormalizeSessionID(sessionID)
-	reqBody = requestlog.SimplifyRequestBody([]byte(reqBody))
-	maxBytes := s.cfg.Gateway.RequestLog.MaxBodyBytes
-	if maxBytes > 0 && len(reqBody) > maxBytes {
-		// 若精简后仍超大（极少发生：messages[-1] 自身就很大），尝试 SafeTruncate；
-		// 解析失败再退回 byte 截断，最坏是非法 JSON 但不阻塞写入。
-		safe := requestlog.SafeTruncateJSON([]byte(reqBody), maxBytes/4)
-		if len(safe) <= maxBytes {
-			reqBody = string(safe)
-		} else {
-			reqBody = reqBody[:maxBytes]
-		}
-	}
-	if maxBytes > 0 && len(respBody) > maxBytes {
-		safe := requestlog.SafeTruncateJSON([]byte(respBody), maxBytes/4)
-		if len(safe) <= maxBytes {
-			respBody = string(safe)
-		} else {
-			respBody = respBody[:maxBytes]
-		}
-	}
-	s.requestLogRepo.CreateBestEffort(ctx, &RequestLog{
-		RequestID:    requestID,
-		SessionID:    sessionID,
-		UserID:       userID,
-		RequestBody:  reqBody,
-		ResponseBody: respBody,
-		CreatedAt:    time.Now(),
-	})
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -2255,107 +2157,8 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	}
 }
 
-// chooseSchedulingAlgorithm 决定指定 group 走哪种调度算法。
-// 优先级：LegacyGroups（豁免） > WeightedGroups（白名单） > 全局 Algorithm。
-// 默认 legacy，保持向后兼容。
-func (s *GatewayService) chooseSchedulingAlgorithm(groupID *int64) string {
-	cfg := s.schedulingConfig()
-	gid := derefGroupID(groupID)
-	for _, id := range cfg.LegacyGroups {
-		if id == gid {
-			return schedulingAlgorithmLegacy
-		}
-	}
-	for _, id := range cfg.WeightedGroups {
-		if id == gid {
-			return schedulingAlgorithmWeighted
-		}
-	}
-	if cfg.Algorithm == schedulingAlgorithmWeighted {
-		return schedulingAlgorithmWeighted
-	}
-	return schedulingAlgorithmLegacy
-}
-
-// resolvedSchedulingHealth 返回 SchedulingHealthConfig，零值字段回退到内置默认。
-func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfig {
-	c := s.schedulingConfig().Health
-	if c.WindowMinutes <= 0 {
-		c.WindowMinutes = 10
-	}
-	if c.MinSamples <= 0 {
-		c.MinSamples = 5
-	}
-	if c.ErrCountSoft <= 0 {
-		c.ErrCountSoft = 3
-	}
-	if c.ErrCountHard <= 0 {
-		c.ErrCountHard = 5
-	}
-	if c.ErrRateSoft <= 0 {
-		c.ErrRateSoft = 0.3
-	}
-	if c.ErrRateHard <= 0 {
-		c.ErrRateHard = 0.5
-	}
-	if c.TTFTStickyOnlyMs <= 0 {
-		c.TTFTStickyOnlyMs = 10000
-	}
-	if c.OTPSStickyOnlyMin <= 0 {
-		c.OTPSStickyOnlyMin = 20
-	}
-	return c
-}
-
-// resolvedScoreWeights 返回 5 因子权重，零值回退到内置默认。
-func (s *GatewayService) resolvedScoreWeights() config.ScoreWeightsConfig {
-	c := s.schedulingConfig().ScoreWeights
-	if c.ErrRate <= 0 {
-		c.ErrRate = 1.5
-	}
-	if c.TTFT <= 0 {
-		c.TTFT = 1.2
-	}
-	if c.OTPS <= 0 {
-		c.OTPS = 1.0
-	}
-	if c.Load <= 0 {
-		c.Load = 0.3
-	}
-	if c.Priority <= 0 {
-		c.Priority = 0.5
-	}
-	return c
-}
-
-// resolvedScoreThresholds 返回因子归一化阈值，零值回退到内置默认。
-func (s *GatewayService) resolvedScoreThresholds() config.ScoreThresholdsConfig {
-	c := s.schedulingConfig().ScoreThresholds
-	if c.TTFTBestMs <= 0 {
-		c.TTFTBestMs = 1500
-	}
-	if c.TTFTWorstMs <= 0 {
-		c.TTFTWorstMs = 6000
-	}
-	if c.OTPSBest <= 0 {
-		c.OTPSBest = 80
-	}
-	if c.OTPSWorst <= 0 {
-		c.OTPSWorst = 10
-	}
-	if c.LoadThresholdPct <= 0 {
-		c.LoadThresholdPct = 70
-	}
-	return c
-}
-
-// resolvedSchedulingTopK 返回 Top-K 加权随机的 K，零值回退默认 5。
-func (s *GatewayService) resolvedSchedulingTopK() int {
-	if k := s.schedulingConfig().TopK; k > 0 {
-		return k
-	}
-	return 5
-}
+// chooseSchedulingAlgorithm / resolvedSchedulingHealth / resolvedScoreWeights /
+// resolvedScoreThresholds / resolvedSchedulingTopK 已搬到 gateway_service_scheduling.go（私有扩展）。
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
 	if !IsGroupContextValid(group) {
@@ -3030,162 +2833,10 @@ func filterByMinLoadRate(accounts []accountWithLoad) []accountWithLoad {
 	return result
 }
 
-// HealthCache 暴露内部健康缓存指针，仅用于 admin 调试 / 监控接口。
-// 调用方不应通过它绕过 gateway 调度路径写入数据。
-func (s *GatewayService) HealthCache() *AccountTestHealthCache {
-	if s == nil {
-		return nil
-	}
-	return s.healthCache
-}
-
-// logSchedulerSelected 统一打"调度选中"日志，覆盖 sticky/weighted/legacy/fallback 各层。
-//
-// 触发规则（满足其一即打）：
-//  1. cfg.Debug.LogDecisions = true（全量）
-//  2. groupID 在 cfg.Debug.LogGroups 白名单内（指定 group 强制 100%）
-//  3. cfg.Debug.LogSampleRate > 0 且 RNG 命中（采样）
-func (s *GatewayService) logSchedulerSelected(layer string, account *Account, sessionHash string, groupID *int64, acquired bool) {
-	if s == nil || account == nil {
-		return
-	}
-	cfg := s.schedulingConfig().Debug
-	if !cfg.LogDecisions && !groupContainedInLogList(groupID, cfg.LogGroups) {
-		// 未启用且不在白名单 → 按采样率
-		if cfg.LogSampleRate <= 0 || mathrand.Float64() > cfg.LogSampleRate {
-			return
-		}
-	}
-	logger.LegacyPrintf("service.gateway",
-		"[SchedulerSelected] layer=%s group=%v session=%s account=%d priority=%d acquired=%v",
-		layer, derefGroupID(groupID), shortSessionHash(sessionHash),
-		account.ID, account.Priority, acquired)
-}
-
-// RecordAnthropicCall 上报一次真实 Anthropic 请求的完整样本到健康缓存。
-// 与"主动 test"路径融合，进入同一份滑动窗口，供 HealthVerdict 三态判定使用。
-//
-// 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
-//   - 上游错误（4xx/5xx/429/超时、UpstreamFailoverError 等）→ Success=false
-//   - 客户端中断（context.Canceled）→ 调用方应跳过，不上报
-//   - 请求内容问题（PromptTooLong/BetaBlocked）→ 调用方应跳过
-func (s *GatewayService) RecordAnthropicCall(accountID int64, sample CallSample) {
-	if s.healthCache == nil {
-		return
-	}
-	s.healthCache.RecordRealCall(accountID, sample)
-}
-
-// AnthropicHealthSnapshot 返回账号当前 10min 滑动窗口的指标快照，供日志和监控使用。
-// healthCache 为 nil 时返回零值快照（不影响调用方）。
-func (s *GatewayService) AnthropicHealthSnapshot(accountID int64) HealthSnapshot {
-	if s.healthCache == nil {
-		return HealthSnapshot{}
-	}
-	snap, _, _ := s.healthCache.SnapshotAndVerdict(accountID)
-	return snap
-}
-
-// AnthropicHealthVerdictThresholds 返回当前生效的 HealthVerdict 判定阈值，
-// 供 handler 层日志使用，避免硬编码魔法值。
-func (s *GatewayService) AnthropicHealthVerdictThresholds() HealthVerdictConfig {
-	return s.healthVerdictConfig()
-}
-
-// ReportAnthropicAccountResult 将真实请求的成败结果上报到健康缓存。
-// 与 ReportAnthropicAccountTTFT/Duration 配合使用，让"用户真实调用"和"主动 test"
-// 在 ConsecFails 维度上融合，使 HealthVerdict 三态判定能感知真实流量的失败。
-//
-// 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
-//   - 上游错误（4xx/5xx/429/超时）→ success=false
-//   - 客户端中断（context.Canceled）→ 调用方应跳过，不上报
-//   - 请求内容问题（PromptTooLong 等）→ 调用方应跳过，不上报
-func (s *GatewayService) ReportAnthropicAccountResult(accountID int64, success bool) {
-	if s.healthCache == nil {
-		return
-	}
-	s.healthCache.ReportRealCall(accountID, success)
-}
-
-// healthVerdictConfig 把 SchedulingHealthConfig 转换为
-// AccountTestHealthCache.HealthVerdict() 的入参。
-// 基于滑动窗口快照的窗口指标判定（errCount/errRate/ttftAvg/otpsAvg）。
-func (s *GatewayService) healthVerdictConfig() HealthVerdictConfig {
-	c := s.resolvedSchedulingHealth()
-	return HealthVerdictConfig{
-		WindowSeconds:     int64(c.WindowMinutes) * 60,
-		MinSamples:        c.MinSamples,
-		ErrCountSoft:      c.ErrCountSoft,
-		ErrCountHard:      c.ErrCountHard,
-		ErrRateSoft:       c.ErrRateSoft,
-		ErrRateHard:       c.ErrRateHard,
-		TTFTStickyOnlyMs:  c.TTFTStickyOnlyMs,
-		TTFTExcludedMs:    c.TTFTExcludedMs,
-		OTPSStickyOnlyMin: c.OTPSStickyOnlyMin,
-		OTPSExcludedMin:   c.OTPSExcludedMin,
-	}
-}
-
-// isAccountHealthEnabled 返回是否启用账号健康感知调度（三态 + 硬过滤），默认 false。
-func (s *GatewayService) isAccountHealthEnabled() bool {
-	return s.schedulingConfig().AccountHealth.Enabled
-}
-
-// onHealthVerdictChange 在账号健康状态切换时由 AccountTestHealthCache 异步回调。
-// 当状态切换为 HealthExcluded 时触发 TempUnschedulable，时长由配置决定（默认 30 分钟）。
-func (s *GatewayService) onHealthVerdictChange(accountID int64, prev, current HealthVerdict) {
-	if current != HealthExcluded {
-		return
-	}
-	minutes := s.resolvedSchedulingHealth().ExcludedTempUnschedMinutes
-	if minutes <= 0 {
-		minutes = 30
-	}
-	until := time.Now().Add(time.Duration(minutes) * time.Minute)
-	snap, _, reason := s.healthCache.SnapshotAndVerdictWithConfig(accountID, s.healthVerdictConfig())
-	msg := fmt.Sprintf("health_excluded(%s) req=%d err=%d err_rate=%.1f%% ttft_avg=%.0fms otps_avg=%.1f",
-		reason, snap.ReqCount, snap.ErrCount, snap.ErrRate()*100, snap.TTFTAvg(), snap.OTPSAvg())
-	if err := s.rateLimitService.SetTempUnschedulableForScheduledTest(context.Background(), accountID, until, msg); err != nil {
-		logger.LegacyPrintf("service.gateway", "[HealthExcluded] SetTempUnschedulable failed account_id=%d err=%v", accountID, err)
-	}
-}
-
-// isAccountSchedulableForHealth 与 isAccountSchedulableForWindowCost / RPM 同款签名风格。
-// 仅作用于 Anthropic 平台账号，沿用 WindowCostStickyOnly 三态语义：
-//   - HealthOK         → 始终放行
-//   - HealthStickyOnly → 仅 isSticky=true 路径放行（Layer 1.5 sticky 命中时通过；
-//                       Layer 2 新会话路径拒绝）
-//   - HealthExcluded   → 触发 TempUnschedulable（由 OnVerdictChange 回调异步处理），
-//                       调度层与 StickyOnly 行为相同，后续由 TempUnschedulable 接管
-func (s *GatewayService) isAccountSchedulableForHealth(account *Account, isSticky bool) bool {
-	if account == nil || account.Platform != PlatformAnthropic {
-		return true
-	}
-	if s == nil || s.healthCache == nil {
-		return true
-	}
-	verdict, prev, changed := s.healthCache.HealthVerdictWithChange(account.ID, s.healthVerdictConfig())
-	if changed {
-		snap, _, reason := s.healthCache.SnapshotAndVerdictWithConfig(account.ID, s.healthVerdictConfig())
-		logger.LegacyPrintf("service.gateway",
-			"[WARN] [HealthVerdictChange] account_id=%d %s->%s reason=%q req=%d err=%d err_rate=%.1f%% ttft_avg=%.0fms otps_avg=%.1f slow_rate=%.1f%%",
-			account.ID, prev.String(), verdict.String(), reason,
-			snap.ReqCount, snap.ErrCount, snap.ErrRate()*100,
-			snap.TTFTAvg(), snap.OTPSAvg(), snap.SlowRate()*100)
-	}
-	switch verdict {
-	case HealthOK:
-		return true
-	case HealthStickyOnly:
-		return isSticky
-	case HealthExcluded:
-		// TempUnschedulable 由 OnVerdictChange 异步触发，生效前这里继续同步拦截。
-		// TempUnschedulable 生效后 shouldClearStickySession 会清除 sticky 绑定，
-		// 后续请求不再走到这里。
-		return false
-	}
-	return true
-}
+// HealthCache / logSchedulerSelected / RecordAnthropicCall / AnthropicHealthSnapshot /
+// AnthropicHealthVerdictThresholds / ReportAnthropicAccountResult / healthVerdictConfig /
+// isAccountHealthEnabled / onHealthVerdictChange / isAccountSchedulableForHealth
+// 已搬到 gateway_service_scheduling.go（私有扩展）。
 
 // selectByLRU 从集合中选择最久未用的账号
 // 如果有多个账号具有相同的最小 LastUsedAt，则随机选择一个
@@ -5444,101 +5095,8 @@ func copyAllowedPassthroughHeaders(dst http.Header, src http.Header) {
 	}
 }
 
-func (s *GatewayService) buildAnthropicPassthroughTargetURL(account *Account, path string) (string, error) {
-	var targetURL string
-	switch path {
-	case "/v1/messages":
-		targetURL = claudeAPIURL
-	case "/v1/messages/count_tokens":
-		targetURL = claudeAPICountTokensURL
-	default:
-		return "", fmt.Errorf("unsupported anthropic passthrough path: %s", path)
-	}
-
-	if account == nil {
-		return targetURL, nil
-	}
-
-	if account.Type == AccountTypeAPIKey {
-		baseURL := account.GetBaseURL()
-		if baseURL == "" {
-			return targetURL, nil
-		}
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-		if err != nil {
-			return "", err
-		}
-		return validatedURL + path + "?beta=true", nil
-	}
-
-	if account.IsCustomBaseURLEnabled() {
-		customURL := account.GetCustomBaseURL()
-		if customURL == "" {
-			return "", fmt.Errorf("custom_base_url is enabled but not configured for account %d", account.ID)
-		}
-		validatedURL, err := s.validateUpstreamBaseURL(customURL)
-		if err != nil {
-			return "", err
-		}
-		return s.buildCustomRelayURL(validatedURL, path, account), nil
-	}
-
-	return targetURL, nil
-}
-
-func resolveAnthropicPassthroughProxyURL(account *Account) string {
-	if account == nil || account.ProxyID == nil || account.Proxy == nil {
-		return ""
-	}
-	if account.IsCustomBaseURLEnabled() && account.GetCustomBaseURL() != "" {
-		return ""
-	}
-	return account.Proxy.URL()
-}
-
-func (s *GatewayService) buildAnthropicSafePassthroughRequest(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	body []byte,
-	token string,
-	tokenType string,
-	path string,
-) (*http.Request, error) {
-	targetURL, err := s.buildAnthropicPassthroughTargetURL(account, path)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-
-	if c != nil && c.Request != nil {
-		copyAllowedPassthroughHeaders(req.Header, c.Request.Header)
-	}
-
-	deleteHeaderRaw(req.Header, "authorization")
-	deleteHeaderRaw(req.Header, "x-api-key")
-	deleteHeaderRaw(req.Header, "x-goog-api-key")
-	deleteHeaderRaw(req.Header, "cookie")
-
-	if tokenType == "oauth" {
-		setHeaderRaw(req.Header, "authorization", "Bearer "+token)
-	} else {
-		setHeaderRaw(req.Header, "x-api-key", token)
-	}
-
-	if getHeaderRaw(req.Header, "content-type") == "" {
-		setHeaderRaw(req.Header, "content-type", "application/json")
-	}
-	if getHeaderRaw(req.Header, "anthropic-version") == "" {
-		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
-	}
-
-	return req, nil
-}
+// buildAnthropicPassthroughTargetURL / resolveAnthropicPassthroughProxyURL /
+// buildAnthropicSafePassthroughRequest 已搬到 gateway_service_anthropic_passthrough.go（私有扩展）。
 
 func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	ctx context.Context,
@@ -9665,129 +9223,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	return nil
 }
 
-func (s *GatewayService) forwardCountTokensAnthropicPassthrough(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	body []byte,
-	errorLabel string,
-	allowOAuth bool,
-	buildRequest anthropicPassthroughRequestBuilder,
-) error {
-	token, tokenType, err := s.GetAccessToken(ctx, account)
-	if err != nil {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to get access token")
-		return err
-	}
-	if tokenType != "apikey" && (!allowOAuth || tokenType != "oauth") {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Invalid account token type")
-		expected := "apikey"
-		if allowOAuth {
-			expected = "apikey or oauth"
-		}
-		return fmt.Errorf("%s requires %s token, got: %s", errorLabel, expected, tokenType)
-	}
-
-	upstreamReq, err := buildRequest(ctx, c, account, body, token, tokenType)
-	if err != nil {
-		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
-		return err
-	}
-
-	proxyURL := resolveAnthropicPassthroughProxyURL(account)
-
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: 0,
-			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
-			Passthrough:        true,
-			Kind:               "request_error",
-			Message:            sanitizeUpstreamErrorMessage(err.Error()),
-		})
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
-		return fmt.Errorf("upstream request failed: %w", err)
-	}
-
-	countTokensTooLarge := func(c *gin.Context) {
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
-	}
-	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
-	_ = resp.Body.Close()
-	if err != nil {
-		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
-		}
-		return err
-	}
-
-	if resp.StatusCode >= 400 {
-		if s.rateLimitService != nil {
-			s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
-		}
-
-		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-
-		// 中转站不支持 count_tokens 端点时（404），返回 404 让客户端 fallback 到本地估算。
-		// 仅在错误消息明确指向 count_tokens endpoint 不存在时生效，避免误吞其他 404（如错误 base_url）。
-		// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
-		if isCountTokensUnsupported404(resp.StatusCode, respBody) {
-			logger.LegacyPrintf("service.gateway",
-				"[count_tokens] Upstream does not support count_tokens (404), returning 404: account=%d name=%s msg=%s",
-				account.ID, account.Name, truncateString(upstreamMsg, 512))
-			s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported by upstream")
-			return nil
-		}
-
-		upstreamDetail := ""
-		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-			if maxBytes <= 0 {
-				maxBytes = 2048
-			}
-			upstreamDetail = truncateString(string(respBody), maxBytes)
-		}
-		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
-		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-			Platform:           account.Platform,
-			AccountID:          account.ID,
-			AccountName:        account.Name,
-			UpstreamStatusCode: resp.StatusCode,
-			UpstreamRequestID:  resp.Header.Get("x-request-id"),
-			UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
-			Passthrough:        true,
-			Kind:               "http_error",
-			Message:            upstreamMsg,
-			Detail:             upstreamDetail,
-		})
-
-		errMsg := "Upstream request failed"
-		switch resp.StatusCode {
-		case 429:
-			errMsg = "Rate limit exceeded"
-		case 529:
-			errMsg = "Service overloaded"
-		}
-		s.countTokensError(c, resp.StatusCode, "upstream_error", errMsg)
-		if upstreamMsg == "" {
-			return fmt.Errorf("upstream error: %d", resp.StatusCode)
-		}
-		return fmt.Errorf("upstream error: %d message=%s", resp.StatusCode, upstreamMsg)
-	}
-
-	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
-	if contentType == "" {
-		contentType = "application/json"
-	}
-	c.Data(resp.StatusCode, contentType, respBody)
-	return nil
-}
+// forwardCountTokensAnthropicPassthrough 已搬到 gateway_service_anthropic_passthrough.go（私有扩展）。
 
 func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
 	return s.forwardCountTokensAnthropicPassthrough(
@@ -9811,39 +9247,10 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, "apikey", "/v1/messages/count_tokens")
 }
 
-func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthroughForMode(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	body []byte,
-	token string,
-	_ string,
-) (*http.Request, error) {
-	return s.buildCountTokensRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
-}
-
-func (s *GatewayService) forwardCountTokensAnthropicFullPassthrough(ctx context.Context, c *gin.Context, account *Account, body []byte) error {
-	return s.forwardCountTokensAnthropicPassthrough(
-		ctx,
-		c,
-		account,
-		body,
-		"anthropic full passthrough",
-		true,
-		s.buildCountTokensRequestAnthropicFullPassthrough,
-	)
-}
-
-func (s *GatewayService) buildCountTokensRequestAnthropicFullPassthrough(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	body []byte,
-	token string,
-	tokenType string,
-) (*http.Request, error) {
-	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, tokenType, "/v1/messages/count_tokens")
-}
+// buildCountTokensRequestAnthropicAPIKeyPassthroughForMode /
+// forwardCountTokensAnthropicFullPassthrough /
+// buildCountTokensRequestAnthropicFullPassthrough
+// 已搬到 gateway_service_anthropic_passthrough.go（私有扩展）。
 
 // buildCountTokensRequest 构建 count_tokens 上游请求
 func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, error) {
