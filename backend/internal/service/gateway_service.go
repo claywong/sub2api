@@ -28,6 +28,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -511,6 +512,9 @@ type ForwardResult struct {
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount int    // 生成的图片数量
 	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
+
+	// CapturedResponseBody 仅当 gateway.request_log.enabled=true 时填充，供调用方写入 request_logs 表。
+	CapturedResponseBody string
 }
 
 // UpstreamFailoverError indicates an upstream error that should trigger account failover.
@@ -599,6 +603,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	healthCache           *AccountTestHealthCache
+	requestLogRepo        RequestLogRepository
 }
 
 // NewGatewayService creates a new GatewayService
@@ -630,6 +635,7 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	healthCache *AccountTestHealthCache,
+	requestLogRepo RequestLogRepository,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -666,6 +672,7 @@ func NewGatewayService(
 		resolver:             resolver,
 		balanceNotifyService: balanceNotifyService,
 		healthCache:          healthCache,
+		requestLogRepo:       requestLogRepo,
 	}
 	if healthCache != nil && rateLimitService != nil {
 		healthCache.OnVerdictChange = svc.onHealthVerdictChange
@@ -684,6 +691,89 @@ func NewGatewayService(
 		svc.initDebugGatewayBodyFile(path)
 	}
 	return svc
+}
+
+// ResolveRequestID 解析请求级 request_id（client:/local:/upstream/generated 优先级），
+// 用于在 handler 同步路径上提前固定 ID，确保 usage_logs 与 request_logs 使用同一 ID。
+func (s *GatewayService) ResolveRequestID(ctx context.Context, upstreamRequestID string) string {
+	return resolveUsageBillingRequestID(ctx, upstreamRequestID)
+}
+
+// ExtractClientSessionID 提取客户端原始会话标识，用于写入 request_logs.session_id。
+// 优先级：HTTP header session_id / conversation_id → metadata.user_id 中的 SessionID
+// → header anthropic-session-id（部分 SDK 自定义）→ 空串。
+//
+// 该值不做 hash，只规范化（trim + 截断到 256 字节）。这样跨协议同一会话的多次请求
+// 在 request_logs 中拥有相同 session_id，便于按会话聚合查询。
+func (s *GatewayService) ExtractClientSessionID(c *gin.Context, parsed *ParsedRequest) string {
+	if c != nil {
+		if v := strings.TrimSpace(c.GetHeader("session_id")); v != "" {
+			return requestlog.NormalizeSessionID(v)
+		}
+		if v := strings.TrimSpace(c.GetHeader("conversation_id")); v != "" {
+			return requestlog.NormalizeSessionID(v)
+		}
+	}
+	if parsed != nil && parsed.MetadataUserID != "" {
+		if uid := ParseMetadataUserID(parsed.MetadataUserID); uid != nil && uid.SessionID != "" {
+			return requestlog.NormalizeSessionID(uid.SessionID)
+		}
+	}
+	return ""
+}
+
+// finalizeRespCollector 安全地从可空 collector 取出聚合结果。
+func finalizeRespCollector(c *requestlog.AnthropicCollector) string {
+	if c == nil {
+		return ""
+	}
+	return c.Finalize()
+}
+
+// WriteRequestLog 异步写入请求内容日志，仅当 gateway.request_log.enabled=true 时生效。
+//
+// 入参约定：
+//   - sessionID：原始客户端会话标识（不 hash），由 NormalizeSessionID 截断到 256；
+//     上层应通过 ExtractClientSessionID 获取，保证跨协议含义一致。
+//   - reqBody：原始请求体；函数会调用 SimplifyRequestBody 只保留 messages/input 最后一条，
+//     无法识别协议时原样保留，最后用 MaxBodyBytes 兜底（仅在已经无法精简时）。
+//   - respBody：调用方应已经经过 collector / Simplify*Response 精简；本函数也兜底 MaxBodyBytes。
+func (s *GatewayService) WriteRequestLog(ctx context.Context, requestID, sessionID string, userID int64, reqBody, respBody string) {
+	if s.requestLogRepo == nil || s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled {
+		return
+	}
+	if requestID == "" {
+		requestID = resolveUsageBillingRequestID(ctx, "")
+	}
+	sessionID = requestlog.NormalizeSessionID(sessionID)
+	reqBody = requestlog.SimplifyRequestBody([]byte(reqBody))
+	maxBytes := s.cfg.Gateway.RequestLog.MaxBodyBytes
+	if maxBytes > 0 && len(reqBody) > maxBytes {
+		// 若精简后仍超大（极少发生：messages[-1] 自身就很大），尝试 SafeTruncate；
+		// 解析失败再退回 byte 截断，最坏是非法 JSON 但不阻塞写入。
+		safe := requestlog.SafeTruncateJSON([]byte(reqBody), maxBytes/4)
+		if len(safe) <= maxBytes {
+			reqBody = string(safe)
+		} else {
+			reqBody = reqBody[:maxBytes]
+		}
+	}
+	if maxBytes > 0 && len(respBody) > maxBytes {
+		safe := requestlog.SafeTruncateJSON([]byte(respBody), maxBytes/4)
+		if len(safe) <= maxBytes {
+			respBody = string(safe)
+		} else {
+			respBody = respBody[:maxBytes]
+		}
+	}
+	s.requestLogRepo.CreateBestEffort(ctx, &RequestLog{
+		RequestID:    requestID,
+		SessionID:    sessionID,
+		UserID:       userID,
+		RequestBody:  reqBody,
+		ResponseBody: respBody,
+		CreatedAt:    time.Now(),
+	})
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
@@ -5271,6 +5361,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
+	var capturedBody string
 	if reqStream {
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
@@ -5284,24 +5375,28 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
+		capturedBody = streamResult.capturedBody
 	} else {
-		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
+		var capturedResp string
+		usage, capturedResp, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
 		if err != nil {
 			return nil, err
 		}
+		capturedBody = capturedResp
 	}
 
 	return &ForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
-		Usage:            *usage,
-		Model:            originalModel, // 使用原始模型用于计费和日志
-		UpstreamModel:    mappedModel,
-		Stream:           reqStream,
-		Duration:         time.Since(startTime),
-		FirstTokenMs:     firstTokenMs,
-		ClientDisconnect: clientDisconnect,
-		TCPConnMs:        lastTrace.TCPConnMs(),
-		TTFBMs:           lastTrace.TTFBMs(),
+		RequestID:            resp.Header.Get("x-request-id"),
+		Usage:                *usage,
+		Model:                originalModel, // 使用原始模型用于计费和日志
+		UpstreamModel:        mappedModel,
+		Stream:               reqStream,
+		Duration:             time.Since(startTime),
+		FirstTokenMs:         firstTokenMs,
+		ClientDisconnect:     clientDisconnect,
+		TCPConnMs:            lastTrace.TCPConnMs(),
+		TTFBMs:               lastTrace.TTFBMs(),
+		CapturedResponseBody: capturedBody,
 	}, nil
 }
 
@@ -5651,6 +5746,7 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
+	var capturedBody string
 	if input.RequestStream {
 		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
 		if err != nil {
@@ -5659,25 +5755,29 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
+		capturedBody = streamResult.capturedBody
 	} else {
-		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
+		var capturedResp string
+		usage, capturedResp, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
 		if err != nil {
 			return nil, err
 		}
+		capturedBody = capturedResp
 	}
 	if usage == nil {
 		usage = &ClaudeUsage{}
 	}
 
 	return &ForwardResult{
-		RequestID:        resp.Header.Get("x-request-id"),
-		Usage:            *usage,
-		Model:            input.OriginalModel,
-		UpstreamModel:    input.RequestModel,
-		Stream:           input.RequestStream,
-		Duration:         time.Since(input.StartTime),
-		FirstTokenMs:     firstTokenMs,
-		ClientDisconnect: clientDisconnect,
+		RequestID:            resp.Header.Get("x-request-id"),
+		Usage:                *usage,
+		Model:                input.OriginalModel,
+		UpstreamModel:        input.RequestModel,
+		Stream:               input.RequestStream,
+		Duration:             time.Since(input.StartTime),
+		FirstTokenMs:         firstTokenMs,
+		ClientDisconnect:     clientDisconnect,
+		CapturedResponseBody: capturedBody,
 	}, nil
 }
 
@@ -5811,6 +5911,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	clientDisconnected := false
 	sawTerminalEvent := false
 
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	var respCollector *requestlog.AnthropicCollector
+	if captureEnabled {
+		respCollector = requestlog.NewAnthropicCollector()
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -5881,11 +5987,11 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					}
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, capturedBody: finalizeRespCollector(respCollector)}, nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, capturedBody: finalizeRespCollector(respCollector)}, nil
 				}
 				if clientDisconnected {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after disconnect: %w", ev.err)
@@ -5918,6 +6024,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				}
 			}
 
+			if respCollector != nil {
+				respCollector.OnLine(line)
+			}
 			if !clientDisconnected {
 				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
@@ -6073,14 +6182,14 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
-) (*ClaudeUsage, error) {
+) (*ClaudeUsage, string, error) {
 	if s.rateLimitService != nil {
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 	}
 
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	usage := parseClaudeUsageFromResponseBody(body)
@@ -6092,7 +6201,12 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 	body = reverseToolNamesIfPresent(c, body)
 	c.Data(resp.StatusCode, contentType, body)
-	return usage, nil
+
+	capturedBody := ""
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		capturedBody = requestlog.SimplifyAnthropicResponse(body)
+	}
+	return usage, capturedBody, nil
 }
 
 func writeAnthropicPassthroughResponseHeaders(dst http.Header, src http.Header, filter *responseheaders.CompiledHeaderFilter) {
@@ -7680,6 +7794,7 @@ type streamingResult struct {
 	usage            *ClaudeUsage
 	firstTokenMs     *int
 	clientDisconnect bool // 客户端是否在流式传输过程中断开
+	capturedBody     string
 }
 
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
@@ -7695,6 +7810,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
+
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	var respCollector *requestlog.AnthropicCollector
+	if captureEnabled {
+		respCollector = requestlog.NewAnthropicCollector()
+	}
 
 	// 透传其他响应头
 	if v := resp.Header.Get("x-request-id"); v != "" {
@@ -7947,11 +8068,11 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				if !sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, capturedBody: finalizeRespCollector(respCollector)}, nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, capturedBody: finalizeRespCollector(respCollector)}, nil
 				}
 				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
@@ -8004,12 +8125,17 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				pendingEventLines = pendingEventLines[:0]
 				if err != nil {
 					if clientDisconnected {
-						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true, capturedBody: finalizeRespCollector(respCollector)}, nil
 					}
 					return nil, err
 				}
 
 				for _, block := range outputBlocks {
+					if respCollector != nil {
+						for _, ln := range strings.Split(block, "\n") {
+							respCollector.OnLine(ln)
+						}
+					}
 					if !clientDisconnected {
 						restored := reverseToolNamesIfPresent(c, []byte(block))
 						if _, werr := fmt.Fprint(w, string(restored)); werr != nil {
@@ -8300,13 +8426,13 @@ func (s *GatewayService) resolveCacheTTLUsageOverrideTarget(ctx context.Context,
 	return "", false
 }
 
-func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, error) {
+func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*ClaudeUsage, string, error) {
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// 解析usage
@@ -8314,7 +8440,7 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		Usage ClaudeUsage `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, fmt.Errorf("parse response: %w", err)
+		return nil, "", fmt.Errorf("parse response: %w", err)
 	}
 
 	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
@@ -8368,7 +8494,12 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)
 
-	return &response.Usage, nil
+	capturedBody := ""
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		capturedBody = requestlog.SimplifyAnthropicResponse(body)
+	}
+
+	return &response.Usage, capturedBody, nil
 }
 
 // replaceModelInResponseBody 替换响应体中的model字段

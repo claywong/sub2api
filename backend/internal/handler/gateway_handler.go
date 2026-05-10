@@ -905,6 +905,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
 
+			// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
+			result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
+
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
@@ -933,6 +936,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					).Error("gateway.record_usage_failed", zap.Error(err))
 				}
 			})
+			if result != nil && result.CapturedResponseBody != "" {
+				clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, currentAPIKey.User.ID, string(body), result.CapturedResponseBody)
+			}
 			return
 		}
 		if !retryWithFallback {

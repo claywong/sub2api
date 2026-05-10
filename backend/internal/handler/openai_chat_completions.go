@@ -177,8 +177,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
-		if err == nil && result != nil && result.CapturedResponseBody != "" {
-			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, promptCacheKey, apiKey.User.ID, string(body), result.CapturedResponseBody)
+		if err == nil && result != nil {
+			// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
+			result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
+			if result.CapturedResponseBody != "" {
+				clientSessionID := h.gatewayService.ExtractSessionID(c, body)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
+			}
 		}
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
