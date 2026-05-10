@@ -25,6 +25,7 @@
             type="text"
             class="input"
             :placeholder="t('profile.enterUsername')"
+            disabled
           />
         </div>
 
