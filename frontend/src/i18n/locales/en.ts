@@ -4347,6 +4347,8 @@ export default {
       avgTps: 'Avg TPS',
       avgLatency: 'Avg Request Duration',
       avgTtft: 'Avg TTFT',
+      avgTcpConn: 'Avg TCP Connection Time',
+      avgTtfb: 'Avg TTFB',
       exceptions: 'Exceptions',
       requestErrors: 'Request Errors',
       errorCount: 'Error Count',

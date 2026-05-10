@@ -4504,6 +4504,8 @@ export default {
       avgTps: '平均 TPS',
       avgLatency: '平均请求时长',
       avgTtft: '平均首 Token 延迟',
+      avgTcpConn: '平均 TCP 连接时间',
+      avgTtfb: '平均首字节时间',
       exceptions: '异常数',
       requestErrors: '请求错误',
       errorCount: '错误数',

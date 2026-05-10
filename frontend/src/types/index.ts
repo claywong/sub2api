@@ -898,6 +898,8 @@ export interface AccountHealthRuntime {
   slow_rate: number
   ttft_avg_ms: number
   otps_avg: number
+  tcp_conn_avg_ms: number // TCP 连接平均时间（ms）
+  ttfb_avg_ms: number     // TTFB（首字节时间）平均（ms）
   verdict: 'OK' | 'StickyOnly' | 'Excluded' | 'Unknown'
   verdict_reason: string
 }

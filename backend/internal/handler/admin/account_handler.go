@@ -192,6 +192,8 @@ type AccountHealthRuntime struct {
 	SlowRate      float64 `json:"slow_rate"`
 	TTFTAvgMs     float64 `json:"ttft_avg_ms"`
 	OTPSAvg       float64 `json:"otps_avg"`
+	TCPConnAvgMs  float64 `json:"tcp_conn_avg_ms"`  // TCP 连接平均时间（ms）
+	TTFBAvgMs     float64 `json:"ttfb_avg_ms"`      // TTFB（首字节时间）平均（ms）
 	Verdict       string  `json:"verdict"`
 	VerdictReason string  `json:"verdict_reason"`
 }
@@ -260,6 +262,8 @@ func (h *AccountHandler) attachAccountHealthRuntime(item *AccountWithConcurrency
 		SlowRate:      snap.SlowRate(),
 		TTFTAvgMs:     snap.TTFTAvg(),
 		OTPSAvg:       snap.OTPSAvg(),
+		TCPConnAvgMs:  snap.TCPConnAvg(),
+		TTFBAvgMs:     snap.TTFBAvg(),
 		Verdict:       verdict.String(),
 		VerdictReason: reason,
 	}

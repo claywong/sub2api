@@ -90,14 +90,18 @@ func resolveHealthCfg(c *config.AccountHealthConfig) healthCfg {
 
 // metricBucket 单个时间桶，记录一段（healthBucketSeconds）内的累计指标。
 type metricBucket struct {
-	startSec  int64   // 桶起点 unix 秒；0 表示未使用
-	reqCount  int     // 总请求数
-	errCount  int     // 失败次数
-	slowCount int     // 慢请求数（duration ≥ slowThresholdMs）
-	ttftSum   int64   // TTFT 累加（ms）
-	ttftN     int     // 有 TTFT 样本的次数
-	otpsSum   float64 // OTPS 累加（tokens/s）
-	otpsN     int     // 有 OTPS 样本的次数
+	startSec    int64   // 桶起点 unix 秒；0 表示未使用
+	reqCount    int     // 总请求数
+	errCount    int     // 失败次数
+	slowCount   int     // 慢请求数（duration ≥ slowThresholdMs）
+	ttftSum     int64   // TTFT 累加（ms）
+	ttftN       int     // 有 TTFT 样本的次数
+	otpsSum     float64 // OTPS 累加（tokens/s）
+	otpsN       int     // 有 OTPS 样本的次数
+	tcpConnSum  int64   // TCP 连接时间累加（ms）
+	tcpConnN    int     // 有 TCP 连接时间样本的次数
+	ttfbSum     int64   // TTFB（首字节时间）累加（ms）
+	ttfbN       int     // 有 TTFB 样本的次数
 }
 
 func (b *metricBucket) reset(startSec int64) {
@@ -109,26 +113,36 @@ func (b *metricBucket) reset(startSec int64) {
 	b.ttftN = 0
 	b.otpsSum = 0
 	b.otpsN = 0
+	b.tcpConnSum = 0
+	b.tcpConnN = 0
+	b.ttfbSum = 0
+	b.ttfbN = 0
 }
 
 // CallSample 一次调用（主动 test 或真实 gateway 调用）的样本。
-// TTFTMs/DurationMs/OutputTokens 为 0 表示该字段无样本（不计入相应指标）。
+// TTFTMs/DurationMs/OutputTokens/TCPConnMs/TTFBMs 为 0 表示该字段无样本（不计入相应指标）。
 type CallSample struct {
 	Success      bool
-	TTFTMs       int
+	TTFTMs       int // Time To First Token（首 token 时间）
 	DurationMs   int
 	OutputTokens int
+	TCPConnMs    int // TCP 连接时间（三次握手）
+	TTFBMs       int // Time To First Byte（首字节时间）
 }
 
 // HealthSnapshot 滑动窗口聚合后的健康指标快照。
 type HealthSnapshot struct {
-	ReqCount        int
-	ErrCount        int
-	SlowCount       int
-	TTFTSampleCount int
-	OTPSSampleCount int
-	ttftSumMs       int64
-	otpsSum         float64
+	ReqCount          int
+	ErrCount          int
+	SlowCount         int
+	TTFTSampleCount   int
+	OTPSSampleCount   int
+	TCPConnSampleCount int
+	TTFBSampleCount   int
+	ttftSumMs         int64
+	otpsSum           float64
+	tcpConnSumMs      int64
+	ttfbSumMs         int64
 }
 
 // ErrRate 窗口内错误率（0~1）；ReqCount=0 时返回 0。
@@ -168,6 +182,28 @@ func (s HealthSnapshot) HasTTFT() bool { return s.TTFTSampleCount > 0 }
 
 // HasOTPS 窗口内是否有 OTPS 样本。
 func (s HealthSnapshot) HasOTPS() bool { return s.OTPSSampleCount > 0 }
+
+// TCPConnAvg 窗口内 TCP 连接平均时间（ms）；无样本时返回 0。
+func (s HealthSnapshot) TCPConnAvg() float64 {
+	if s.TCPConnSampleCount <= 0 {
+		return 0
+	}
+	return float64(s.tcpConnSumMs) / float64(s.TCPConnSampleCount)
+}
+
+// TTFBAvg 窗口内 TTFB（首字节时间）平均（ms）；无样本时返回 0。
+func (s HealthSnapshot) TTFBAvg() float64 {
+	if s.TTFBSampleCount <= 0 {
+		return 0
+	}
+	return float64(s.ttfbSumMs) / float64(s.TTFBSampleCount)
+}
+
+// HasTCPConn 窗口内是否有 TCP 连接时间样本。
+func (s HealthSnapshot) HasTCPConn() bool { return s.TCPConnSampleCount > 0 }
+
+// HasTTFB 窗口内是否有 TTFB 样本。
+func (s HealthSnapshot) HasTTFB() bool { return s.TTFBSampleCount > 0 }
 
 // AccountTestHealth 存储单个账号的健康状态。
 // 滑动窗口（buckets）记录最近 10 分钟的请求/错误/TTFT/OTPS/慢率聚合数据，
@@ -315,6 +351,10 @@ func (h *AccountTestHealth) snapshotLocked(now time.Time, windowSec int64) Healt
 		s.TTFTSampleCount += b.ttftN
 		s.otpsSum += b.otpsSum
 		s.OTPSSampleCount += b.otpsN
+		s.tcpConnSumMs += b.tcpConnSum
+		s.TCPConnSampleCount += b.tcpConnN
+		s.ttfbSumMs += b.ttfbSum
+		s.TTFBSampleCount += b.ttfbN
 	}
 	return s
 }
@@ -334,6 +374,16 @@ func (h *AccountTestHealth) recordSampleLocked(sample CallSample, now time.Time,
 	}
 	if sample.DurationMs > 0 && slowThresholdMs > 0 && sample.DurationMs >= slowThresholdMs {
 		b.slowCount++
+	}
+	// TCP 连接时间
+	if sample.TCPConnMs > 0 {
+		b.tcpConnSum += int64(sample.TCPConnMs)
+		b.tcpConnN++
+	}
+	// TTFB（首字节时间）
+	if sample.TTFBMs > 0 {
+		b.ttfbSum += int64(sample.TTFBMs)
+		b.ttfbN++
 	}
 	// OTPS：业内标准 (output_tokens - 1) * 1000 / (duration - ttft)
 	// 过滤条件：output ≥ 10、duration > ttft（避免除零或负值）。

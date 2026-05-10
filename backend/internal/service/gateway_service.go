@@ -504,6 +504,10 @@ type ForwardResult struct {
 	ClientDisconnect bool // 客户端是否在流式传输过程中断开
 	ReasoningEffort  *string
 
+	// 连接阶段性能指标（由 httptrace 采集；连接复用时 TCPConnMs=0）
+	TCPConnMs int // TCP 连接建立时间（ms）；utls 路径下含 TLS 握手
+	TTFBMs    int // 首字节时间（ms），从请求发出到收到第一个响应字节
+
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount int    // 生成的图片数量
 	ImageSize  string // 图片尺寸 "1K", "2K", "4K"
@@ -4852,6 +4856,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// 重试循环
 	var resp *http.Response
+	var lastTrace *HTTPTraceMetrics // 记录最后一次成功 DoWithTLS 的连接指标
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
@@ -4862,8 +4867,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, err
 		}
 
+		// 注入 httptrace：采集 TCP 连接时间和 TTFB。
+		// 用 sendTime 而非 startTime，避免 TTFB 含 token 查找/请求重写等预处理耗时。
+		sendTime := time.Now()
+		traceCtx, traceMetrics := withHTTPTrace(upstreamReq.Context(), sendTime)
+		upstreamReq = upstreamReq.WithContext(traceCtx)
+
 		// 发送请求
 		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+		if err == nil {
+			lastTrace = traceMetrics
+		}
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5286,6 +5300,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		Duration:         time.Since(startTime),
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnect,
+		TCPConnMs:        lastTrace.TCPConnMs(),
+		TTFBMs:           lastTrace.TTFBMs(),
 	}, nil
 }
 
