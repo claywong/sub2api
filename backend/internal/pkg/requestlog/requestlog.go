@@ -87,9 +87,106 @@ func truncateJSONValue(v any, perStringMax int, parentKey string) any {
 	}
 }
 
-// SimplifyAnthropicRequest 仅保留 messages 数组最后一条 + 顶层 model 字段。
-// 其余字段（system/tools/历史 messages）全部丢弃。如未能识别为 Anthropic 协议则返回空串，
-// 由调用方决定回退策略（原样保留 / 尝试其他协议）。
+// SimplifiedRequest 是 request_body 落库的统一精简结构：
+// 仅保留「这次推理的最小上下文」—— 用户最近的真实输入、上一轮工具调用、
+// 当前请求所携带的工具结果。
+// 跨 Anthropic / OpenAI ChatCompletions / OpenAI Responses 三协议共享同一形态。
+type SimplifiedRequest struct {
+	Model       string       `json:"model,omitempty"`
+	UserInput   string       `json:"user_input,omitempty"`
+	ToolUses    []ToolUse    `json:"tool_uses,omitempty"`
+	ToolResults []ToolResult `json:"tool_results,omitempty"`
+}
+
+// ToolUse 描述一次工具调用：id 用于和 ToolResult.ToolUseID 对应；
+// input 优先解析为对象（OpenAI 的 arguments 是 string-form JSON 时会还原），失败时退化为字符串。
+type ToolUse struct {
+	ID    string `json:"id,omitempty"`
+	Name  string `json:"name"`
+	Input any    `json:"input,omitempty"`
+}
+
+// ToolResult 描述工具回灌给模型的结果。
+// content 类型不固定（Anthropic 可能是数组或字符串，OpenAI 一般是字符串），用 any 透传。
+type ToolResult struct {
+	ToolUseID string `json:"tool_use_id,omitempty"`
+	Content   any    `json:"content,omitempty"`
+}
+
+// extractTextFromContent 从 content（可能是 string 或 [{type,text}] 数组）抽出所有 text 块。
+// 兼容 Anthropic content[].type=="text" 与 Responses input[].content[].type=="input_text"。
+// 多个 text 块用 "\n" 拼接；无 text 返回 ""。
+func extractTextFromContent(content gjson.Result) string {
+	if content.Type == gjson.String {
+		return content.String()
+	}
+	if !content.IsArray() {
+		return ""
+	}
+	var sb strings.Builder
+	for _, item := range content.Array() {
+		t := item.Get("type").String()
+		if t != "" && t != "text" && t != "input_text" {
+			continue
+		}
+		txt := item.Get("text").String()
+		if txt == "" {
+			continue
+		}
+		if sb.Len() > 0 {
+			sb.WriteByte('\n')
+		}
+		sb.WriteString(txt)
+	}
+	return sb.String()
+}
+
+// parseRawAny 把 gjson.Result 还原为 any（map/slice/string/...）；JSON 解析失败时退化为字符串。
+func parseRawAny(v gjson.Result) any {
+	if !v.Exists() {
+		return nil
+	}
+	var parsed any
+	if err := json.Unmarshal([]byte(v.Raw), &parsed); err == nil {
+		return parsed
+	}
+	return v.String()
+}
+
+// parseMaybeJSONString 处理 OpenAI 协议中 arguments 为 string-form JSON 的情况：
+// 输入是字符串就先 Unmarshal；非字符串走 parseRawAny。
+func parseMaybeJSONString(v gjson.Result) any {
+	if !v.Exists() {
+		return nil
+	}
+	if v.Type == gjson.String {
+		s := v.String()
+		var parsed any
+		if err := json.Unmarshal([]byte(s), &parsed); err == nil {
+			return parsed
+		}
+		return s
+	}
+	return parseRawAny(v)
+}
+
+// marshalSimplified 序列化 SimplifiedRequest；失败返回空串让上层 fallthrough。
+func marshalSimplified(r SimplifiedRequest) string {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// SimplifyAnthropicRequest 提取 Anthropic /v1/messages 请求的最小上下文包：
+//   - user_input：倒序回溯最近一条 role==user 且 content 含 text 的项
+//   - tool_uses：最后一条 role==assistant 内的所有 type==tool_use 块
+//   - tool_results：当前 last role==user 内的所有 type==tool_result 块
+//
+// 协议特征校验：检测到 ChatCompletions 形态（messages[].role=="tool" 或
+// messages[].tool_calls）而无 Anthropic 形态（content[].type=="tool_use|tool_result"）
+// 时返回空串，让 SimplifyRequestBody 把请求交给 ChatCompletions 分支。
 // 不做长度截断；超长字段的兜底截断由 WriteRequestLog 根据 MaxBodyBytes 配置决定。
 func SimplifyAnthropicRequest(body []byte) string {
 	if len(body) == 0 {
@@ -103,21 +200,89 @@ func SimplifyAnthropicRequest(body []byte) string {
 	if len(arr) == 0 {
 		return ""
 	}
-	last := arr[len(arr)-1].Raw
-	model := gjson.GetBytes(body, "model").String()
 
-	out := []byte("{}")
-	if model != "" {
-		out, _ = sjson.SetBytes(out, "model", model)
+	hasAnthropicFeature := false
+	hasChatCompletionsFeature := false
+	for _, m := range arr {
+		if m.Get("role").String() == "tool" {
+			hasChatCompletionsFeature = true
+		}
+		if m.Get("tool_calls").IsArray() {
+			hasChatCompletionsFeature = true
+		}
+		if c := m.Get("content"); c.IsArray() {
+			for _, ci := range c.Array() {
+				t := ci.Get("type").String()
+				if t == "tool_use" || t == "tool_result" {
+					hasAnthropicFeature = true
+				}
+			}
+		}
 	}
-	out, _ = sjson.SetRawBytes(out, "messages", []byte("["+last+"]"))
-	return string(out)
+	if hasChatCompletionsFeature && !hasAnthropicFeature {
+		return ""
+	}
+
+	out := SimplifiedRequest{Model: gjson.GetBytes(body, "model").String()}
+
+	lastUserIdx := -1
+	for i := len(arr) - 1; i >= 0; i-- {
+		if arr[i].Get("role").String() == "user" {
+			lastUserIdx = i
+			break
+		}
+	}
+	if lastUserIdx >= 0 {
+		if c := arr[lastUserIdx].Get("content"); c.IsArray() {
+			for _, ci := range c.Array() {
+				if ci.Get("type").String() == "tool_result" {
+					out.ToolResults = append(out.ToolResults, ToolResult{
+						ToolUseID: ci.Get("tool_use_id").String(),
+						Content:   parseRawAny(ci.Get("content")),
+					})
+				}
+			}
+		}
+	}
+
+	for i := len(arr) - 1; i >= 0; i-- {
+		if arr[i].Get("role").String() != "user" {
+			continue
+		}
+		if text := extractTextFromContent(arr[i].Get("content")); text != "" {
+			out.UserInput = text
+			break
+		}
+	}
+
+	for i := len(arr) - 1; i >= 0; i-- {
+		if arr[i].Get("role").String() != "assistant" {
+			continue
+		}
+		if c := arr[i].Get("content"); c.IsArray() {
+			for _, ci := range c.Array() {
+				if ci.Get("type").String() == "tool_use" {
+					out.ToolUses = append(out.ToolUses, ToolUse{
+						ID:    ci.Get("id").String(),
+						Name:  ci.Get("name").String(),
+						Input: parseRawAny(ci.Get("input")),
+					})
+				}
+			}
+		}
+		break
+	}
+
+	return marshalSimplified(out)
 }
 
-// SimplifyRequestBody 综合尝试简化 Anthropic / Responses / ChatCompletions 请求体。
-// 如全部协议都识别失败，则返回原始 body 字符串。
+// SimplifyRequestBody 综合尝试简化 Anthropic / ChatCompletions / Responses 请求体。
+// 调用顺序：Anthropic → ChatCompletions → Responses；全部识别失败则原样返回 body 字符串。
 func SimplifyRequestBody(body []byte) string {
 	if simplified := SimplifyAnthropicRequest(body); simplified != "" {
+		return simplified
+	}
+	if simplified := SimplifyChatCompletionsRequest(body); simplified != "" {
 		return simplified
 	}
 	if simplified := SimplifyResponsesRequest(body); simplified != "" {
@@ -126,44 +291,160 @@ func SimplifyRequestBody(body []byte) string {
 	return string(body)
 }
 
-// SimplifyResponsesRequest 仅保留 input 数组最后一条 + 顶层 model 字段。
-// 适用于 OpenAI Responses API 协议。如未能识别为 Responses 协议则返回空串。
+// SimplifyResponsesRequest 提取 OpenAI Responses /v1/responses 请求的最小上下文包。
+// input 为字符串时直接作为 user_input；为数组时：
+//   - tool_results：input[] 末尾连续 type==function_call_output
+//   - tool_uses：tool_results 之前末尾连续 type==function_call
+//   - user_input：再之前最近一条 type==message && role==user
+//
 // 不做长度截断；超长字段的兜底截断由 WriteRequestLog 根据 MaxBodyBytes 配置决定。
 func SimplifyResponsesRequest(body []byte) string {
 	if len(body) == 0 {
 		return ""
 	}
 	input := gjson.GetBytes(body, "input")
+	if !input.Exists() {
+		return ""
+	}
 	model := gjson.GetBytes(body, "model").String()
-	if input.IsArray() {
-		arr := input.Array()
-		if len(arr) == 0 {
-			return ""
-		}
-		last := arr[len(arr)-1].Raw
-		out := []byte("{}")
-		if model != "" {
-			out, _ = sjson.SetBytes(out, "model", model)
-		}
-		out, _ = sjson.SetRawBytes(out, "input", []byte("["+last+"]"))
-		return string(out)
-	}
+
 	if input.Type == gjson.String {
-		out := []byte("{}")
-		if model != "" {
-			out, _ = sjson.SetBytes(out, "model", model)
-		}
-		out, _ = sjson.SetBytes(out, "input", input.String())
-		return string(out)
+		return marshalSimplified(SimplifiedRequest{Model: model, UserInput: input.String()})
 	}
-	return ""
+	if !input.IsArray() {
+		return ""
+	}
+	arr := input.Array()
+	if len(arr) == 0 {
+		return ""
+	}
+
+	out := SimplifiedRequest{Model: model}
+
+	outputStart := len(arr)
+	for i := len(arr) - 1; i >= 0; i-- {
+		if arr[i].Get("type").String() == "function_call_output" {
+			outputStart = i
+		} else {
+			break
+		}
+	}
+	for i := outputStart; i < len(arr); i++ {
+		m := arr[i]
+		out.ToolResults = append(out.ToolResults, ToolResult{
+			ToolUseID: m.Get("call_id").String(),
+			Content:   parseRawAny(m.Get("output")),
+		})
+	}
+
+	callStart := outputStart
+	for i := outputStart - 1; i >= 0; i-- {
+		if arr[i].Get("type").String() == "function_call" {
+			callStart = i
+		} else {
+			break
+		}
+	}
+	for i := callStart; i < outputStart; i++ {
+		m := arr[i]
+		out.ToolUses = append(out.ToolUses, ToolUse{
+			ID:    m.Get("call_id").String(),
+			Name:  m.Get("name").String(),
+			Input: parseMaybeJSONString(m.Get("arguments")),
+		})
+	}
+
+	pickUserInput := func(stopIdx int) string {
+		for i := stopIdx - 1; i >= 0; i-- {
+			m := arr[i]
+			if m.Get("type").String() != "message" || m.Get("role").String() != "user" {
+				continue
+			}
+			if text := extractTextFromContent(m.Get("content")); text != "" {
+				return text
+			}
+		}
+		return ""
+	}
+	out.UserInput = pickUserInput(callStart)
+	if out.UserInput == "" {
+		out.UserInput = pickUserInput(len(arr))
+	}
+
+	return marshalSimplified(out)
 }
 
-// SimplifyChatCompletionsRequest 仅保留 messages 数组最后一条 + 顶层 model。
-// 适用于 OpenAI /v1/chat/completions 协议。
+// SimplifyChatCompletionsRequest 提取 OpenAI /v1/chat/completions 请求的最小上下文包。
+//   - tool_results：messages[] 末尾连续 role==tool
+//   - tool_uses：tool_results 之前最近一条 role==assistant 的 tool_calls
+//   - user_input：再之前最近一条 role==user 的 content
+//
+// 与 Anthropic 共享 messages 顶层结构，由 SimplifyRequestBody 的调用顺序保证不会误吞
+// Anthropic 请求（Anthropic 函数会主动 detect ChatCompletions 形态并放行）。
 func SimplifyChatCompletionsRequest(body []byte) string {
-	// 与 Anthropic 同结构（messages 数组），可以直接复用
-	return SimplifyAnthropicRequest(body)
+	if len(body) == 0 {
+		return ""
+	}
+	messages := gjson.GetBytes(body, "messages")
+	if !messages.IsArray() {
+		return ""
+	}
+	arr := messages.Array()
+	if len(arr) == 0 {
+		return ""
+	}
+
+	out := SimplifiedRequest{Model: gjson.GetBytes(body, "model").String()}
+
+	toolStart := len(arr)
+	for i := len(arr) - 1; i >= 0; i-- {
+		if arr[i].Get("role").String() == "tool" {
+			toolStart = i
+		} else {
+			break
+		}
+	}
+	for i := toolStart; i < len(arr); i++ {
+		m := arr[i]
+		out.ToolResults = append(out.ToolResults, ToolResult{
+			ToolUseID: m.Get("tool_call_id").String(),
+			Content:   parseRawAny(m.Get("content")),
+		})
+	}
+
+	for i := toolStart - 1; i >= 0; i-- {
+		if arr[i].Get("role").String() != "assistant" {
+			continue
+		}
+		if tcs := arr[i].Get("tool_calls"); tcs.IsArray() {
+			for _, tc := range tcs.Array() {
+				out.ToolUses = append(out.ToolUses, ToolUse{
+					ID:    tc.Get("id").String(),
+					Name:  tc.Get("function.name").String(),
+					Input: parseMaybeJSONString(tc.Get("function.arguments")),
+				})
+			}
+		}
+		break
+	}
+
+	pickUserInput := func(stopIdx int) string {
+		for i := stopIdx - 1; i >= 0; i-- {
+			if arr[i].Get("role").String() != "user" {
+				continue
+			}
+			if text := extractTextFromContent(arr[i].Get("content")); text != "" {
+				return text
+			}
+		}
+		return ""
+	}
+	out.UserInput = pickUserInput(toolStart)
+	if out.UserInput == "" {
+		out.UserInput = pickUserInput(len(arr))
+	}
+
+	return marshalSimplified(out)
 }
 
 // SimplifyAnthropicResponse 从 Anthropic 非流式响应 JSON 中提取
