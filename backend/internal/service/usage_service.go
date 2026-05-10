@@ -58,15 +58,17 @@ type UsageService struct {
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	requestLogRepo       RequestLogRepository
 }
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
+func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator, requestLogRepo RequestLogRepository) *UsageService {
 	return &UsageService{
 		usageRepo:            usageRepo,
 		userRepo:             userRepo,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
+		requestLogRepo:       requestLogRepo,
 	}
 }
 
@@ -334,10 +336,26 @@ func (s *UsageService) GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs [
 }
 
 // ListWithFilters lists usage logs with admin filters.
-func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {
+func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters, withContent bool) ([]UsageLog, *pagination.PaginationResult, error) {
 	logs, result, err := s.usageRepo.ListWithFilters(ctx, params, filters)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs with filters: %w", err)
+	}
+	if withContent && s.requestLogRepo != nil && len(logs) > 0 {
+		requestIDs := make([]string, len(logs))
+		for i := range logs {
+			requestIDs[i] = logs[i].RequestID
+		}
+		contentMap, err := s.requestLogRepo.GetByRequestIDs(ctx, requestIDs)
+		if err == nil {
+			for i := range logs {
+				if rl, ok := contentMap[logs[i].RequestID]; ok {
+					logs[i].RequestBody = rl.RequestBody
+					logs[i].ResponseBody = rl.ResponseBody
+					logs[i].SessionID = rl.SessionID
+				}
+			}
+		}
 	}
 	return logs, result, nil
 }

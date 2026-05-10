@@ -173,6 +173,11 @@ type UsageLog struct {
 	Account      *Account
 	Group        *Group
 	Subscription *UserSubscription
+
+	// 以下字段仅在请求方传递 with_content=true 且 request_logs 有记录时填充。
+	SessionID    string
+	RequestBody  string
+	ResponseBody string
 }
 
 func (u *UsageLog) TotalTokens() int {

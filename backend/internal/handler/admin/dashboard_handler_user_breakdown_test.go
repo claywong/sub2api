@@ -59,7 +59,7 @@ func TestGetUserBreakdown_GroupIDFilter(t *testing.T) {
 	require.Equal(t, int64(42), repo.capturedDim.GroupID)
 	require.Empty(t, repo.capturedDim.Model)
 	require.Empty(t, repo.capturedDim.Endpoint)
-	require.Equal(t, 50, repo.capturedLimit) // default limit
+	require.Equal(t, 300, repo.capturedLimit) // default limit
 }
 
 func TestGetUserBreakdown_ModelFilter(t *testing.T) {
@@ -146,14 +146,14 @@ func TestGetUserBreakdown_LimitClamped(t *testing.T) {
 	repo := &userBreakdownRepoCapture{}
 	router := newUserBreakdownRouter(repo)
 
-	// limit > 200 should fall back to default 50
+	// limit > 300 should fall back to default 300
 	req := httptest.NewRequest(http.MethodGet,
 		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&model=test&limit=999", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, 50, repo.capturedLimit)
+	require.Equal(t, 300, repo.capturedLimit)
 }
 
 func TestGetUserBreakdown_ResponseFormat(t *testing.T) {

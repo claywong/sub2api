@@ -263,8 +263,22 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	var firstTokenMs *int
 	clientDisconnected := false
 
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	maxCapture := 0
+	if s.cfg != nil {
+		maxCapture = s.cfg.Gateway.RequestLog.MaxBodyBytes
+	}
+	var respBuf strings.Builder
+
 	for scanner.Scan() {
 		line := scanner.Text()
+		if captureEnabled && (maxCapture == 0 || respBuf.Len() < maxCapture) {
+			chunk := line + "\n"
+			if maxCapture > 0 && respBuf.Len()+len(chunk) > maxCapture {
+				chunk = chunk[:maxCapture-respBuf.Len()]
+			}
+			respBuf.WriteString(chunk)
+		}
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
@@ -309,16 +323,17 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:            requestID,
+		Usage:                usage,
+		Model:                originalModel,
+		BillingModel:         billingModel,
+		UpstreamModel:        upstreamModel,
+		ReasoningEffort:      reasoningEffort,
+		ServiceTier:          serviceTier,
+		Stream:               true,
+		Duration:             time.Since(startTime),
+		FirstTokenMs:         firstTokenMs,
+		CapturedResponseBody: respBuf.String(),
 	}, nil
 }
 
@@ -405,16 +420,27 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c.Writer.WriteHeader(http.StatusOK)
 	_, _ = c.Writer.Write(respBody)
 
+	var capturedResp string
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		maxCapture := s.cfg.Gateway.RequestLog.MaxBodyBytes
+		if maxCapture == 0 || len(respBody) <= maxCapture {
+			capturedResp = string(respBody)
+		} else {
+			capturedResp = string(respBody[:maxCapture])
+		}
+	}
+
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		RequestID:            requestID,
+		Usage:                usage,
+		Model:                originalModel,
+		BillingModel:         billingModel,
+		UpstreamModel:        upstreamModel,
+		ReasoningEffort:      reasoningEffort,
+		ServiceTier:          serviceTier,
+		Stream:               false,
+		Duration:             time.Since(startTime),
+		CapturedResponseBody: capturedResp,
 	}, nil
 }
 

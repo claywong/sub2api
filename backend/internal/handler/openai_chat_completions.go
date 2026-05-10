@@ -177,6 +177,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
 		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
+		if err == nil && result != nil && result.CapturedResponseBody != "" {
+			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, promptCacheKey, apiKey.User.ID, string(body), result.CapturedResponseBody)
+		}
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {

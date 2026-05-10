@@ -711,6 +711,9 @@ type GatewayConfig struct {
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
 
+	// RequestLog: 请求内容记录配置（默认关闭）
+	RequestLog RequestLogConfig `mapstructure:"request_log"`
+
 	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
 	UserGroupRateCacheTTLSeconds int `mapstructure:"user_group_rate_cache_ttl_seconds"`
 	// ModelsListCacheTTLSeconds: /v1/models 模型列表短缓存 TTL（秒）
@@ -929,6 +932,14 @@ type TLSProfileConfig struct {
 	// 空则使用内置默认顺序 [0,11,10,35,16,22,23,13,43,45,51]
 	// GREASE值(如0x0a0a)会自动插入GREASE扩展
 	Extensions []uint16 `mapstructure:"extensions"`
+}
+
+// RequestLogConfig 请求内容记录配置
+type RequestLogConfig struct {
+	// Enabled: 是否开启请求内容记录（默认 false）
+	Enabled bool `mapstructure:"enabled"`
+	// MaxBodyBytes: 单个 request_body / response_body 的截断阈值（字节），0 表示不截断
+	MaxBodyBytes int `mapstructure:"max_body_bytes"`
 }
 
 // GatewaySchedulingConfig accounts scheduling configuration.

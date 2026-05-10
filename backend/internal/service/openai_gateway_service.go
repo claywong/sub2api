@@ -236,6 +236,9 @@ type OpenAIForwardResult struct {
 	FirstTokenMs    *int
 	ImageCount      int
 	ImageSize       string
+	// CapturedResponseBody 仅当 gateway.request_log.enabled=true 时填充，
+	// 供调用方写入 request_logs 表。
+	CapturedResponseBody string
 }
 
 type OpenAIWSRetryMetricsSnapshot struct {
@@ -336,6 +339,7 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
+	requestLogRepo        RequestLogRepository
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -377,6 +381,7 @@ func NewOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
+	requestLogRepo RequestLogRepository,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -408,11 +413,34 @@ func NewOpenAIGatewayService(
 		channelService:        channelService,
 		balanceNotifyService:  balanceNotifyService,
 		settingService:        settingService,
+		requestLogRepo:        requestLogRepo,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
+}
+
+// WriteRequestLog 异步写入请求内容日志，仅当 gateway.request_log.enabled=true 时生效。
+func (s *OpenAIGatewayService) WriteRequestLog(ctx context.Context, requestID, sessionID string, userID int64, reqBody, respBody string) {
+	if s.requestLogRepo == nil || s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled {
+		return
+	}
+	if requestID == "" {
+		return
+	}
+	maxBytes := s.cfg.Gateway.RequestLog.MaxBodyBytes
+	if maxBytes > 0 && len(reqBody) > maxBytes {
+		reqBody = reqBody[:maxBytes]
+	}
+	s.requestLogRepo.CreateBestEffort(ctx, &RequestLog{
+		RequestID:    requestID,
+		SessionID:    sessionID,
+		UserID:       userID,
+		RequestBody:  reqBody,
+		ResponseBody: respBody,
+		CreatedAt:    time.Now(),
+	})
 }
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）

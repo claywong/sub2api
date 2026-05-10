@@ -136,7 +136,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		EndTime:     endTime,
 	}
 
-	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
+	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters, false)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -446,6 +446,11 @@ type AdminUsageLog struct {
 
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
+
+	// 以下字段仅在请求方传递 with_content=true 且有记录时填充。
+	SessionID    *string `json:"session_id,omitempty"`
+	RequestBody  *string `json:"request_body,omitempty"`
+	ResponseBody *string `json:"response_body,omitempty"`
 }
 
 type UsageCleanupFilters struct {
