@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -264,20 +265,15 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	clientDisconnected := false
 
 	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
-	maxCapture := 0
-	if s.cfg != nil {
-		maxCapture = s.cfg.Gateway.RequestLog.MaxBodyBytes
+	var respCollector *requestlog.ChatCompletionsCollector
+	if captureEnabled {
+		respCollector = requestlog.NewChatCompletionsCollector()
 	}
-	var respBuf strings.Builder
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		if captureEnabled && (maxCapture == 0 || respBuf.Len() < maxCapture) {
-			chunk := line + "\n"
-			if maxCapture > 0 && respBuf.Len()+len(chunk) > maxCapture {
-				chunk = chunk[:maxCapture-respBuf.Len()]
-			}
-			respBuf.WriteString(chunk)
+		if respCollector != nil {
+			respCollector.OnLine(line)
 		}
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
@@ -322,6 +318,10 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 	}
 
+	captured := ""
+	if respCollector != nil {
+		captured = respCollector.Finalize()
+	}
 	return &OpenAIForwardResult{
 		RequestID:            requestID,
 		Usage:                usage,
@@ -333,7 +333,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		Stream:               true,
 		Duration:             time.Since(startTime),
 		FirstTokenMs:         firstTokenMs,
-		CapturedResponseBody: respBuf.String(),
+		CapturedResponseBody: captured,
 	}, nil
 }
 
@@ -422,12 +422,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 
 	var capturedResp string
 	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
-		maxCapture := s.cfg.Gateway.RequestLog.MaxBodyBytes
-		if maxCapture == 0 || len(respBody) <= maxCapture {
-			capturedResp = string(respBody)
-		} else {
-			capturedResp = string(respBody[:maxCapture])
-		}
+		capturedResp = requestlog.SimplifyChatCompletionsNonStream(respBody)
 	}
 
 	return &OpenAIForwardResult{

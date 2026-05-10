@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/cespare/xxhash/v2"
@@ -421,14 +422,21 @@ func NewOpenAIGatewayService(
 	return svc
 }
 
+// ResolveRequestID 解析请求级 request_id，与 RecordUsage 内部使用的逻辑一致。
+// 用于在 handler 同步路径上提前固定 ID，确保 usage_logs 与 request_logs 使用同一 ID。
+func (s *OpenAIGatewayService) ResolveRequestID(ctx context.Context, upstreamRequestID string) string {
+	return resolveUsageBillingRequestID(ctx, upstreamRequestID)
+}
+
 // WriteRequestLog 异步写入请求内容日志，仅当 gateway.request_log.enabled=true 时生效。
 func (s *OpenAIGatewayService) WriteRequestLog(ctx context.Context, requestID, sessionID string, userID int64, reqBody, respBody string) {
 	if s.requestLogRepo == nil || s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled {
 		return
 	}
 	if requestID == "" {
-		return
+		requestID = "generated:" + generateRequestID()
 	}
+	reqBody = requestlog.SimplifyRequestBody([]byte(reqBody))
 	maxBytes := s.cfg.Gateway.RequestLog.MaxBodyBytes
 	if maxBytes > 0 && len(reqBody) > maxBytes {
 		reqBody = reqBody[:maxBytes]
@@ -3054,6 +3062,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var usage *OpenAIUsage
 	var firstTokenMs *int
 	imageCount := 0
+	var capturedBody string
 	if reqStream {
 		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -3062,6 +3071,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		firstTokenMs = result.firstTokenMs
 		imageCount = result.imageCount
+		capturedBody = result.capturedBody
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
 		if err != nil {
@@ -3069,6 +3079,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 		usage = result.usage
 		imageCount = result.imageCount
+		capturedBody = result.capturedBody
 	}
 
 	if snapshot := ParseCodexRateLimitHeaders(resp.Header); snapshot != nil {
@@ -3080,16 +3091,17 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:       resp.Header.Get("x-request-id"),
-		Usage:           *usage,
-		Model:           reqModel,
-		UpstreamModel:   upstreamPassthroughModel,
-		ServiceTier:     extractOpenAIServiceTierFromBody(body),
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:            resp.Header.Get("x-request-id"),
+		Usage:                *usage,
+		Model:                reqModel,
+		UpstreamModel:        upstreamPassthroughModel,
+		ServiceTier:          extractOpenAIServiceTierFromBody(body),
+		ReasoningEffort:      reasoningEffort,
+		Stream:               reqStream,
+		OpenAIWSMode:         false,
+		Duration:             time.Since(startTime),
+		FirstTokenMs:         firstTokenMs,
+		CapturedResponseBody: capturedBody,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -3392,12 +3404,14 @@ type openaiStreamingResultPassthrough struct {
 	usage        *OpenAIUsage
 	firstTokenMs *int
 	imageCount   int
+	capturedBody string
 }
 
 type openaiNonStreamingResultPassthrough struct {
 	*OpenAIUsage
-	usage      *OpenAIUsage
-	imageCount int
+	usage        *OpenAIUsage
+	imageCount   int
+	capturedBody string
 }
 
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
@@ -3565,13 +3579,26 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 	defer putSSEScannerBuf64K(scanBuf)
 
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	var respCollector *requestlog.ResponsesCollector
+	if captureEnabled {
+		respCollector = requestlog.NewResponsesCollector()
+	}
+
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
-		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count()}
+		captured := ""
+		if respCollector != nil {
+			captured = respCollector.Finalize()
+		}
+		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count(), capturedBody: captured}
 	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if respCollector != nil {
+			respCollector.OnLine(line)
+		}
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -3723,10 +3750,16 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	}
 	c.Data(resp.StatusCode, contentType, body)
+
+	captured := ""
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		captured = requestlog.SimplifyResponsesNonStream(body)
+	}
 	return &openaiNonStreamingResultPassthrough{
-		OpenAIUsage: usage,
-		usage:       usage,
-		imageCount:  countOpenAIResponseImageOutputsFromJSONBytes(body),
+		OpenAIUsage:  usage,
+		usage:        usage,
+		imageCount:   countOpenAIResponseImageOutputsFromJSONBytes(body),
+		capturedBody: captured,
 	}, nil
 }
 

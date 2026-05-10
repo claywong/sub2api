@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -382,6 +383,12 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var firstTokenMs *int
 	firstChunk := true
 
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	var respCollector *requestlog.ResponsesCollector
+	if captureEnabled {
+		respCollector = requestlog.NewResponsesCollector()
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -390,15 +397,20 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
 
 	resultWithUsage := func() *ForwardResult {
+		captured := ""
+		if respCollector != nil {
+			captured = respCollector.Finalize()
+		}
 		return &ForwardResult{
-			RequestID:       requestID,
-			Usage:           usage,
-			Model:           originalModel,
-			UpstreamModel:   mappedModel,
-			ReasoningEffort: reasoningEffort,
-			Stream:          true,
-			Duration:        time.Since(startTime),
-			FirstTokenMs:    firstTokenMs,
+			RequestID:            requestID,
+			Usage:                usage,
+			Model:                originalModel,
+			UpstreamModel:        mappedModel,
+			ReasoningEffort:      reasoningEffort,
+			Stream:               true,
+			Duration:             time.Since(startTime),
+			FirstTokenMs:         firstTokenMs,
+			CapturedResponseBody: captured,
 		}
 	}
 
@@ -429,6 +441,11 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 					zap.String("request_id", requestID),
 				)
 				continue
+			}
+			if respCollector != nil {
+				for _, ln := range strings.Split(sse, "\n") {
+					respCollector.OnLine(ln)
+				}
 			}
 			out := string(reverseToolNamesIfPresent(c, []byte(sse)))
 			if _, err := fmt.Fprint(c.Writer, out); err != nil {
