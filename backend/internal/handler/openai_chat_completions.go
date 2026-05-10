@@ -181,7 +181,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
 			result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
 			if result.CapturedResponseBody != "" {
-				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, promptCacheKey, apiKey.User.ID, string(body), result.CapturedResponseBody)
+				clientSessionID := h.gatewayService.ExtractSessionID(c, body)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 			}
 		}
 

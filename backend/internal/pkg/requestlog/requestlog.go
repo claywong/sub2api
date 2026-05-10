@@ -8,15 +8,94 @@ package requestlog
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
+// MaxSessionIDLen 与 DB schema 中 session_id varchar(256) 对齐。
+const MaxSessionIDLen = 256
+
+// DefaultPerStringTruncate 是单个 JSON 字符串字段的默认截断阈值（字节）。
+// 仅作用于精简后 JSON 中的 string 值（如 message 文本、tool input、image base64），
+// 防止单条消息中嵌入超大 base64 等内容把行膨胀到 MB 级。
+const DefaultPerStringTruncate = 4096
+
+// NormalizeSessionID 规范化用于 request_logs.session_id 的字符串：
+// 去除首尾空白；超过 MaxSessionIDLen 的 raw ID 直接截断到上限以避免 DB 写入失败。
+func NormalizeSessionID(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if len(trimmed) > MaxSessionIDLen {
+		trimmed = trimmed[:MaxSessionIDLen]
+	}
+	return trimmed
+}
+
+// preserveImageKeys 是 SafeTruncateJSON 不会截断的字段名集合：
+// 命中以下任意 parent key 后，整棵子树（含 base64 数据）原样保留。
+// 覆盖 Anthropic（content[].source.data）、OpenAI（image_url.url）、
+// Responses（input[].image / image_url）等多模态图片字段。
+var preserveImageKeys = map[string]struct{}{
+	"source":    {}, // Anthropic image content_block 的 source
+	"image":     {}, // 通用图片对象
+	"image_url": {}, // OpenAI / Responses 风格
+	"url":       {}, // image_url.url 内层
+	"data":      {}, // base64 数据字段
+}
+
+// SafeTruncateJSON 递归遍历 JSON，将所有超过 perStringMax 字节的 string 值替换为
+// "<truncated: N bytes>" 占位符，保证返回值始终是合法 JSON。
+// 仅在 perStringMax > 0 时启用截断；解析失败时原样返回。
+//
+// 图片相关字段（preserveImageKeys 命中）会原样保留 base64 内容，不做截断。
+func SafeTruncateJSON(raw []byte, perStringMax int) []byte {
+	if perStringMax <= 0 || len(raw) == 0 {
+		return raw
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return raw
+	}
+	truncated := truncateJSONValue(v, perStringMax, "")
+	out, err := json.Marshal(truncated)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+func truncateJSONValue(v any, perStringMax int, parentKey string) any {
+	if _, preserve := preserveImageKeys[parentKey]; preserve {
+		return v
+	}
+	switch x := v.(type) {
+	case string:
+		if len(x) > perStringMax {
+			return fmt.Sprintf("<truncated: %d bytes>", len(x))
+		}
+		return x
+	case []any:
+		for i := range x {
+			x[i] = truncateJSONValue(x[i], perStringMax, parentKey)
+		}
+		return x
+	case map[string]any:
+		for k, val := range x {
+			x[k] = truncateJSONValue(val, perStringMax, k)
+		}
+		return x
+	default:
+		return v
+	}
+}
+
 // SimplifyAnthropicRequest 仅保留 messages 数组最后一条 + 顶层 model 字段。
 // 其余字段（system/tools/历史 messages）全部丢弃。如未能识别为 Anthropic 协议则返回空串，
 // 由调用方决定回退策略（原样保留 / 尝试其他协议）。
+// 输出会经过 SafeTruncateJSON，单字段超过 DefaultPerStringTruncate 字节时替换为占位符，
+// 防止 base64 图片 / 巨大文本占满日志列。
 func SimplifyAnthropicRequest(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -37,6 +116,7 @@ func SimplifyAnthropicRequest(body []byte) string {
 		out, _ = sjson.SetBytes(out, "model", model)
 	}
 	out, _ = sjson.SetRawBytes(out, "messages", []byte("["+last+"]"))
+	out = SafeTruncateJSON(out, DefaultPerStringTruncate)
 	return string(out)
 }
 
@@ -54,6 +134,7 @@ func SimplifyRequestBody(body []byte) string {
 
 // SimplifyResponsesRequest 仅保留 input 数组最后一条 + 顶层 model 字段。
 // 适用于 OpenAI Responses API 协议。如未能识别为 Responses 协议则返回空串。
+// 输出经过 SafeTruncateJSON 截断超大 string 字段。
 func SimplifyResponsesRequest(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -71,6 +152,7 @@ func SimplifyResponsesRequest(body []byte) string {
 			out, _ = sjson.SetBytes(out, "model", model)
 		}
 		out, _ = sjson.SetRawBytes(out, "input", []byte("["+last+"]"))
+		out = SafeTruncateJSON(out, DefaultPerStringTruncate)
 		return string(out)
 	}
 	if input.Type == gjson.String {
@@ -78,7 +160,10 @@ func SimplifyResponsesRequest(body []byte) string {
 		if model != "" {
 			out, _ = sjson.SetBytes(out, "model", model)
 		}
+		// input 是 string 时直接 set 字符串字段，由 sjson 处理转义；
+		// 截断单字段长度由 SafeTruncateJSON 兜底。
 		out, _ = sjson.SetBytes(out, "input", input.String())
+		out = SafeTruncateJSON(out, DefaultPerStringTruncate)
 		return string(out)
 	}
 	return ""
@@ -93,6 +178,7 @@ func SimplifyChatCompletionsRequest(body []byte) string {
 
 // SimplifyAnthropicResponse 从 Anthropic 非流式响应 JSON 中提取
 // content 数组与 stop_reason，丢弃 usage / id / role 等元信息。
+// 输出经过 SafeTruncateJSON 防止 tool 调用 input 中嵌入超大文本。
 func SimplifyAnthropicResponse(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -107,6 +193,7 @@ func SimplifyAnthropicResponse(body []byte) string {
 	if stopReason != "" {
 		out, _ = sjson.SetBytes(out, "stop_reason", stopReason)
 	}
+	out = SafeTruncateJSON(out, DefaultPerStringTruncate)
 	return string(out)
 }
 
@@ -283,7 +370,7 @@ func (c *AnthropicCollector) Finalize() string {
 	if err != nil {
 		return ""
 	}
-	return string(b)
+	return string(SafeTruncateJSON(b, DefaultPerStringTruncate))
 }
 
 // ResponsesCollector 边解析 OpenAI Responses 流，边累积输出。
@@ -382,10 +469,11 @@ func (c *ResponsesCollector) Finalize() string {
 	if err != nil {
 		return ""
 	}
-	return string(b)
+	return string(SafeTruncateJSON(b, DefaultPerStringTruncate))
 }
 
 // SimplifyResponsesNonStream 从 OpenAI Responses 非流式 JSON 提取 output + status.
+// 输出经过 SafeTruncateJSON 截断超大 string 字段。
 func SimplifyResponsesNonStream(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -399,6 +487,7 @@ func SimplifyResponsesNonStream(body []byte) string {
 	if status != "" {
 		out, _ = sjson.SetBytes(out, "status", status)
 	}
+	out = SafeTruncateJSON(out, DefaultPerStringTruncate)
 	return string(out)
 }
 
@@ -555,10 +644,11 @@ func (c *ChatCompletionsCollector) Finalize() string {
 	if err != nil {
 		return ""
 	}
-	return string(b)
+	return string(SafeTruncateJSON(b, DefaultPerStringTruncate))
 }
 
 // SimplifyChatCompletionsNonStream 从 chat completions 非流式 JSON 提取 choices.
+// 输出经过 SafeTruncateJSON 截断超大 string 字段。
 func SimplifyChatCompletionsNonStream(body []byte) string {
 	if len(body) == 0 {
 		return ""
@@ -569,5 +659,6 @@ func SimplifyChatCompletionsNonStream(body []byte) string {
 	}
 	out := []byte("{}")
 	out, _ = sjson.SetRawBytes(out, "choices", []byte(choices.Raw))
+	out = SafeTruncateJSON(out, DefaultPerStringTruncate)
 	return string(out)
 }

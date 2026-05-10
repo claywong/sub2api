@@ -937,7 +937,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			})
 			if result != nil && result.CapturedResponseBody != "" {
-				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, sessionKey, currentAPIKey.User.ID, string(body), result.CapturedResponseBody)
+				clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, currentAPIKey.User.ID, string(body), result.CapturedResponseBody)
 			}
 			return
 		}

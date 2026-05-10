@@ -451,7 +451,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 		})
 		if result != nil && result.CapturedResponseBody != "" {
-			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, sessionHash, apiKey.User.ID, string(body), result.CapturedResponseBody)
+			clientSessionID := h.gatewayService.ExtractSessionID(c, body)
+			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 		}
 		reqLog.Debug("openai.request_completed",
 			zap.Int64("account_id", account.ID),
@@ -833,7 +834,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 		})
 		if result != nil && result.CapturedResponseBody != "" {
-			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, promptCacheKey, apiKey.User.ID, string(body), result.CapturedResponseBody)
+			clientSessionID := h.gatewayService.ExtractSessionID(c, body)
+			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 		}
 		reqLog.Debug("openai_messages.request_completed",
 			zap.Int64("account_id", account.ID),

@@ -429,6 +429,7 @@ func (s *OpenAIGatewayService) ResolveRequestID(ctx context.Context, upstreamReq
 }
 
 // WriteRequestLog 异步写入请求内容日志，仅当 gateway.request_log.enabled=true 时生效。
+// 截断规则与 GatewayService.WriteRequestLog 保持一致，详见后者注释。
 func (s *OpenAIGatewayService) WriteRequestLog(ctx context.Context, requestID, sessionID string, userID int64, reqBody, respBody string) {
 	if s.requestLogRepo == nil || s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled {
 		return
@@ -436,10 +437,24 @@ func (s *OpenAIGatewayService) WriteRequestLog(ctx context.Context, requestID, s
 	if requestID == "" {
 		requestID = "generated:" + generateRequestID()
 	}
+	sessionID = requestlog.NormalizeSessionID(sessionID)
 	reqBody = requestlog.SimplifyRequestBody([]byte(reqBody))
 	maxBytes := s.cfg.Gateway.RequestLog.MaxBodyBytes
 	if maxBytes > 0 && len(reqBody) > maxBytes {
-		reqBody = reqBody[:maxBytes]
+		safe := requestlog.SafeTruncateJSON([]byte(reqBody), maxBytes/4)
+		if len(safe) <= maxBytes {
+			reqBody = string(safe)
+		} else {
+			reqBody = reqBody[:maxBytes]
+		}
+	}
+	if maxBytes > 0 && len(respBody) > maxBytes {
+		safe := requestlog.SafeTruncateJSON([]byte(respBody), maxBytes/4)
+		if len(safe) <= maxBytes {
+			respBody = string(safe)
+		} else {
+			respBody = respBody[:maxBytes]
+		}
 	}
 	s.requestLogRepo.CreateBestEffort(ctx, &RequestLog{
 		RequestID:    requestID,
