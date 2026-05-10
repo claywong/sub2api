@@ -3184,6 +3184,12 @@ function loadQuotaControlSettings(account: Account) {
     return
   }
 
+  // Cache TTL override applies to all Anthropic account types (including apikey)
+  if (account.cache_ttl_override_enabled === true) {
+    cacheTTLOverrideEnabled.value = true
+    cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
+  }
+
   // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
   if (account.type !== 'oauth' && account.type !== 'setup-token') {
     return
@@ -3222,12 +3228,6 @@ function loadQuotaControlSettings(account: Account) {
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
     sessionIdMaskingEnabled.value = true
-  }
-
-  // Load cache TTL override setting
-  if (account.cache_ttl_override_enabled === true) {
-    cacheTTLOverrideEnabled.value = true
-    cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
   }
 
   // Load custom base URL setting
