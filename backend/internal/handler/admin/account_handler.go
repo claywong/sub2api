@@ -2304,16 +2304,18 @@ func (h *AccountHandler) GetHealthStats(c *gin.Context) {
 	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(accountID)
 
 	response.Success(c, gin.H{
-		"available":      true,
-		"window_seconds": service.DefaultHealthWindowSeconds,
-		"req_count":      snap.ReqCount,
-		"err_count":      snap.ErrCount,
-		"err_rate":       snap.ErrRate(),
-		"slow_count":     snap.SlowCount,
-		"slow_rate":      snap.SlowRate(),
-		"ttft_avg_ms":    snap.TTFTAvg(),
-		"otps_avg":       snap.OTPSAvg(),
-		"verdict":        verdict.String(),
-		"verdict_reason": reason,
+		"available":       true,
+		"window_seconds":  service.DefaultHealthWindowSeconds,
+		"req_count":       snap.ReqCount,
+		"err_count":       snap.ErrCount,
+		"err_rate":        snap.ErrRate(),
+		"slow_count":      snap.SlowCount,
+		"slow_rate":       snap.SlowRate(),
+		"ttft_avg_ms":     snap.TTFTAvg(),
+		"otps_avg":        snap.OTPSAvg(),
+		"tcp_conn_avg_ms": snap.TCPConnAvg(),
+		"ttfb_avg_ms":     snap.TTFBAvg(),
+		"verdict":         verdict.String(),
+		"verdict_reason":  reason,
 	})
 }
