@@ -150,7 +150,9 @@ tryAcquireAccountSlot
   ├── isAccountSchedulableForModelSelection
   ├── isAccountSchedulableForQuota
   ├── isAccountSchedulableForWindowCost (isSticky=false)
-  └── isAccountSchedulableForRPM (isSticky=false)
+  ├── isAccountSchedulableForRPM (isSticky=false)
+  ├── isAccountSchedulableForHealth (isSticky=false)   ← 需 account_health.enabled=true
+  └── healthCache.PassesHardFilter                     ← Anthropic 平台，需 enabled=true
         │
         ▼
 GetAccountsLoadBatch（批量获取 Redis 并发槽位负载）
@@ -160,7 +162,7 @@ GetAccountsLoadBatch（批量获取 Redis 并发槽位负载）
         │
         ▼
 分层过滤选择（三级漏斗）：
-  1. filterByMinPriority → 只保留优先级最小（最高）的账号
+  1. filterByMinPriority → 只保留优先级最小（最高）的账号（严格相等）
   2. filterByMinLoadRate  → 只保留负载率最低的账号
   3. selectByLRU          → 选择 LastUsedAt 最久的账号
         │
@@ -237,12 +239,25 @@ available 耗尽：
 
 ---
 
+## 健康感知调度（可选）
+
+启用 `gateway.scheduling.account_health.enabled=true` 后，Layer 2 过滤新增两个健康维度：
+
+| 检查 | 语义 |
+|------|------|
+| `isAccountSchedulableForHealth(acc, false)` | HealthStickyOnly / Excluded 的账号不进入新会话候选集 |
+| `healthCache.PassesHardFilter(acc.ID)` | 定时测试连续失败 ≥ `hard_filter_threshold` 次的账号跳过新会话 |
+
+Layer 1.5（粘性会话）同样增加了 `healthOK` 检查（`isSticky=true`），HealthStickyOnly 状态下粘性会话仍可继续服务，详见 `anthropic-scheduling-health-aware.md`。
+
+---
+
 ## 已知缺陷与改进空间
 
-1. **无延时感知**：调度器不感知账号的响应延时（TTFT），所有通过过滤的账号在同优先级+同负载时仅靠 LRU 区分，响应慢的账号不会被降权。
+1. **无延时感知**（健康感知关闭时）：调度器不感知账号的响应延时（TTFT），所有通过过滤的账号在同优先级+同负载时仅靠 LRU 区分。启用健康感知后，TTFT 过慢的账号会进入 HealthStickyOnly 状态，不再接受新会话。
 
-2. **ErrorRate 无差异化**：错误只有两种结果——账号被标记为不可调度（过滤掉）或正常可用，没有 EWMA 软降权机制，导致频繁出错但还未达到硬不可调度阈值的账号仍可被正常选中。
+2. **ErrorRate 软降权仅在健康感知开启时生效**：关闭时错误只有两种结果——账号被标记为不可调度（过滤掉）或正常可用，没有中间态。
 
-3. **冷启动无先验数据**：进程重启后不需要预热（LRU 对冷账号友好），但若希望将定时测试的延时数据引入调度，目前没有接入点。
+3. **冷启动无先验数据**：进程重启后健康缓存为空，所有账号视为 HealthOK，不惩罚，LRU 对冷账号天然友好。
 
 4. **无加权随机**：同分组内确定性选择同一个最优账号，在高并发场景可能导致某个账号被连续选中直至其负载上升才轮换，而非均匀分布。
