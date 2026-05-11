@@ -5,12 +5,10 @@ package service
 import (
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
-// 阶段 3 端到端验证：真实调用上报样本 → buckets 累计 → Snapshot 派生 OTPS →
-// HealthVerdict / weighted 打分都能正确感知。
+// 端到端验证：真实调用上报样本 → buckets 累计 → Snapshot 派生 OTPS → HealthVerdict 感知。
 
 // 1. 业内 OTPS 公式：(output-1)*1000 / (duration-ttft)，仅在 output >= 10 时生效
 func TestOTPSEndToEnd_StandardFormula(t *testing.T) {
@@ -56,33 +54,6 @@ func TestOTPSEndToEnd_LowOTPSTriggersStickyOnly(t *testing.T) {
 }
 
 // 3. OTPS 因子在 weighted 打分中正确反映优劣
-func TestOTPSEndToEnd_FactorReflectsScore(t *testing.T) {
-	cache := NewAccountTestHealthCache(nil)
-
-	// A 慢：otps ≈ 3.5
-	for i := 0; i < 5; i++ {
-		cache.RecordRealCall(1, CallSample{Success: true, TTFTMs: 1000, DurationMs: 15000, OutputTokens: 50})
-	}
-	// B 快：output=200, ttft=500, duration=2500 → decode=2000
-	// otps = 199*1000/2000 = 99.5（接近 OTPSBest=80 → 满分）
-	for i := 0; i < 5; i++ {
-		cache.RecordRealCall(2, CallSample{Success: true, TTFTMs: 500, DurationMs: 2500, OutputTokens: 200})
-	}
-
-	thresholds := config.ScoreThresholdsConfig{OTPSBest: 80, OTPSWorst: 10}
-
-	sa := cache.Snapshot(1)
-	sb := cache.Snapshot(2)
-	fa := computeOTPSFactor(sa, thresholds)
-	fb := computeOTPSFactor(sb, thresholds)
-
-	t.Logf("A otps=%.2f factor=%.3f", sa.OTPSAvg(), fa)
-	t.Logf("B otps=%.2f factor=%.3f", sb.OTPSAvg(), fb)
-
-	require.InDelta(t, 0.0, fa, 0.001, "A 极慢应得 OTPS factor=0")
-	require.InDelta(t, 1.0, fb, 0.001, "B 快应得 OTPS factor=1")
-}
-
 // 4. 短输出（< 10 tokens）不进 OTPS 样本，但 TTFT 仍计入
 func TestOTPSEndToEnd_ShortOutputsExcluded(t *testing.T) {
 	cache := NewAccountTestHealthCache(nil)

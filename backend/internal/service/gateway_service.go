@@ -47,8 +47,7 @@ const (
 	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
 	stickySessionTTL        = time.Hour // 粘性会话TTL
 	defaultMaxLineSize      = 500 * 1024 * 1024
-	// 调度算法常量 schedulingAlgorithmLegacy / schedulingAlgorithmWeighted
-	// 已搬到 gateway_service_scheduling.go（私有扩展）。
+
 
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
@@ -1957,9 +1956,6 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	}
 
 	// ============ Layer 2: 负载感知选择 ============
-	// 算法分流：weighted（5 因子加权打分 + Top-K 加权随机）vs legacy（priority→LoadRate→LRU 字典序）
-	algorithm := s.chooseSchedulingAlgorithm(groupID)
-
 	slog.Debug("sticky.layer2_fallback",
 		"session", shortSessionHash(sessionHash),
 		"sticky_account_id", stickyAccountID,
@@ -2046,22 +2042,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 算法分流：weighted 走 5 因子加权打分；legacy 沿用 priority→LoadRate→LRU。
-		// weighted 仅对 Anthropic 平台生效（healthCache 仅 Anthropic 维护）；其它平台自动降级。
-		if algorithm == schedulingAlgorithmWeighted && platform == PlatformAnthropic && s.healthCache != nil && len(available) > 0 {
-			selection, decided := s.tryWeightedAnthropicSelection(ctx, available, groupID, sessionHash, requestedModel, preferOAuth)
-			if decided {
-				return selection, nil
-			}
-			// decided=false 表示候选全军 acquire 失败，回退到下方 legacy 兜底循环
-		} else {
-			schedulerMetrics.LegacyRequests.Add(1)
-		}
-
 		// 分层过滤选择：优先级 → 负载率 → LRU
 		for len(available) > 0 {
 			// 1. 取优先级最小的集合（支持容差，让倍率接近的账号一起进入下一步）
-			candidates := filterByMinPriority(available, cfg.PriorityTolerance)
+			candidates := filterByMinPriority(available)
 			// 2. 取负载率最低的集合
 			candidates = filterByMinLoadRate(candidates)
 			// 3. LRU 选择最久未用的账号
@@ -2154,9 +2138,6 @@ func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 		SlotCleanupInterval:      30 * time.Second,
 	}
 }
-
-// chooseSchedulingAlgorithm / resolvedSchedulingHealth / resolvedScoreWeights /
-// resolvedScoreThresholds / resolvedSchedulingTopK 已搬到 gateway_service_scheduling.go（私有扩展）。
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
 	if !IsGroupContextValid(group) {
@@ -2783,12 +2764,8 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 	}, nil
 }
 
-// filterByMinPriority 过滤出优先级最小的账号集合。
-// tolerance > 0 时，所有 priority <= minPriority+tolerance 的账号都保留，
-// 让"价格差不多"的账号一起进入后续维度（Load/Latency/Slow/LRU）评估，
-// 避免账号 Priority 与价格倍率正相关时的"价格独裁"。
-// tolerance <= 0 时退化为严格相等（旧行为，向后兼容）。
-func filterByMinPriority(accounts []accountWithLoad, tolerance int) []accountWithLoad {
+// filterByMinPriority 过滤出优先级最小的账号集合
+func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 	if len(accounts) == 0 {
 		return accounts
 	}
@@ -2798,13 +2775,9 @@ func filterByMinPriority(accounts []accountWithLoad, tolerance int) []accountWit
 			minPriority = acc.account.Priority
 		}
 	}
-	if tolerance < 0 {
-		tolerance = 0
-	}
-	threshold := minPriority + tolerance
 	result := make([]accountWithLoad, 0, len(accounts))
 	for _, acc := range accounts {
-		if acc.account.Priority <= threshold {
+		if acc.account.Priority == minPriority {
 			result = append(result, acc)
 		}
 	}

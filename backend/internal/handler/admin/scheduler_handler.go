@@ -10,7 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// SchedulerAdminHandler 暴露调度器实时观测接口（weighted 算法）。
+// SchedulerAdminHandler 暴露调度器实时观测接口。
 // 仅作只读 dump，不改变运行时状态。
 type SchedulerAdminHandler struct {
 	gatewayService *service.GatewayService
@@ -21,12 +21,6 @@ func NewSchedulerAdminHandler(gatewayService *service.GatewayService) *Scheduler
 	return &SchedulerAdminHandler{
 		gatewayService: gatewayService,
 	}
-}
-
-// GetMetrics 返回 weighted 调度器的内存计数器快照。
-// GET /api/v1/admin/scheduler/metrics
-func (h *SchedulerAdminHandler) GetMetrics(c *gin.Context) {
-	response.Success(c, service.SchedulerMetrics().Snapshot())
 }
 
 // SchedulerSnapshotItem 单账号的调度视图。

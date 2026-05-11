@@ -991,32 +991,9 @@ type GatewaySchedulingConfig struct {
 	// Anthropic 账号健康感知调度参数
 	AccountHealth AccountHealthConfig `mapstructure:"account_health"`
 
-	// PriorityTolerance Layer 2 字典序过滤中 priority 容差。
-	// 0 表示沿用 == 严格相等（旧行为）；> 0 表示 priority <= min(P) + tolerance 都进入下一步过滤。
-	// 适用于"价格倍率正相关"的 priority 编码方式（如 0.10→10、0.45→45），
-	// 使倍率差 ≤ tolerance/100 的账号一起参与 Load/Latency/Slow 维度评估。
-	// 默认 0（不开启）。
-	PriorityTolerance int `mapstructure:"priority_tolerance"`
-
-	// Algorithm Layer 2 调度算法选择：
-	//   - "legacy"（默认）：现有的字典序硬过滤链
-	//   - "weighted"：5 因子加权打分 + Top-K 加权随机
-	// 详见 docs/anthropic-scheduling-weighted.md。
-	Algorithm string `mapstructure:"algorithm"`
-	// WeightedGroups 强制走 weighted 算法的 group ID 白名单（即使 Algorithm=legacy）。
-	WeightedGroups []int64 `mapstructure:"weighted_groups"`
-	// LegacyGroups 强制走 legacy 算法的 group ID 白名单（即使 Algorithm=weighted），优先级最高。
-	LegacyGroups []int64 `mapstructure:"legacy_groups"`
-
-	// Health weighted 算法下的 HealthVerdict 三态阈值。
+	// Health HealthVerdict 三态阈值。
 	Health SchedulingHealthConfig `mapstructure:"health"`
-	// ScoreWeights weighted 算法下的 5 因子权重。
-	ScoreWeights ScoreWeightsConfig `mapstructure:"score_weights"`
-	// ScoreThresholds weighted 算法下的因子归一化阈值。
-	ScoreThresholds ScoreThresholdsConfig `mapstructure:"score_thresholds"`
-	// TopK weighted 算法 Top-K 加权随机的 K，默认 5。
-	TopK int `mapstructure:"top_k"`
-	// Debug weighted 算法的调试观测开关。
+	// Debug 调度调试观测开关。
 	Debug SchedulingDebugConfig `mapstructure:"debug"`
 }
 
@@ -1033,24 +1010,6 @@ type SchedulingHealthConfig struct {
 	OTPSStickyOnlyMin           float64 `mapstructure:"otps_sticky_only_min"`            // OTPS 进入 StickyOnly 的下限，默认 10
 	OTPSExcludedMin             float64 `mapstructure:"otps_excluded_min"`               // OTPS 进入 Excluded 的下限，0 表示禁用
 	ExcludedTempUnschedMinutes  int     `mapstructure:"excluded_temp_unsched_minutes"`   // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
-}
-
-// ScoreWeightsConfig 5 因子加权权重。
-type ScoreWeightsConfig struct {
-	ErrRate  float64 `mapstructure:"err_rate"` // 默认 1.5
-	TTFT     float64 `mapstructure:"ttft"`     // 默认 1.2
-	OTPS     float64 `mapstructure:"otps"`     // 默认 1.0
-	Load     float64 `mapstructure:"load"`     // 默认 0.3
-	Priority float64 `mapstructure:"priority"` // 默认 0.5
-}
-
-// ScoreThresholdsConfig 因子归一化阈值。
-type ScoreThresholdsConfig struct {
-	TTFTBestMs        int     `mapstructure:"ttft_best_ms"`         // ≤ 此值得 1.0，默认 1500
-	TTFTWorstMs       int     `mapstructure:"ttft_worst_ms"`        // ≥ 此值得 0.0，默认 6000
-	OTPSBest          float64 `mapstructure:"otps_best"`            // ≥ 此值得 1.0，默认 80
-	OTPSWorst         float64 `mapstructure:"otps_worst"`           // ≤ 此值得 0.0，默认 10
-	LoadThresholdPct  float64 `mapstructure:"load_threshold_pct"`   // 低于此值 loadFactor=1.0，默认 70
 }
 
 // SchedulingDebugConfig 调度调试观测开关。

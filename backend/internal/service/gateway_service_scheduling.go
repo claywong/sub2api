@@ -1,11 +1,10 @@
 // gateway_service_scheduling.go
 // =============================================================================
-// 私有扩展（不属于 upstream sub2api）：账号健康感知调度 + weighted 算法相关方法。
+// 私有扩展（不属于 upstream sub2api）：账号健康感知调度相关方法。
 //
-// 这个文件聚合了三类附着在 GatewayService 上的私有逻辑：
-//   1. 算法分流 chooseSchedulingAlgorithm 与对应的常量；
-//   2. SchedulingHealthConfig / ScoreWeights / ScoreThresholds 等配置默认值的解析；
-//   3. 账号健康缓存（healthCache）相关的接口（HealthCache、RecordAnthropicCall、
+// 这个文件聚合了两类附着在 GatewayService 上的私有逻辑：
+//   1. SchedulingHealthConfig 配置默认值的解析；
+//   2. 账号健康缓存（healthCache）相关的接口（HealthCache、RecordAnthropicCall、
 //      onHealthVerdictChange、isAccountSchedulableForHealth ...）。
 //
 // 还有一个零碎的 logSchedulerSelected 也在这里，便于后续如果上游引入类似日志我们可以
@@ -14,9 +13,9 @@
 // 与 upstream 合并策略：
 //   - 把这些方法搬到 companion 文件后，gateway_service.go 与 upstream 的 diff
 //     主要剩下：构造函数参数、Service 结构体新增字段、SelectAccountWithLoadAwareness
-//     里几处内联调用（algorithm 分流、健康过滤）。这些是无法外迁的。
+//     里几处内联调用（健康过滤）。这些是无法外迁的。
 //   - 真正定义 healthCache 的类型、CallSample、HealthVerdict 等都在
-//     account_test_health_cache.go / gateway_scheduler_weighted.go，跟本文件解耦。
+//     account_test_health_cache.go，跟本文件解耦。
 // =============================================================================
 package service
 
@@ -29,34 +28,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
-
-// 调度算法名称（gateway.scheduling.algorithm）
-const (
-	schedulingAlgorithmLegacy   = "legacy"
-	schedulingAlgorithmWeighted = "weighted"
-)
-
-// chooseSchedulingAlgorithm 决定指定 group 走哪种调度算法。
-// 优先级：LegacyGroups（豁免） > WeightedGroups（白名单） > 全局 Algorithm。
-// 默认 legacy，保持向后兼容。
-func (s *GatewayService) chooseSchedulingAlgorithm(groupID *int64) string {
-	cfg := s.schedulingConfig()
-	gid := derefGroupID(groupID)
-	for _, id := range cfg.LegacyGroups {
-		if id == gid {
-			return schedulingAlgorithmLegacy
-		}
-	}
-	for _, id := range cfg.WeightedGroups {
-		if id == gid {
-			return schedulingAlgorithmWeighted
-		}
-	}
-	if cfg.Algorithm == schedulingAlgorithmWeighted {
-		return schedulingAlgorithmWeighted
-	}
-	return schedulingAlgorithmLegacy
-}
 
 // resolvedSchedulingHealth 返回 SchedulingHealthConfig，零值字段回退到内置默认。
 func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfig {
@@ -88,54 +59,18 @@ func (s *GatewayService) resolvedSchedulingHealth() config.SchedulingHealthConfi
 	return c
 }
 
-// resolvedScoreWeights 返回 5 因子权重，零值回退到内置默认。
-func (s *GatewayService) resolvedScoreWeights() config.ScoreWeightsConfig {
-	c := s.schedulingConfig().ScoreWeights
-	if c.ErrRate <= 0 {
-		c.ErrRate = 1.5
+// groupContainedInLogList 判断 groupID 是否在 debug.log_groups 白名单内。
+func groupContainedInLogList(groupID *int64, list []int64) bool {
+	if groupID == nil {
+		return false
 	}
-	if c.TTFT <= 0 {
-		c.TTFT = 1.2
+	target := *groupID
+	for _, id := range list {
+		if id == target {
+			return true
+		}
 	}
-	if c.OTPS <= 0 {
-		c.OTPS = 1.0
-	}
-	if c.Load <= 0 {
-		c.Load = 0.3
-	}
-	if c.Priority <= 0 {
-		c.Priority = 0.5
-	}
-	return c
-}
-
-// resolvedScoreThresholds 返回因子归一化阈值，零值回退到内置默认。
-func (s *GatewayService) resolvedScoreThresholds() config.ScoreThresholdsConfig {
-	c := s.schedulingConfig().ScoreThresholds
-	if c.TTFTBestMs <= 0 {
-		c.TTFTBestMs = 1500
-	}
-	if c.TTFTWorstMs <= 0 {
-		c.TTFTWorstMs = 6000
-	}
-	if c.OTPSBest <= 0 {
-		c.OTPSBest = 80
-	}
-	if c.OTPSWorst <= 0 {
-		c.OTPSWorst = 10
-	}
-	if c.LoadThresholdPct <= 0 {
-		c.LoadThresholdPct = 70
-	}
-	return c
-}
-
-// resolvedSchedulingTopK 返回 Top-K 加权随机的 K，零值回退默认 5。
-func (s *GatewayService) resolvedSchedulingTopK() int {
-	if k := s.schedulingConfig().TopK; k > 0 {
-		return k
-	}
-	return 5
+	return false
 }
 
 // HealthCache 暴露内部健康缓存指针，仅用于 admin 调试 / 监控接口。

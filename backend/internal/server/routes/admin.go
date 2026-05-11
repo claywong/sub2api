@@ -127,7 +127,6 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerSchedulerRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	scheduler := admin.Group("/scheduler")
 	{
-		scheduler.GET("/metrics", h.Admin.Scheduler.GetMetrics)
 		scheduler.GET("/snapshot", h.Admin.Scheduler.GetSnapshot)
 	}
 }
