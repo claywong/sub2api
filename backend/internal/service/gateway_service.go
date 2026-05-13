@@ -5136,6 +5136,14 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
 
+	// Anthropic 专属响应头超时：配置非零时覆盖全局超时，快速失败以便 failover。
+	// 注意：此处在 passthrough 路径内设置，确保 API key passthrough / full passthrough 均生效。
+	if s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout)*time.Second)
+		defer cancel()
+	}
+
 	var resp *http.Response
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
@@ -8430,6 +8438,16 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	}
 	if !stream {
 		return ctx, func() {}
+	}
+	// 流式请求：断开 cancel 传播链（客户端断开不取消上游请求），但保留显式 deadline。
+	// 这样 anthropic_response_header_timeout 等超时配置在流式请求中也能生效（仅覆盖等待响应头阶段）。
+	// DoWithTLS 返回后 resp.Body 的读取不受此 deadline 影响。
+	if deadline, ok := ctx.Deadline(); ok {
+		newCtx, cancel := context.WithDeadline(context.Background(), deadline)
+		// 调用方会立即调用 releaseUpstreamCtx()，不能让它取消这个 context。
+		// cancel 交由 newCtx 的 deadline 到期后自动触发，此处返回 noop。
+		_ = cancel
+		return newCtx, func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }
