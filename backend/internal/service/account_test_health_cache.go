@@ -471,7 +471,10 @@ func (c *AccountTestHealthCache) checkVerdictChangeLocked(accountID int64, h *Ac
 	if c.OnVerdictChange == nil {
 		return
 	}
-	cfg := defaultHealthVerdictConfig()
+	cfg := c.verdictCfg
+	if cfg.WindowSeconds <= 0 {
+		cfg = defaultHealthVerdictConfig()
+	}
 	s := h.snapshotLocked(time.Now(), cfg.WindowSeconds)
 	current := verdictFromSnapshot(s, cfg)
 	prev := h.lastVerdict
@@ -631,10 +634,14 @@ func defaultHealthVerdictConfig() HealthVerdictConfig {
 	}
 }
 
-// HealthVerdictWithDefaults 使用内置默认阈值计算健康三态，等价于 gateway 调度时的判断结果。
+// HealthVerdictWithDefaults 使用运行时配置计算健康三态，等价于 gateway 调度时的判断结果。
 // 供 admin handler 等无法获取调度配置的调用方使用。
 func (c *AccountTestHealthCache) HealthVerdictWithDefaults(accountID int64) HealthVerdict {
-	return c.HealthVerdict(accountID, defaultHealthVerdictConfig())
+	cfg := c.verdictCfg
+	if cfg.WindowSeconds <= 0 {
+		cfg = defaultHealthVerdictConfig()
+	}
+	return c.HealthVerdict(accountID, cfg)
 }
 
 // HealthVerdictWithReason 在 HealthVerdictWithDefaults 基础上同时返回触发原因描述。

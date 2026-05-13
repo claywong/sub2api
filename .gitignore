@@ -10,6 +10,7 @@ docs/claude-relay-service/
 *.dll
 *.so
 *.dylib
+bin/
 backend/bin/
 backend/server
 backend/sub2api
