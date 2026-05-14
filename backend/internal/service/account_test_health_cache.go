@@ -90,18 +90,20 @@ func resolveHealthCfg(c *config.AccountHealthConfig) healthCfg {
 
 // metricBucket 单个时间桶，记录一段（healthBucketSeconds）内的累计指标。
 type metricBucket struct {
-	startSec    int64   // 桶起点 unix 秒；0 表示未使用
-	reqCount    int     // 总请求数
-	errCount    int     // 失败次数
-	slowCount   int     // 慢请求数（duration ≥ slowThresholdMs）
-	ttftSum     int64   // TTFT 累加（ms）
-	ttftN       int     // 有 TTFT 样本的次数
-	otpsSum     float64 // OTPS 累加（tokens/s）
-	otpsN       int     // 有 OTPS 样本的次数
-	tcpConnSum  int64   // TCP 连接时间累加（ms）
-	tcpConnN    int     // 有 TCP 连接时间样本的次数
-	ttfbSum     int64   // TTFB（首字节时间）累加（ms）
-	ttfbN       int     // 有 TTFB 样本的次数
+	startSec        int64   // 桶起点 unix 秒；0 表示未使用
+	reqCount        int     // 总请求数
+	errCount        int     // 失败次数
+	slowCount       int     // 慢请求数（duration ≥ slowThresholdMs）
+	ttftSum         int64   // TTFT 累加（ms）
+	ttftN           int     // 有 TTFT 样本的次数
+	otpsSum         float64 // OTPS 累加（tokens/s）
+	otpsN           int     // 有 OTPS 样本的次数
+	tcpConnSum      int64   // TCP 连接时间累加（ms）
+	tcpConnN        int     // 有 TCP 连接时间样本的次数
+	ttfbSum         int64   // TTFB（首字节时间）累加（ms）
+	ttfbN           int     // 有 TTFB 样本的次数
+	cacheHitRateSum float64 // 缓存命中率累加（cache_read / total_input）
+	cacheHitN       int     // 有缓存命中率样本的次数
 }
 
 func (b *metricBucket) reset(startSec int64) {
@@ -117,32 +119,40 @@ func (b *metricBucket) reset(startSec int64) {
 	b.tcpConnN = 0
 	b.ttfbSum = 0
 	b.ttfbN = 0
+	b.cacheHitRateSum = 0
+	b.cacheHitN = 0
 }
 
 // CallSample 一次调用（主动 test 或真实 gateway 调用）的样本。
 // TTFTMs/DurationMs/OutputTokens/TCPConnMs/TTFBMs 为 0 表示该字段无样本（不计入相应指标）。
+// CacheReadTokens/CacheCreationTokens/InputTokens 均为 0 时不计入缓存命中率。
 type CallSample struct {
-	Success      bool
-	TTFTMs       int // Time To First Token（首 token 时间）
-	DurationMs   int
-	OutputTokens int
-	TCPConnMs    int // TCP 连接时间（三次握手）
-	TTFBMs       int // Time To First Byte（首字节时间）
+	Success             bool
+	TTFTMs              int // Time To First Token（首 token 时间）
+	DurationMs          int
+	OutputTokens        int
+	TCPConnMs           int // TCP 连接时间（三次握手）
+	TTFBMs              int // Time To First Byte（首字节时间）
+	CacheReadTokens     int // Anthropic cache_read_input_tokens
+	CacheCreationTokens int // Anthropic cache_creation_input_tokens
+	InputTokens         int // Anthropic input_tokens（不含 cache 部分）
 }
 
 // HealthSnapshot 滑动窗口聚合后的健康指标快照。
 type HealthSnapshot struct {
-	ReqCount          int
-	ErrCount          int
-	SlowCount         int
-	TTFTSampleCount   int
-	OTPSSampleCount   int
+	ReqCount           int
+	ErrCount           int
+	SlowCount          int
+	TTFTSampleCount    int
+	OTPSSampleCount    int
 	TCPConnSampleCount int
-	TTFBSampleCount   int
-	ttftSumMs         int64
-	otpsSum           float64
-	tcpConnSumMs      int64
-	ttfbSumMs         int64
+	TTFBSampleCount    int
+	CacheHitSampleCount int
+	ttftSumMs          int64
+	otpsSum            float64
+	tcpConnSumMs       int64
+	ttfbSumMs          int64
+	cacheHitRateSum    float64
 }
 
 // ErrRate 窗口内错误率（0~1）；ReqCount=0 时返回 0。
@@ -204,6 +214,18 @@ func (s HealthSnapshot) HasTCPConn() bool { return s.TCPConnSampleCount > 0 }
 
 // HasTTFB 窗口内是否有 TTFB 样本。
 func (s HealthSnapshot) HasTTFB() bool { return s.TTFBSampleCount > 0 }
+
+// CacheHitRateAvg 窗口内缓存命中率均值（0~1）；无样本时返回 0。
+// 命中率 = cache_read_input_tokens / (cache_read + cache_creation + input_tokens)
+func (s HealthSnapshot) CacheHitRateAvg() float64 {
+	if s.CacheHitSampleCount <= 0 {
+		return 0
+	}
+	return s.cacheHitRateSum / float64(s.CacheHitSampleCount)
+}
+
+// HasCacheHit 窗口内是否有缓存命中率样本。
+func (s HealthSnapshot) HasCacheHit() bool { return s.CacheHitSampleCount > 0 }
 
 // AccountTestHealth 存储单个账号的健康状态。
 // 滑动窗口（buckets）记录最近 10 分钟的请求/错误/TTFT/OTPS/慢率聚合数据，
@@ -355,6 +377,8 @@ func (h *AccountTestHealth) snapshotLocked(now time.Time, windowSec int64) Healt
 		s.TCPConnSampleCount += b.tcpConnN
 		s.ttfbSumMs += b.ttfbSum
 		s.TTFBSampleCount += b.ttfbN
+		s.cacheHitRateSum += b.cacheHitRateSum
+		s.CacheHitSampleCount += b.cacheHitN
 	}
 	return s
 }
@@ -394,6 +418,13 @@ func (h *AccountTestHealth) recordSampleLocked(sample CallSample, now time.Time,
 			b.otpsSum += otps
 			b.otpsN++
 		}
+	}
+	// 缓存命中率：cache_read / (cache_read + cache_creation + input_tokens)
+	// 仅当 total > 0 时纳入样本（三个字段均为 0 表示无 token 数据）。
+	if total := sample.CacheReadTokens + sample.CacheCreationTokens + sample.InputTokens; total > 0 {
+		rate := float64(sample.CacheReadTokens) / float64(total)
+		b.cacheHitRateSum += rate
+		b.cacheHitN++
 	}
 }
 

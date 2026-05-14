@@ -183,19 +183,21 @@ type AccountWithConcurrency struct {
 }
 
 type AccountHealthRuntime struct {
-	Available     bool    `json:"available"`
-	WindowSeconds int64   `json:"window_seconds"`
-	ReqCount      int     `json:"req_count"`
-	ErrCount      int     `json:"err_count"`
-	ErrRate       float64 `json:"err_rate"`
-	SlowCount     int     `json:"slow_count"`
-	SlowRate      float64 `json:"slow_rate"`
-	TTFTAvgMs     float64 `json:"ttft_avg_ms"`
-	OTPSAvg       float64 `json:"otps_avg"`
-	TCPConnAvgMs  float64 `json:"tcp_conn_avg_ms"`  // TCP 连接平均时间（ms）
-	TTFBAvgMs     float64 `json:"ttfb_avg_ms"`      // TTFB（首字节时间）平均（ms）
-	Verdict       string  `json:"verdict"`
-	VerdictReason string  `json:"verdict_reason"`
+	Available           bool    `json:"available"`
+	WindowSeconds       int64   `json:"window_seconds"`
+	ReqCount            int     `json:"req_count"`
+	ErrCount            int     `json:"err_count"`
+	ErrRate             float64 `json:"err_rate"`
+	SlowCount           int     `json:"slow_count"`
+	SlowRate            float64 `json:"slow_rate"`
+	TTFTAvgMs           float64 `json:"ttft_avg_ms"`
+	OTPSAvg             float64 `json:"otps_avg"`
+	TCPConnAvgMs        float64 `json:"tcp_conn_avg_ms"`       // TCP 连接平均时间（ms）
+	TTFBAvgMs           float64 `json:"ttfb_avg_ms"`           // TTFB（首字节时间）平均（ms）
+	CacheHitRateAvg     float64 `json:"cache_hit_rate_avg"`    // 缓存命中率均值（0~1）
+	CacheHitSampleCount int     `json:"cache_hit_sample_count"` // 有缓存命中率样本的次数
+	Verdict             string  `json:"verdict"`
+	VerdictReason       string  `json:"verdict_reason"`
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -253,19 +255,21 @@ func (h *AccountHandler) attachAccountHealthRuntime(item *AccountWithConcurrency
 
 	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(account.ID)
 	item.AccountHealth = &AccountHealthRuntime{
-		Available:     true,
-		WindowSeconds: service.DefaultHealthWindowSeconds,
-		ReqCount:      snap.ReqCount,
-		ErrCount:      snap.ErrCount,
-		ErrRate:       snap.ErrRate(),
-		SlowCount:     snap.SlowCount,
-		SlowRate:      snap.SlowRate(),
-		TTFTAvgMs:     snap.TTFTAvg(),
-		OTPSAvg:       snap.OTPSAvg(),
-		TCPConnAvgMs:  snap.TCPConnAvg(),
-		TTFBAvgMs:     snap.TTFBAvg(),
-		Verdict:       verdict.String(),
-		VerdictReason: reason,
+		Available:           true,
+		WindowSeconds:       service.DefaultHealthWindowSeconds,
+		ReqCount:            snap.ReqCount,
+		ErrCount:            snap.ErrCount,
+		ErrRate:             snap.ErrRate(),
+		SlowCount:           snap.SlowCount,
+		SlowRate:            snap.SlowRate(),
+		TTFTAvgMs:           snap.TTFTAvg(),
+		OTPSAvg:             snap.OTPSAvg(),
+		TCPConnAvgMs:        snap.TCPConnAvg(),
+		TTFBAvgMs:           snap.TTFBAvg(),
+		CacheHitRateAvg:     snap.CacheHitRateAvg(),
+		CacheHitSampleCount: snap.CacheHitSampleCount,
+		Verdict:             verdict.String(),
+		VerdictReason:       reason,
 	}
 
 	if verdict != service.HealthOK {
@@ -2304,18 +2308,20 @@ func (h *AccountHandler) GetHealthStats(c *gin.Context) {
 	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(accountID)
 
 	response.Success(c, gin.H{
-		"available":       true,
-		"window_seconds":  service.DefaultHealthWindowSeconds,
-		"req_count":       snap.ReqCount,
-		"err_count":       snap.ErrCount,
-		"err_rate":        snap.ErrRate(),
-		"slow_count":      snap.SlowCount,
-		"slow_rate":       snap.SlowRate(),
-		"ttft_avg_ms":     snap.TTFTAvg(),
-		"otps_avg":        snap.OTPSAvg(),
-		"tcp_conn_avg_ms": snap.TCPConnAvg(),
-		"ttfb_avg_ms":     snap.TTFBAvg(),
-		"verdict":         verdict.String(),
-		"verdict_reason":  reason,
+		"available":             true,
+		"window_seconds":        service.DefaultHealthWindowSeconds,
+		"req_count":             snap.ReqCount,
+		"err_count":             snap.ErrCount,
+		"err_rate":              snap.ErrRate(),
+		"slow_count":            snap.SlowCount,
+		"slow_rate":             snap.SlowRate(),
+		"ttft_avg_ms":           snap.TTFTAvg(),
+		"otps_avg":              snap.OTPSAvg(),
+		"tcp_conn_avg_ms":       snap.TCPConnAvg(),
+		"ttfb_avg_ms":           snap.TTFBAvg(),
+		"cache_hit_rate_avg":    snap.CacheHitRateAvg(),
+		"cache_hit_sample_count": snap.CacheHitSampleCount,
+		"verdict":               verdict.String(),
+		"verdict_reason":        reason,
 	})
 }

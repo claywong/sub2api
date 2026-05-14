@@ -81,6 +81,9 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 		if result.TTFBMs > 0 {
 			sample.TTFBMs = result.TTFBMs
 		}
+		sample.CacheReadTokens = result.Usage.CacheReadInputTokens
+		sample.CacheCreationTokens = result.Usage.CacheCreationInputTokens
+		sample.InputTokens = result.Usage.InputTokens
 	}
 
 	// 失败样本写入健康缓存时打 warn，便于排查账号进入 StickyOnly/Excluded 的原因。

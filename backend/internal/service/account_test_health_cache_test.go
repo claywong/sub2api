@@ -259,3 +259,57 @@ func TestSnapshotPercentageMethods(t *testing.T) {
 	require.InDelta(t, 0.25, s.ErrRate(), 1e-9)
 	require.InDelta(t, 0.10, s.SlowRate(), 1e-9)
 }
+
+func TestCacheHitRate_NoSample(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	s := c.Snapshot(1)
+	require.False(t, s.HasCacheHit())
+	require.Equal(t, 0.0, s.CacheHitRateAvg())
+}
+
+func TestCacheHitRate_AllTokensZero_NotRecorded(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	// 三个 token 字段均为 0 → total=0 → 不纳入样本
+	c.Record(1, CallSample{Success: true, CacheReadTokens: 0, CacheCreationTokens: 0, InputTokens: 0})
+	s := c.Snapshot(1)
+	require.Equal(t, 1, s.ReqCount)
+	require.False(t, s.HasCacheHit())
+}
+
+func TestCacheHitRate_FullHit(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	// cache_read=200, creation=0, input=0 → total=200, rate=1.0
+	c.Record(1, CallSample{Success: true, CacheReadTokens: 200, CacheCreationTokens: 0, InputTokens: 0})
+	s := c.Snapshot(1)
+	require.True(t, s.HasCacheHit())
+	require.InDelta(t, 1.0, s.CacheHitRateAvg(), 1e-9)
+}
+
+func TestCacheHitRate_NoHit(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	// cache_read=0, creation=100, input=100 → total=200, rate=0.0（有样本）
+	c.Record(1, CallSample{Success: true, CacheReadTokens: 0, CacheCreationTokens: 100, InputTokens: 100})
+	s := c.Snapshot(1)
+	require.True(t, s.HasCacheHit())
+	require.InDelta(t, 0.0, s.CacheHitRateAvg(), 1e-9)
+}
+
+func TestCacheHitRate_TypicalMixed(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	// cache_read=100, creation=50, input=50 → total=200, rate=0.5
+	c.Record(1, CallSample{Success: true, CacheReadTokens: 100, CacheCreationTokens: 50, InputTokens: 50})
+	s := c.Snapshot(1)
+	require.True(t, s.HasCacheHit())
+	require.InDelta(t, 0.5, s.CacheHitRateAvg(), 1e-9)
+}
+
+func TestCacheHitRate_AverageMultipleSamples(t *testing.T) {
+	c := NewAccountTestHealthCache(nil)
+	// 样本1: rate=1.0（全命中）
+	c.Record(1, CallSample{Success: true, CacheReadTokens: 200, InputTokens: 0})
+	// 样本2: rate=0.0（无命中）
+	c.Record(1, CallSample{Success: true, CacheReadTokens: 0, InputTokens: 200})
+	s := c.Snapshot(1)
+	require.Equal(t, 2, s.CacheHitSampleCount)
+	require.InDelta(t, 0.5, s.CacheHitRateAvg(), 1e-9)
+}
