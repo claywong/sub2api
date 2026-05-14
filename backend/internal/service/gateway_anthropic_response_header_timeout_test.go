@@ -73,24 +73,30 @@ func openaiTestAccount() *Account {
 	}
 }
 
-// TestForward_AnthropicResponseHeaderTimeout_InjectsDeadline 验证 Anthropic 平台
+// TestForward_AnthropicResponseHeaderTimeout_StreamInjectsDeadline 验证流式请求
 // 在配置了 anthropic_response_header_timeout 时，context 带有 deadline
-func TestForward_AnthropicResponseHeaderTimeout_InjectsDeadline(t *testing.T) {
+func TestForward_AnthropicResponseHeaderTimeout_StreamInjectsDeadline(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	upstream := &contextCapturingUpstream{resp: makeAnthropicOKResponse()}
+	streamBody := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-3-5-sonnet-20241022\",\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	streamResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader([]byte(streamBody))),
+	}
+	upstream := &contextCapturingUpstream{resp: streamResp}
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
-			ResponseHeaderTimeout:           600,
-			AnthropicResponseHeaderTimeout:  30,
-			MaxLineSize:                     defaultMaxLineSize,
+			ResponseHeaderTimeout:          600,
+			AnthropicResponseHeaderTimeout: 30,
+			MaxLineSize:                    defaultMaxLineSize,
 		},
 	}
 	svc := makeForwardGatewayService(cfg, upstream)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	body := []byte(`{"model":"claude-3-5-sonnet-20241022","max_tokens":10,"messages":[{"role":"user","content":"hi"}]}`)
+	body := []byte(`{"model":"claude-3-5-sonnet-20241022","max_tokens":10,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -98,7 +104,7 @@ func TestForward_AnthropicResponseHeaderTimeout_InjectsDeadline(t *testing.T) {
 	parsed := &ParsedRequest{
 		Body:   body,
 		Model:  "claude-3-5-sonnet-20241022",
-		Stream: false,
+		Stream: true,
 	}
 
 	before := time.Now()
@@ -106,20 +112,21 @@ func TestForward_AnthropicResponseHeaderTimeout_InjectsDeadline(t *testing.T) {
 
 	require.NotNil(t, upstream.capturedCtx, "DoWithTLS 应被调用")
 	deadline, ok := upstream.capturedCtx.Deadline()
-	require.True(t, ok, "Anthropic 平台配置了超时后，context 应带有 deadline")
+	require.True(t, ok, "流式请求配置了超时后，context 应带有 deadline")
 	assert.WithinDuration(t, before.Add(30*time.Second), deadline, 2*time.Second,
 		"deadline 应在 30 秒左右")
 }
 
-// TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled 验证配置为 0 时不注入 deadline
-func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
+// TestForward_AnthropicResponseHeaderTimeout_NonStreamNoDeadline 验证非流式请求
+// 不受 anthropic_response_header_timeout 影响，依赖 Transport 层的 response_header_timeout
+func TestForward_AnthropicResponseHeaderTimeout_NonStreamNoDeadline(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	upstream := &contextCapturingUpstream{resp: makeAnthropicOKResponse()}
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			ResponseHeaderTimeout:          600,
-			AnthropicResponseHeaderTimeout: 0, // 0 = 不启用
+			AnthropicResponseHeaderTimeout: 30,
 			MaxLineSize:                    defaultMaxLineSize,
 		},
 	}
@@ -136,6 +143,46 @@ func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
 		Body:   body,
 		Model:  "claude-3-5-sonnet-20241022",
 		Stream: false,
+	}
+
+	_, _ = svc.Forward(context.Background(), c, account, parsed)
+
+	require.NotNil(t, upstream.capturedCtx, "DoWithTLS 应被调用")
+	_, ok := upstream.capturedCtx.Deadline()
+	assert.False(t, ok, "非流式请求不应因 AnthropicResponseHeaderTimeout 注入 deadline")
+}
+
+// TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled 验证流式请求配置为 0 时不注入 deadline
+func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	streamBody := "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+	streamResp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(bytes.NewReader([]byte(streamBody))),
+	}
+	upstream := &contextCapturingUpstream{resp: streamResp}
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			ResponseHeaderTimeout:          600,
+			AnthropicResponseHeaderTimeout: 0, // 0 = 不启用
+			MaxLineSize:                    defaultMaxLineSize,
+		},
+	}
+	svc := makeForwardGatewayService(cfg, upstream)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"claude-3-5-sonnet-20241022","max_tokens":10,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	account := anthropicTestAccount()
+	parsed := &ParsedRequest{
+		Body:   body,
+		Model:  "claude-3-5-sonnet-20241022",
+		Stream: true,
 	}
 
 	_, _ = svc.Forward(context.Background(), c, account, parsed)

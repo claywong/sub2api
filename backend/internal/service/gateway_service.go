@@ -4588,8 +4588,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
 
-	// Anthropic 专属响应头超时：配置非零时覆盖全局超时，快速失败以便 failover
-	if account.Platform == PlatformAnthropic && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
+	// Anthropic 专属响应头超时：仅对流式请求生效，快速失败以便 failover。
+	// 非流式请求依赖 Transport 层的 response_header_timeout，避免超时值过小截断完整响应体。
+	if reqStream && account.Platform == PlatformAnthropic && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout)*time.Second)
 		defer cancel()
@@ -5136,9 +5137,9 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
 
-	// Anthropic 专属响应头超时：配置非零时覆盖全局超时，快速失败以便 failover。
-	// 注意：此处在 passthrough 路径内设置，确保 API key passthrough / full passthrough 均生效。
-	if s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
+	// Anthropic 专属响应头超时：仅对流式请求生效，快速失败以便 failover。
+	// 非流式请求依赖 Transport 层的 response_header_timeout。
+	if input.RequestStream && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout)*time.Second)
 		defer cancel()
