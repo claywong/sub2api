@@ -65,7 +65,7 @@ func (s *HTTPUpstreamSuite) TestCustomResponseHeaderTimeout() {
 // 验证解析失败时拒绝回退到直连模式
 func (s *HTTPUpstreamSuite) TestGetOrCreateClient_InvalidURLReturnsError() {
 	svc := s.newService()
-	_, err := svc.getClientEntry("://bad-proxy-url", 1, 1, false, false)
+	_, err := svc.getClientEntry("://bad-proxy-url", 1, 1, false, false, 0)
 	require.Error(s.T(), err, "expected error for invalid proxy URL")
 }
 

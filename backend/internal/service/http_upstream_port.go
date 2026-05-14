@@ -2,6 +2,7 @@ package service
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 )
@@ -20,5 +21,9 @@ type HTTPUpstream interface {
 	//
 	// Profile 由调用方通过 TLSFingerprintProfileService 解析后传入，
 	// 支持按账号绑定的数据库 profile 或内置默认 profile。
-	DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error)
+	//
+	// responseHeaderTimeout 参数:
+	//   - 0: 使用全局 response_header_timeout 配置
+	//   - >0: 覆盖 Transport 的 ResponseHeaderTimeout，仅对本次请求使用的连接池生效
+	DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile, responseHeaderTimeout time.Duration) (*http.Response, error)
 }
