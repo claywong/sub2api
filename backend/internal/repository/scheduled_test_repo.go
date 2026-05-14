@@ -50,16 +50,17 @@ func (r *scheduledTestPlanRepository) ListByAccountID(ctx context.Context, accou
 
 func (r *scheduledTestPlanRepository) ListDue(ctx context.Context, now time.Time) ([]*service.ScheduledTestPlan, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, account_id, model_id, cron_expression, enabled, max_results, auto_recover, last_run_at, next_run_at, created_at, updated_at
-		FROM scheduled_test_plans
-		WHERE enabled = true AND next_run_at <= $1
-		ORDER BY next_run_at ASC
+		SELECT p.id, p.account_id, COALESCE(a.name, ''), p.model_id, p.cron_expression, p.enabled, p.max_results, p.auto_recover, p.last_run_at, p.next_run_at, p.created_at, p.updated_at
+		FROM scheduled_test_plans p
+		LEFT JOIN accounts a ON a.id = p.account_id
+		WHERE p.enabled = true AND p.next_run_at <= $1
+		ORDER BY p.next_run_at ASC
 	`, now)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	return scanPlans(rows)
+	return scanPlansWithName(rows)
 }
 
 func (r *scheduledTestPlanRepository) Update(ctx context.Context, plan *service.ScheduledTestPlan) (*service.ScheduledTestPlan, error) {
@@ -175,6 +176,22 @@ func scanPlans(rows *sql.Rows) ([]*service.ScheduledTestPlan, error) {
 	for rows.Next() {
 		p, err := scanPlan(rows)
 		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, p)
+	}
+	return plans, rows.Err()
+}
+
+// scanPlansWithName 用于 ListDue，SELECT 中额外包含 account name。
+func scanPlansWithName(rows *sql.Rows) ([]*service.ScheduledTestPlan, error) {
+	var plans []*service.ScheduledTestPlan
+	for rows.Next() {
+		p := &service.ScheduledTestPlan{}
+		if err := rows.Scan(
+			&p.ID, &p.AccountID, &p.AccountName, &p.ModelID, &p.CronExpression, &p.Enabled, &p.MaxResults, &p.AutoRecover,
+			&p.LastRunAt, &p.NextRunAt, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		plans = append(plans, p)

@@ -252,6 +252,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			h.ensureForwardErrorResponse(c, streamStarted)
 			reqLog.Error("gateway.responses.forward_failed",
 				zap.Int64("account_id", account.ID),
+				zap.String("account_name", account.Name),
 				zap.Error(err),
 			)
 			return

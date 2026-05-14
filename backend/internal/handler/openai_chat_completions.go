@@ -249,6 +249,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				reqLog.Warn("openai_chat_completions.forward_failed",
 					zap.Int64("account_id", account.ID),
+					zap.String("account_name", account.Name),
 					zap.Bool("fallback_error_response_written", wroteFallback),
 					zap.Error(err),
 				)

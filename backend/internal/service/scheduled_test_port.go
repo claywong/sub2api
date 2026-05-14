@@ -9,6 +9,7 @@ import (
 type ScheduledTestPlan struct {
 	ID             int64      `json:"id"`
 	AccountID      int64      `json:"account_id"`
+	AccountName    string     `json:"account_name"` // 仅 ListDue 时通过 JOIN 填充，用于日志
 	ModelID        string     `json:"model_id"`
 	CronExpression string     `json:"cron_expression"`
 	Enabled        bool       `json:"enabled"`

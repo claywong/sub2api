@@ -256,6 +256,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
+					zap.String("account_name", account.Name),
 					zap.Bool("fallback_error_response_written", wroteFallback),
 					zap.Error(err),
 				}
