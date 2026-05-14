@@ -8634,9 +8634,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
-	if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
-		billingModel = result.UpstreamModel
-	}
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
