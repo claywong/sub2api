@@ -16,18 +16,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// contextCapturingUpstream 捕获 DoWithTLS 调用时的请求 context，用于验证超时注入
-type contextCapturingUpstream struct {
-	capturedCtx context.Context
-	resp        *http.Response
+// responseHeaderTimeoutCapturingUpstream 捕获 DoWithTLS 调用时传入的 responseHeaderTimeout 参数
+type responseHeaderTimeoutCapturingUpstream struct {
+	capturedTimeout time.Duration
+	called          bool
+	resp            *http.Response
 }
 
-func (u *contextCapturingUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
-	return u.DoWithTLS(req, "", 0, 0, nil)
+func (u *responseHeaderTimeoutCapturingUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	return u.DoWithTLS(req, "", 0, 0, nil, 0)
 }
 
-func (u *contextCapturingUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
-	u.capturedCtx = req.Context()
+func (u *responseHeaderTimeoutCapturingUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile, responseHeaderTimeout time.Duration) (*http.Response, error) {
+	u.called = true
+	u.capturedTimeout = responseHeaderTimeout
 	if u.resp != nil {
 		return u.resp, nil
 	}
@@ -73,9 +75,9 @@ func openaiTestAccount() *Account {
 	}
 }
 
-// TestForward_AnthropicResponseHeaderTimeout_StreamInjectsDeadline 验证流式请求
-// 在配置了 anthropic_response_header_timeout 时，context 带有 deadline
-func TestForward_AnthropicResponseHeaderTimeout_StreamInjectsDeadline(t *testing.T) {
+// TestForward_AnthropicResponseHeaderTimeout_StreamPassesTimeout 验证流式请求
+// 在配置了 anthropic_response_header_timeout 时，DoWithTLS 收到正确的超时参数
+func TestForward_AnthropicResponseHeaderTimeout_StreamPassesTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	streamBody := "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-3-5-sonnet-20241022\",\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
@@ -84,7 +86,7 @@ func TestForward_AnthropicResponseHeaderTimeout_StreamInjectsDeadline(t *testing
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body:       io.NopCloser(bytes.NewReader([]byte(streamBody))),
 	}
-	upstream := &contextCapturingUpstream{resp: streamResp}
+	upstream := &responseHeaderTimeoutCapturingUpstream{resp: streamResp}
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			ResponseHeaderTimeout:          600,
@@ -107,22 +109,19 @@ func TestForward_AnthropicResponseHeaderTimeout_StreamInjectsDeadline(t *testing
 		Stream: true,
 	}
 
-	before := time.Now()
 	_, _ = svc.Forward(context.Background(), c, account, parsed)
 
-	require.NotNil(t, upstream.capturedCtx, "DoWithTLS 应被调用")
-	deadline, ok := upstream.capturedCtx.Deadline()
-	require.True(t, ok, "流式请求配置了超时后，context 应带有 deadline")
-	assert.WithinDuration(t, before.Add(30*time.Second), deadline, 2*time.Second,
-		"deadline 应在 30 秒左右")
+	require.True(t, upstream.called, "DoWithTLS 应被调用")
+	assert.Equal(t, 30*time.Second, upstream.capturedTimeout,
+		"流式 Anthropic 请求应向 DoWithTLS 传入 30s responseHeaderTimeout")
 }
 
-// TestForward_AnthropicResponseHeaderTimeout_NonStreamNoDeadline 验证非流式请求
-// 不受 anthropic_response_header_timeout 影响，依赖 Transport 层的 response_header_timeout
-func TestForward_AnthropicResponseHeaderTimeout_NonStreamNoDeadline(t *testing.T) {
+// TestForward_AnthropicResponseHeaderTimeout_NonStreamZeroTimeout 验证非流式请求
+// 不受 anthropic_response_header_timeout 影响，DoWithTLS 收到 0（使用全局默认）
+func TestForward_AnthropicResponseHeaderTimeout_NonStreamZeroTimeout(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	upstream := &contextCapturingUpstream{resp: makeAnthropicOKResponse()}
+	upstream := &responseHeaderTimeoutCapturingUpstream{resp: makeAnthropicOKResponse()}
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			ResponseHeaderTimeout:          600,
@@ -147,12 +146,12 @@ func TestForward_AnthropicResponseHeaderTimeout_NonStreamNoDeadline(t *testing.T
 
 	_, _ = svc.Forward(context.Background(), c, account, parsed)
 
-	require.NotNil(t, upstream.capturedCtx, "DoWithTLS 应被调用")
-	_, ok := upstream.capturedCtx.Deadline()
-	assert.False(t, ok, "非流式请求不应因 AnthropicResponseHeaderTimeout 注入 deadline")
+	require.True(t, upstream.called, "DoWithTLS 应被调用")
+	assert.Equal(t, time.Duration(0), upstream.capturedTimeout,
+		"非流式请求不应因 AnthropicResponseHeaderTimeout 传入非零 responseHeaderTimeout")
 }
 
-// TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled 验证流式请求配置为 0 时不注入 deadline
+// TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled 验证流式请求配置为 0 时传入 0
 func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -162,7 +161,7 @@ func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body:       io.NopCloser(bytes.NewReader([]byte(streamBody))),
 	}
-	upstream := &contextCapturingUpstream{resp: streamResp}
+	upstream := &responseHeaderTimeoutCapturingUpstream{resp: streamResp}
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			ResponseHeaderTimeout:          600,
@@ -187,16 +186,16 @@ func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
 
 	_, _ = svc.Forward(context.Background(), c, account, parsed)
 
-	require.NotNil(t, upstream.capturedCtx, "DoWithTLS 应被调用")
-	_, ok := upstream.capturedCtx.Deadline()
-	assert.False(t, ok, "AnthropicResponseHeaderTimeout=0 时不应注入 deadline")
+	require.True(t, upstream.called, "DoWithTLS 应被调用")
+	assert.Equal(t, time.Duration(0), upstream.capturedTimeout,
+		"AnthropicResponseHeaderTimeout=0 时应传入 0")
 }
 
 // TestForward_AnthropicResponseHeaderTimeout_OpenAINotAffected 验证 OpenAI 平台不受影响
 func TestForward_AnthropicResponseHeaderTimeout_OpenAINotAffected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	upstream := &contextCapturingUpstream{}
+	upstream := &responseHeaderTimeoutCapturingUpstream{}
 	cfg := &config.Config{
 		Gateway: config.GatewayConfig{
 			ResponseHeaderTimeout:          600,
@@ -221,8 +220,8 @@ func TestForward_AnthropicResponseHeaderTimeout_OpenAINotAffected(t *testing.T) 
 
 	_, _ = svc.Forward(context.Background(), c, account, parsed)
 
-	if upstream.capturedCtx != nil {
-		_, ok := upstream.capturedCtx.Deadline()
-		assert.False(t, ok, "OpenAI 平台不应因 AnthropicResponseHeaderTimeout 注入 deadline")
+	if upstream.called {
+		assert.Equal(t, time.Duration(0), upstream.capturedTimeout,
+			"OpenAI 平台不应因 AnthropicResponseHeaderTimeout 传入非零 responseHeaderTimeout")
 	}
 }

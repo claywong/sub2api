@@ -4588,12 +4588,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
 
-	// Anthropic 专属响应头超时：仅对流式请求生效，快速失败以便 failover。
-	// 非流式请求依赖 Transport 层的 response_header_timeout，避免超时值过小截断完整响应体。
+	// Anthropic 专属响应头超时：仅对流式请求生效，通过 Transport 层控制，快速失败以便 failover。
+	// 非流式请求使用全局 response_header_timeout，避免超时值过小截断完整响应体。
+	anthropicHeaderTimeout := time.Duration(0)
 	if reqStream && account.Platform == PlatformAnthropic && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout)*time.Second)
-		defer cancel()
+		anthropicHeaderTimeout = time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout) * time.Second
 	}
 
 	// 重试循环
@@ -4616,7 +4615,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		upstreamReq = upstreamReq.WithContext(traceCtx)
 
 		// 发送请求
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, tlsProfile, anthropicHeaderTimeout)
 		if err == nil {
 			lastTrace = traceMetrics
 		}
@@ -4701,7 +4700,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
-						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile, anthropicHeaderTimeout)
 						if retryErr == nil {
 							if retryResp.StatusCode < 400 {
 								logger.LegacyPrintf("service.gateway", "Account %d: thinking block retry succeeded (blocks downgraded)", account.ID)
@@ -4736,7 +4735,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
-										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
+										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile, anthropicHeaderTimeout)
 										if retryErr2 == nil {
 											resp = retryResp2
 											break
@@ -4807,7 +4806,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 						releaseBudgetRetryCtx()
 						if buildErr == nil {
-							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile, anthropicHeaderTimeout)
 							if retryErr == nil {
 								resp = budgetRetryResp
 								break
@@ -5137,12 +5136,11 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, input.Body)
 
-	// Anthropic 专属响应头超时：仅对流式请求生效，快速失败以便 failover。
-	// 非流式请求依赖 Transport 层的 response_header_timeout。
+	// Anthropic 专属响应头超时：仅对流式请求生效，通过 Transport 层控制，快速失败以便 failover。
+	// 非流式请求使用全局 response_header_timeout，避免超时值过小截断完整响应体。
+	passthroughHeaderTimeout := time.Duration(0)
 	if input.RequestStream && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout)*time.Second)
-		defer cancel()
+		passthroughHeaderTimeout = time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout) * time.Second
 	}
 
 	var resp *http.Response
@@ -5155,7 +5153,7 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 			return nil, err
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account), passthroughHeaderTimeout)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -5931,7 +5929,7 @@ func (s *GatewayService) executeBedrockUpstream(
 			return nil, err
 		}
 
-		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil)
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, nil, 0)
 		if err != nil {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
@@ -8440,16 +8438,6 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if !stream {
 		return ctx, func() {}
 	}
-	// 流式请求：断开 cancel 传播链（客户端断开不取消上游请求），但保留显式 deadline。
-	// 这样 anthropic_response_header_timeout 等超时配置在流式请求中也能生效（仅覆盖等待响应头阶段）。
-	// DoWithTLS 返回后 resp.Body 的读取不受此 deadline 影响。
-	if deadline, ok := ctx.Deadline(); ok {
-		newCtx, cancel := context.WithDeadline(context.Background(), deadline)
-		// 调用方会立即调用 releaseUpstreamCtx()，不能让它取消这个 context。
-		// cancel 交由 newCtx 的 deadline 到期后自动触发，此处返回 noop。
-		_ = cancel
-		return newCtx, func() {}
-	}
 	return context.WithoutCancel(ctx), func() {}
 }
 
@@ -8645,6 +8633,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
+	}
+	if input.BillingModelSource == BillingModelSourceUpstream && result.UpstreamModel != "" {
+		billingModel = result.UpstreamModel
 	}
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
@@ -9150,7 +9141,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	// 发送请求
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account), 0)
 	if err != nil {
 		setOpsUpstreamError(c, 0, sanitizeUpstreamErrorMessage(err.Error()), "")
 		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Request failed")
@@ -9177,7 +9168,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		filteredBody := FilterThinkingBlocksForRetry(body)
 		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
 		if buildErr == nil {
-			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account), 0)
 			if retryErr == nil {
 				resp = retryResp
 				respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)

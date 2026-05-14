@@ -70,7 +70,7 @@ func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *se
 
 	// 如果有 TLS Profile 且有 HTTPUpstream，使用 DoWithTLS
 	if opts.TLSProfile != nil && s.httpUpstream != nil {
-		resp, err = s.httpUpstream.DoWithTLS(req, opts.ProxyURL, opts.AccountID, 0, opts.TLSProfile)
+		resp, err = s.httpUpstream.DoWithTLS(req, opts.ProxyURL, opts.AccountID, 0, opts.TLSProfile, 0)
 		if err != nil {
 			return nil, fmt.Errorf("request with TLS fingerprint failed: %w", err)
 		}
