@@ -4623,7 +4623,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
-			// Ensure the client receives an error response (handlers assume Forward writes on non-failover errors).
 			safeErr := sanitizeUpstreamErrorMessage(err.Error())
 			setOpsUpstreamError(c, 0, safeErr, "")
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -4635,18 +4634,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
-				},
-			})
-			if s.rateLimitService != nil {
-				errBody, _ := json.Marshal(map[string]string{"message": safeErr})
-				s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusBadGateway, nil, errBody)
+			logger.LegacyPrintf("service.gateway", "[WARN] Upstream request failed: account=%d(%s) platform=%s error=%s", account.ID, account.Name, account.Platform, safeErr)
+			// 网络层超时统一包装为 UpstreamFailoverError：
+			// 池模式触发同账号重试 + failover；非池模式直接 failover 切换账号。
+			return nil, &UpstreamFailoverError{
+				StatusCode:             http.StatusBadGateway,
+				RetryableOnSameAccount: account.IsPoolMode(),
 			}
-			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
 		// 优先检测thinking block签名错误（400）并重试一次
@@ -5170,18 +5164,13 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
-				},
-			})
-			if s.rateLimitService != nil {
-				errBody, _ := json.Marshal(map[string]string{"message": safeErr})
-				s.rateLimitService.HandleUpstreamError(ctx, account, http.StatusBadGateway, nil, errBody)
+			logger.LegacyPrintf("service.gateway", "[WARN] Upstream request failed (passthrough): account=%d(%s) platform=%s error=%s", account.ID, account.Name, account.Platform, safeErr)
+			// 网络层超时统一包装为 UpstreamFailoverError：
+			// 池模式触发同账号重试 + failover；非池模式直接 failover 切换账号。
+			return nil, &UpstreamFailoverError{
+				StatusCode:             http.StatusBadGateway,
+				RetryableOnSameAccount: account.IsPoolMode(),
 			}
-			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
@@ -5945,14 +5934,13 @@ func (s *GatewayService) executeBedrockUpstream(
 				Kind:               "request_error",
 				Message:            safeErr,
 			})
-			c.JSON(http.StatusBadGateway, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream request failed",
-				},
-			})
-			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+			logger.LegacyPrintf("service.gateway", "[WARN] Upstream request failed (bedrock): account=%d(%s) platform=%s error=%s", account.ID, account.Name, account.Platform, safeErr)
+			// 网络层超时统一包装为 UpstreamFailoverError：
+			// 池模式触发同账号重试 + failover；非池模式直接 failover 切换账号。
+			return nil, &UpstreamFailoverError{
+				StatusCode:             http.StatusBadGateway,
+				RetryableOnSameAccount: account.IsPoolMode(),
+			}
 		}
 
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
