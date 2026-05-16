@@ -558,6 +558,11 @@ export async function importCodexSession(payload: CodexSessionImportRequest): Pr
   return data
 }
 
+export async function getModelNames(): Promise<string[]> {
+  const { data } = await apiClient.get<string[]>('/admin/accounts/model-names')
+  return data
+}
+
 /**
  * Get Antigravity default model mapping from backend
  * @returns Default model mapping (from -> to)
@@ -678,7 +683,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  setPrivacy
+  setPrivacy,
+  getModelNames
 }
 
 export default accountsAPI

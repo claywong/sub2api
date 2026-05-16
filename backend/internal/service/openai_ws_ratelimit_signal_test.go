@@ -84,6 +84,10 @@ func (r *openAICodexExtraListRepo) ListWithFilters(_ context.Context, params pag
 	return r.accounts, &pagination.PaginationResult{Total: int64(len(r.accounts)), Page: params.Page, PageSize: params.PageSize}, nil
 }
 
+func (r *openAICodexExtraListRepo) ListDistinctModelNames(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func TestOpenAIGatewayService_Forward_WSv2ErrorEventUsageLimitPersistsRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

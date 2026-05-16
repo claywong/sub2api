@@ -2919,7 +2919,7 @@ export default {
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
       searchAccounts: '搜索账号...',
-      filterByModel: '按模型筛选...',
+      allModels: '全部模型',
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',

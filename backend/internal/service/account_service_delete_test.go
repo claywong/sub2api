@@ -83,6 +83,10 @@ func (s *accountRepoStub) ListWithFilters(ctx context.Context, params pagination
 	panic("unexpected ListWithFilters call")
 }
 
+func (s *accountRepoStub) ListDistinctModelNames(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func (s *accountRepoStub) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
 	panic("unexpected ListByGroup call")
 }

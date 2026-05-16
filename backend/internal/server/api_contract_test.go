@@ -1574,6 +1574,10 @@ func (s *stubAccountRepo) ListWithFilters(ctx context.Context, params pagination
 	return nil, nil, errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) ListDistinctModelNames(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func (s *stubAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
 	return nil, errors.New("not implemented")
 }

@@ -82,6 +82,9 @@ func (m *mockAccountRepoForGemini) List(ctx context.Context, params pagination.P
 func (m *mockAccountRepoForGemini) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode, modelName string) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
+func (m *mockAccountRepoForGemini) ListDistinctModelNames(_ context.Context) ([]string, error) {
+	return nil, nil
+}
 func (m *mockAccountRepoForGemini) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
 	return nil, nil
 }

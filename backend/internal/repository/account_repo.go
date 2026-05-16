@@ -583,6 +583,32 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	return outAccounts, paginationResultFromTotal(int64(total), params), nil
 }
 
+func (r *accountRepository) ListDistinctModelNames(ctx context.Context) ([]string, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT DISTINCT jsonb_object_keys(credentials->'model_mapping') AS model_name
+		FROM accounts
+		WHERE deleted_at IS NULL
+			AND credentials ? 'model_mapping'
+			AND credentials->'model_mapping' != 'null'::jsonb
+			AND credentials->'model_mapping' != '{}'::jsonb
+		ORDER BY model_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)

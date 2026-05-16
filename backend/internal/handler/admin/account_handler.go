@@ -1927,6 +1927,20 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// ListModelNames handles listing distinct model names from all accounts' model_mapping
+// GET /api/v1/admin/accounts/model-names
+func (h *AccountHandler) ListModelNames(c *gin.Context) {
+	names, err := h.adminService.ListAccountModelNames(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	response.Success(c, names)
+}
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
