@@ -437,6 +437,7 @@ type AccountBulkEditTarget =
         group?: string
         search?: string
         privacy_mode?: string
+        model_name?: string
         sort_by?: string
         sort_order?: AccountSortOrder
       }
@@ -726,6 +727,7 @@ const {
     type: '',
     status: '',
     privacy_mode: '',
+    model_name: '',
     group: '',
     search: '',
     sort_by: sortState.sort_by,
@@ -933,6 +935,7 @@ const refreshAccountsIncrementally = async () => {
         type?: string
         status?: string
         privacy_mode?: string
+        model_name?: string
         group?: string
         search?: string
         sort_by?: string
@@ -1350,6 +1353,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    model_name: typeof rawParams.model_name === 'string' ? rawParams.model_name : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
@@ -1400,6 +1404,7 @@ const buildAccountQueryFilters = () => ({
   status: params.status || '',
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
+  model_name: params.model_name || '',
   search: params.search || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
