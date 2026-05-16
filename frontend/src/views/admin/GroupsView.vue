@@ -646,6 +646,39 @@
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
             </div>
+            <!-- 余额兜底开关 -->
+            <div>
+              <label class="input-label">{{ t("admin.groups.subscription.balanceFallback.title") }}</label>
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.subscription.balanceFallback.description") }}
+              </p>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  @click="createForm.allow_balance_fallback = !createForm.allow_balance_fallback"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    createForm.allow_balance_fallback
+                      ? 'bg-primary-500'
+                      : 'bg-gray-300 dark:bg-dark-600',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      createForm.allow_balance_fallback ? 'translate-x-6' : 'translate-x-1',
+                    ]"
+                  />
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    createForm.allow_balance_fallback
+                      ? t("admin.groups.subscription.balanceFallback.enabled")
+                      : t("admin.groups.subscription.balanceFallback.disabled")
+                  }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1830,6 +1863,39 @@
                 class="input"
                 :placeholder="t('admin.groups.subscription.noLimit')"
               />
+            </div>
+            <!-- 余额兜底开关 -->
+            <div>
+              <label class="input-label">{{ t("admin.groups.subscription.balanceFallback.title") }}</label>
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.subscription.balanceFallback.description") }}
+              </p>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  @click="editForm.allow_balance_fallback = !editForm.allow_balance_fallback"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    editForm.allow_balance_fallback
+                      ? 'bg-primary-500'
+                      : 'bg-gray-300 dark:bg-dark-600',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      editForm.allow_balance_fallback ? 'translate-x-6' : 'translate-x-1',
+                    ]"
+                  />
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    editForm.allow_balance_fallback
+                      ? t("admin.groups.subscription.balanceFallback.enabled")
+                      : t("admin.groups.subscription.balanceFallback.disabled")
+                  }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -3139,6 +3205,8 @@ const createForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 订阅额度耗尽后是否允许回退到余额计费
+  allow_balance_fallback: false,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3425,6 +3493,8 @@ const editForm = reactive({
   copy_accounts_from_group_ids: [] as number[],
   // 分组级 RPM 限制（每用户每分钟最大请求数；0 = 不限制）
   rpm_limit: 0 as number,
+  // 订阅额度耗尽后是否允许回退到余额计费
+  allow_balance_fallback: false,
 });
 
 type ImagePricingFormState = {
@@ -3656,6 +3726,8 @@ const closeCreateModal = () => {
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
+  createForm.rpm_limit = 0;
+  createForm.allow_balance_fallback = false;
   createModelRoutingRules.value = [];
 };
 
@@ -3792,6 +3864,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.mcp_xml_inject = group.mcp_xml_inject ?? true;
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
+  editForm.allow_balance_fallback = group.allow_balance_fallback ?? false;
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,

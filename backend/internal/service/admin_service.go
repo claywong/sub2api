@@ -214,6 +214,8 @@ type CreateGroupInput struct {
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
+	AllowBalanceFallback bool
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -254,6 +256,8 @@ type UpdateGroupInput struct {
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动。
+	AllowBalanceFallback *bool
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1689,6 +1693,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
+		AllowBalanceFallback:            input.AllowBalanceFallback,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1937,6 +1942,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
+	}
+	if input.AllowBalanceFallback != nil {
+		group.AllowBalanceFallback = *input.AllowBalanceFallback
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 

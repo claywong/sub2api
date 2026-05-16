@@ -861,6 +861,10 @@ func init() {
 	groupDescRpmLimit := groupFields[30].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
+	// groupDescAllowBalanceFallback is the schema descriptor for allow_balance_fallback field.
+	groupDescAllowBalanceFallback := groupFields[31].Descriptor()
+	// group.DefaultAllowBalanceFallback holds the default value on creation for the allow_balance_fallback field.
+	group.DefaultAllowBalanceFallback = groupDescAllowBalanceFallback.Default.(bool)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

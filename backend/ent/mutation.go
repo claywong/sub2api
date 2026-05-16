@@ -14793,6 +14793,7 @@ type GroupMutation struct {
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	allow_balance_fallback                  *bool
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -16565,6 +16566,42 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (m *GroupMutation) SetAllowBalanceFallback(b bool) {
+	m.allow_balance_fallback = &b
+}
+
+// AllowBalanceFallback returns the value of the "allow_balance_fallback" field in the mutation.
+func (m *GroupMutation) AllowBalanceFallback() (r bool, exists bool) {
+	v := m.allow_balance_fallback
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowBalanceFallback returns the old "allow_balance_fallback" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowBalanceFallback(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowBalanceFallback is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowBalanceFallback requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowBalanceFallback: %w", err)
+	}
+	return oldValue.AllowBalanceFallback, nil
+}
+
+// ResetAllowBalanceFallback resets all changes to the "allow_balance_fallback" field.
+func (m *GroupMutation) ResetAllowBalanceFallback() {
+	m.allow_balance_fallback = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -16923,7 +16960,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 34)
+	fields := make([]string, 0, 35)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17026,6 +17063,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.allow_balance_fallback != nil {
+		fields = append(fields, group.FieldAllowBalanceFallback)
+	}
 	return fields
 }
 
@@ -17102,6 +17142,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldAllowBalanceFallback:
+		return m.AllowBalanceFallback()
 	}
 	return nil, false
 }
@@ -17179,6 +17221,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldAllowBalanceFallback:
+		return m.OldAllowBalanceFallback(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -17425,6 +17469,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRpmLimit(v)
+		return nil
+	case group.FieldAllowBalanceFallback:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowBalanceFallback(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -17804,6 +17855,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldAllowBalanceFallback:
+		m.ResetAllowBalanceFallback()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

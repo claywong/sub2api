@@ -550,6 +550,9 @@ export interface AdminGroup extends Group {
 
   // 分组排序
   sort_order: number
+
+  // 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+  allow_balance_fallback?: boolean
 }
 
 export interface ApiKey {
@@ -633,6 +636,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  allow_balance_fallback?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -661,6 +665,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  allow_balance_fallback?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 

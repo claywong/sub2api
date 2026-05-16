@@ -2057,7 +2057,13 @@ export default {
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
-        noLimit: 'No limit'
+        noLimit: 'No limit',
+        balanceFallback: {
+          title: 'Balance Fallback on Quota Exceeded',
+          description: 'When enabled, requests will deduct from account balance instead of being rejected after the subscription quota is exhausted',
+          enabled: 'Balance fallback enabled',
+          disabled: 'Balance fallback disabled'
+        }
       },
       imagePricing: {
         title: 'Image Generation Pricing',

@@ -2140,7 +2140,13 @@ export default {
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
-        noLimit: '无限制'
+        noLimit: '无限制',
+        balanceFallback: {
+          title: '订阅超限后余额兜底',
+          description: '开启后，订阅额度用完时自动扣除账户余额，而不是直接拒绝请求',
+          enabled: '已开启余额兜底',
+          disabled: '未开启余额兜底'
+        }
       },
       imagePricing: {
         title: '图片生成计费',

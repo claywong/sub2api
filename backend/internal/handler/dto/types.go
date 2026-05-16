@@ -146,6 +146,9 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+
+	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+	AllowBalanceFallback bool `json:"allow_balance_fallback"`
 }
 
 type Account struct {

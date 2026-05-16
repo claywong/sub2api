@@ -55,6 +55,9 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
+	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+	AllowBalanceFallback bool
+
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）

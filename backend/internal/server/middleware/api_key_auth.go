@@ -176,20 +176,31 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			if subscription != nil {
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
 				if validateErr != nil {
-					code := "SUBSCRIPTION_INVALID"
-					status := 403
-					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+					// 额度超限且分组开启了余额兜底：降级到余额模式
+					isLimitExceeded := errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
 						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
-						code = "USAGE_LIMIT_EXCEEDED"
-						status = 429
+						errors.Is(validateErr, service.ErrMonthlyLimitExceeded)
+					if isLimitExceeded && apiKey.Group != nil && apiKey.Group.AllowBalanceFallback {
+						if apiKey.User.Balance <= 0 {
+							AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "订阅额度已用完，且账户余额不足")
+							return
+						}
+						// 清空 subscription，后续走余额计费路径
+						subscription = nil
+					} else {
+						code := "SUBSCRIPTION_INVALID"
+						status := 403
+						if isLimitExceeded {
+							code = "USAGE_LIMIT_EXCEEDED"
+							status = 429
+						}
+						AbortWithError(c, status, code, validateErr.Error())
+						return
 					}
-					AbortWithError(c, status, code, validateErr.Error())
-					return
 				}
 
-				// 窗口维护异步化（不阻塞请求）
-				if needsMaintenance {
+				// 窗口维护异步化（不阻塞请求）；仅当仍在订阅模式时执行
+				if subscription != nil && needsMaintenance {
 					maintenanceCopy := *subscription
 					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
 				}

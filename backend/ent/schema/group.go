@@ -160,6 +160,11 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+		field.Bool("allow_balance_fallback").
+			Default(false).
+			Comment("订阅额度耗尽后是否允许自动回退到余额计费模式"),
 	}
 }
 

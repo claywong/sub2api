@@ -210,6 +210,11 @@ func RpmLimit(v int) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// AllowBalanceFallback applies equality check predicate on the "allow_balance_fallback" field. It's identical to AllowBalanceFallbackEQ.
+func AllowBalanceFallback(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowBalanceFallback, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1438,6 +1443,16 @@ func RpmLimitLT(v int) predicate.Group {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// AllowBalanceFallbackEQ applies the EQ predicate on the "allow_balance_fallback" field.
+func AllowBalanceFallbackEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAllowBalanceFallback, v))
+}
+
+// AllowBalanceFallbackNEQ applies the NEQ predicate on the "allow_balance_fallback" field.
+func AllowBalanceFallbackNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAllowBalanceFallback, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

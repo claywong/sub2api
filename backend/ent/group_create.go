@@ -481,6 +481,20 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (_c *GroupCreate) SetAllowBalanceFallback(v bool) *GroupCreate {
+	_c.mutation.SetAllowBalanceFallback(v)
+	return _c
+}
+
+// SetNillableAllowBalanceFallback sets the "allow_balance_fallback" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowBalanceFallback(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowBalanceFallback(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -702,6 +716,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.AllowBalanceFallback(); !ok {
+		v := group.DefaultAllowBalanceFallback
+		_c.mutation.SetAllowBalanceFallback(v)
+	}
 	return nil
 }
 
@@ -800,6 +818,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.AllowBalanceFallback(); !ok {
+		return &ValidationError{Name: "allow_balance_fallback", err: errors.New(`ent: missing required field "Group.allow_balance_fallback"`)}
 	}
 	return nil
 }
@@ -963,6 +984,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.AllowBalanceFallback(); ok {
+		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
+		_node.AllowBalanceFallback = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1660,6 +1685,18 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (u *GroupUpsert) SetAllowBalanceFallback(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowBalanceFallback, v)
+	return u
+}
+
+// UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowBalanceFallback() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowBalanceFallback)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2332,6 +2369,20 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (u *GroupUpsertOne) SetAllowBalanceFallback(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBalanceFallback(v)
+	})
+}
+
+// UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowBalanceFallback() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBalanceFallback()
 	})
 }
 
@@ -3173,6 +3224,20 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (u *GroupUpsertBulk) SetAllowBalanceFallback(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBalanceFallback(v)
+	})
+}
+
+// UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowBalanceFallback() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBalanceFallback()
 	})
 }
 
