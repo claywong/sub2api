@@ -58,6 +58,10 @@ type Group struct {
 	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
 	AllowBalanceFallback bool
 
+	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+	// 支持 * 通配符，例如 "claude-opus-*"；空列表表示不启用
+	ProtectedModels []string
+
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）

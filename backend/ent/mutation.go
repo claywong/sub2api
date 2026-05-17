@@ -14794,6 +14794,8 @@ type GroupMutation struct {
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	allow_balance_fallback                  *bool
+	protected_models                        *[]string
+	appendprotected_models                  []string
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -16602,6 +16604,57 @@ func (m *GroupMutation) ResetAllowBalanceFallback() {
 	m.allow_balance_fallback = nil
 }
 
+// SetProtectedModels sets the "protected_models" field.
+func (m *GroupMutation) SetProtectedModels(s []string) {
+	m.protected_models = &s
+	m.appendprotected_models = nil
+}
+
+// ProtectedModels returns the value of the "protected_models" field in the mutation.
+func (m *GroupMutation) ProtectedModels() (r []string, exists bool) {
+	v := m.protected_models
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtectedModels returns the old "protected_models" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldProtectedModels(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtectedModels is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtectedModels requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtectedModels: %w", err)
+	}
+	return oldValue.ProtectedModels, nil
+}
+
+// AppendProtectedModels adds s to the "protected_models" field.
+func (m *GroupMutation) AppendProtectedModels(s []string) {
+	m.appendprotected_models = append(m.appendprotected_models, s...)
+}
+
+// AppendedProtectedModels returns the list of values that were appended to the "protected_models" field in this mutation.
+func (m *GroupMutation) AppendedProtectedModels() ([]string, bool) {
+	if len(m.appendprotected_models) == 0 {
+		return nil, false
+	}
+	return m.appendprotected_models, true
+}
+
+// ResetProtectedModels resets all changes to the "protected_models" field.
+func (m *GroupMutation) ResetProtectedModels() {
+	m.protected_models = nil
+	m.appendprotected_models = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -16960,7 +17013,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 35)
+	fields := make([]string, 0, 36)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17066,6 +17119,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_balance_fallback != nil {
 		fields = append(fields, group.FieldAllowBalanceFallback)
 	}
+	if m.protected_models != nil {
+		fields = append(fields, group.FieldProtectedModels)
+	}
 	return fields
 }
 
@@ -17144,6 +17200,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RpmLimit()
 	case group.FieldAllowBalanceFallback:
 		return m.AllowBalanceFallback()
+	case group.FieldProtectedModels:
+		return m.ProtectedModels()
 	}
 	return nil, false
 }
@@ -17223,6 +17281,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRpmLimit(ctx)
 	case group.FieldAllowBalanceFallback:
 		return m.OldAllowBalanceFallback(ctx)
+	case group.FieldProtectedModels:
+		return m.OldProtectedModels(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -17476,6 +17536,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowBalanceFallback(v)
+		return nil
+	case group.FieldProtectedModels:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtectedModels(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -17858,6 +17925,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowBalanceFallback:
 		m.ResetAllowBalanceFallback()
+		return nil
+	case group.FieldProtectedModels:
+		m.ResetProtectedModels()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

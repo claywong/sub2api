@@ -651,6 +651,18 @@ func (_u *GroupUpdate) SetNillableAllowBalanceFallback(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetProtectedModels sets the "protected_models" field.
+func (_u *GroupUpdate) SetProtectedModels(v []string) *GroupUpdate {
+	_u.mutation.SetProtectedModels(v)
+	return _u
+}
+
+// AppendProtectedModels appends value to the "protected_models" field.
+func (_u *GroupUpdate) AppendProtectedModels(v []string) *GroupUpdate {
+	_u.mutation.AppendProtectedModels(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1134,6 +1146,14 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowBalanceFallback(); ok {
 		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ProtectedModels(); ok {
+		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedProtectedModels(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldProtectedModels, value)
+		})
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2064,6 +2084,18 @@ func (_u *GroupUpdateOne) SetNillableAllowBalanceFallback(v *bool) *GroupUpdateO
 	return _u
 }
 
+// SetProtectedModels sets the "protected_models" field.
+func (_u *GroupUpdateOne) SetProtectedModels(v []string) *GroupUpdateOne {
+	_u.mutation.SetProtectedModels(v)
+	return _u
+}
+
+// AppendProtectedModels appends value to the "protected_models" field.
+func (_u *GroupUpdateOne) AppendProtectedModels(v []string) *GroupUpdateOne {
+	_u.mutation.AppendProtectedModels(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2577,6 +2609,14 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowBalanceFallback(); ok {
 		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ProtectedModels(); ok {
+		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedProtectedModels(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, group.FieldProtectedModels, value)
+		})
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

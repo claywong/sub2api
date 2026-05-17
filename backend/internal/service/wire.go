@@ -469,6 +469,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
+	NewSessionModelLockService, // 私有扩展：会话级模型锁定
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,

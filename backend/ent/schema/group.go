@@ -165,6 +165,12 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_balance_fallback").
 			Default(false).
 			Comment("订阅额度耗尽后是否允许自动回退到余额计费模式"),
+
+		// 会话级模型锁定保护列表（私有扩展，added by migration 904）
+		field.JSON("protected_models", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("会话级模型锁定保护列表，支持 * 通配符；空表示不启用"),
 	}
 }
 

@@ -495,6 +495,12 @@ func (_c *GroupCreate) SetNillableAllowBalanceFallback(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetProtectedModels sets the "protected_models" field.
+func (_c *GroupCreate) SetProtectedModels(v []string) *GroupCreate {
+	_c.mutation.SetProtectedModels(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -720,6 +726,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowBalanceFallback
 		_c.mutation.SetAllowBalanceFallback(v)
 	}
+	if _, ok := _c.mutation.ProtectedModels(); !ok {
+		v := group.DefaultProtectedModels
+		_c.mutation.SetProtectedModels(v)
+	}
 	return nil
 }
 
@@ -821,6 +831,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowBalanceFallback(); !ok {
 		return &ValidationError{Name: "allow_balance_fallback", err: errors.New(`ent: missing required field "Group.allow_balance_fallback"`)}
+	}
+	if _, ok := _c.mutation.ProtectedModels(); !ok {
+		return &ValidationError{Name: "protected_models", err: errors.New(`ent: missing required field "Group.protected_models"`)}
 	}
 	return nil
 }
@@ -988,6 +1001,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowBalanceFallback(); ok {
 		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
 		_node.AllowBalanceFallback = value
+	}
+	if value, ok := _c.mutation.ProtectedModels(); ok {
+		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
+		_node.ProtectedModels = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1697,6 +1714,18 @@ func (u *GroupUpsert) UpdateAllowBalanceFallback() *GroupUpsert {
 	return u
 }
 
+// SetProtectedModels sets the "protected_models" field.
+func (u *GroupUpsert) SetProtectedModels(v []string) *GroupUpsert {
+	u.Set(group.FieldProtectedModels, v)
+	return u
+}
+
+// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProtectedModels() *GroupUpsert {
+	u.SetExcluded(group.FieldProtectedModels)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2383,6 +2412,20 @@ func (u *GroupUpsertOne) SetAllowBalanceFallback(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowBalanceFallback() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBalanceFallback()
+	})
+}
+
+// SetProtectedModels sets the "protected_models" field.
+func (u *GroupUpsertOne) SetProtectedModels(v []string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModels(v)
+	})
+}
+
+// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProtectedModels() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModels()
 	})
 }
 
@@ -3238,6 +3281,20 @@ func (u *GroupUpsertBulk) SetAllowBalanceFallback(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowBalanceFallback() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBalanceFallback()
+	})
+}
+
+// SetProtectedModels sets the "protected_models" field.
+func (u *GroupUpsertBulk) SetProtectedModels(v []string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModels(v)
+	})
+}
+
+// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProtectedModels() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModels()
 	})
 }
 

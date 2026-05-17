@@ -86,6 +86,8 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// FieldAllowBalanceFallback holds the string denoting the allow_balance_fallback field in the database.
 	FieldAllowBalanceFallback = "allow_balance_fallback"
+	// FieldProtectedModels holds the string denoting the protected_models field in the database.
+	FieldProtectedModels = "protected_models"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -196,6 +198,7 @@ var Columns = []string{
 	FieldMessagesDispatchModelConfig,
 	FieldRpmLimit,
 	FieldAllowBalanceFallback,
+	FieldProtectedModels,
 }
 
 var (
@@ -283,6 +286,8 @@ var (
 	DefaultRpmLimit int
 	// DefaultAllowBalanceFallback holds the default value on creation for the "allow_balance_fallback" field.
 	DefaultAllowBalanceFallback bool
+	// DefaultProtectedModels holds the default value on creation for the "protected_models" field.
+	DefaultProtectedModels []string
 )
 
 // OrderOption defines the ordering options for the Group queries.

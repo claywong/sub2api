@@ -52,6 +52,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	sessionModelLockService   *service.SessionModelLockService // 私有扩展：会话级模型锁定
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -70,6 +71,7 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	sessionModelLockService *service.SessionModelLockService, // 私有扩展
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -107,6 +109,7 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		sessionModelLockService:   sessionModelLockService,
 	}
 }
 
@@ -261,6 +264,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
+
+	// 私有扩展：会话级模型锁定（Anthropic /v1/messages）
+	if !h.applySessionModelLockOrFail(c, reqLog, apiKey.Group, parsedReq) {
+		return
+	}
 
 	// 计算粘性会话hash
 	parsedReq.SessionContext = &service.SessionContext{
@@ -1547,6 +1555,12 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
 		h.errorResponse(c, status, code, message)
+		return
+	}
+
+	// 设置请求所属分组 ID 后再做会话级模型锁定（私有扩展）
+	parsedReq.GroupID = apiKey.GroupID
+	if !h.applySessionModelLockOrFail(c, reqLog, apiKey.Group, parsedReq) {
 		return
 	}
 

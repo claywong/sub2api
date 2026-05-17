@@ -2168,6 +2168,14 @@ export default {
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
       },
+      sessionModelLock: {
+        title: '会话级模型锁定',
+        tooltip:
+          '把"昂贵模型"加入保护列表后，同一个 Claude Code 会话（按 session_id）如果首次没使用该模型，后续就不允许中途切换到该模型，可防止"先用便宜模型 build 上下文、再升级到贵模型"的滥用。仅对 Anthropic /v1/messages 生效，TTL 24 小时。',
+        listLabel: '保护模型列表',
+        listPlaceholder: '输入模型名后按回车，例如 claude-opus-4.7 或 claude-opus-*',
+        listHint: '支持末尾通配符 *；留空则不启用本功能。'
+      },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',
         allowDispatch: '允许 /v1/messages 调度',

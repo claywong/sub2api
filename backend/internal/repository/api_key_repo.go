@@ -725,6 +725,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		RPMLimit:                        g.RpmLimit,
 		AllowBalanceFallback:            g.AllowBalanceFallback,
+		ProtectedModels:                 g.ProtectedModels,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

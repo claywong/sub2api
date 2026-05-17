@@ -865,6 +865,10 @@ func init() {
 	groupDescAllowBalanceFallback := groupFields[31].Descriptor()
 	// group.DefaultAllowBalanceFallback holds the default value on creation for the allow_balance_fallback field.
 	group.DefaultAllowBalanceFallback = groupDescAllowBalanceFallback.Default.(bool)
+	// groupDescProtectedModels is the schema descriptor for protected_models field.
+	groupDescProtectedModels := groupFields[32].Descriptor()
+	// group.DefaultProtectedModels holds the default value on creation for the protected_models field.
+	group.DefaultProtectedModels = groupDescProtectedModels.Default.([]string)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

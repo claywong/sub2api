@@ -89,6 +89,8 @@ type Group struct {
 	RpmLimit int `json:"rpm_limit,omitempty"`
 	// 订阅额度耗尽后是否允许自动回退到余额计费模式
 	AllowBalanceFallback bool `json:"allow_balance_fallback,omitempty"`
+	// 会话级模型锁定保护列表，支持 * 通配符；空表示不启用
+	ProtectedModels []string `json:"protected_models,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -195,7 +197,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig:
+		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldProtectedModels:
 			values[i] = new([]byte)
 		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldAllowBalanceFallback:
 			values[i] = new(sql.NullBool)
@@ -454,6 +456,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AllowBalanceFallback = value.Bool
 			}
+		case group.FieldProtectedModels:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field protected_models", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ProtectedModels); err != nil {
+					return fmt.Errorf("unmarshal field protected_models: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -654,6 +664,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_balance_fallback=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowBalanceFallback))
+	builder.WriteString(", ")
+	builder.WriteString("protected_models=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ProtectedModels))
 	builder.WriteByte(')')
 	return builder.String()
 }

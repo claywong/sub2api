@@ -217,6 +217,8 @@ type CreateGroupInput struct {
 	RPMLimit int
 	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
 	AllowBalanceFallback bool
+	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+	ProtectedModels []string
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -259,6 +261,8 @@ type UpdateGroupInput struct {
 	RPMLimit *int
 	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动。
 	AllowBalanceFallback *bool
+	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空切片表示清空。
+	ProtectedModels *[]string
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1695,6 +1699,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		RPMLimit:                        input.RPMLimit,
 		AllowBalanceFallback:            input.AllowBalanceFallback,
+		ProtectedModels:                 input.ProtectedModels,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1946,6 +1951,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.AllowBalanceFallback != nil {
 		group.AllowBalanceFallback = *input.AllowBalanceFallback
+	}
+	if input.ProtectedModels != nil {
+		group.ProtectedModels = *input.ProtectedModels
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 

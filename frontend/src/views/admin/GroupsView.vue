@@ -993,6 +993,49 @@
           </div>
         </div>
 
+        <!-- 会话级模型锁定（仅 anthropic 平台，私有扩展） -->
+        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.sessionModelLock.title") }}
+            </label>
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div
+                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+              >
+                <div
+                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                >
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t("admin.groups.sessionModelLock.tooltip") }}
+                  </p>
+                  <div
+                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <label class="input-label">{{
+            t("admin.groups.sessionModelLock.listLabel")
+          }}</label>
+          <ModelTagInput
+            :models="createForm.protected_models"
+            platform="anthropic"
+            :placeholder="t('admin.groups.sessionModelLock.listPlaceholder')"
+            @update:models="createForm.protected_models = $event"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.sessionModelLock.listHint") }}
+          </p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -2207,6 +2250,49 @@
           </div>
         </div>
 
+        <!-- 会话级模型锁定（仅 anthropic 平台，私有扩展） -->
+        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
+          <div class="mb-1.5 flex items-center gap-1">
+            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t("admin.groups.sessionModelLock.title") }}
+            </label>
+            <div class="group relative inline-flex">
+              <Icon
+                name="questionCircle"
+                size="sm"
+                :stroke-width="2"
+                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+              />
+              <div
+                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
+              >
+                <div
+                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
+                >
+                  <p class="text-xs leading-relaxed text-gray-300">
+                    {{ t("admin.groups.sessionModelLock.tooltip") }}
+                  </p>
+                  <div
+                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
+                  ></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <label class="input-label">{{
+            t("admin.groups.sessionModelLock.listLabel")
+          }}</label>
+          <ModelTagInput
+            :models="editForm.protected_models"
+            platform="anthropic"
+            :placeholder="t('admin.groups.sessionModelLock.listPlaceholder')"
+            @update:models="editForm.protected_models = $event"
+          />
+          <p class="input-hint">
+            {{ t("admin.groups.sessionModelLock.listHint") }}
+          </p>
+        </div>
+
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -2919,6 +3005,7 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
+import ModelTagInput from "@/components/admin/channel/ModelTagInput.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import { VueDraggable } from "vue-draggable-plus";
 import { createStableObjectKeyResolver } from "@/utils/stableObjectKey";
@@ -3207,6 +3294,8 @@ const createForm = reactive({
   rpm_limit: 0 as number,
   // 订阅额度耗尽后是否允许回退到余额计费
   allow_balance_fallback: false,
+  // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+  protected_models: [] as string[],
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3495,6 +3584,8 @@ const editForm = reactive({
   rpm_limit: 0 as number,
   // 订阅额度耗尽后是否允许回退到余额计费
   allow_balance_fallback: false,
+  // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+  protected_models: [] as string[],
 });
 
 type ImagePricingFormState = {
@@ -3728,6 +3819,7 @@ const closeCreateModal = () => {
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
   createForm.allow_balance_fallback = false;
+  createForm.protected_models = [];
   createModelRoutingRules.value = [];
 };
 
@@ -3865,6 +3957,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
   editForm.allow_balance_fallback = group.allow_balance_fallback ?? false;
+  // 会话级模型锁定保护列表（私有扩展）
+  editForm.protected_models = [...(group.protected_models ?? [])];
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,

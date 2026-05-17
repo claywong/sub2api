@@ -2084,6 +2084,14 @@ export default {
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
       },
+      sessionModelLock: {
+        title: 'Session Model Lock',
+        tooltip:
+          'Models in this list cannot be switched to mid-conversation unless the session starts with them. Same Claude Code session_id is tracked for 24h. Prevents "build context cheap, upgrade to expensive" abuse. Applies to Anthropic /v1/messages only.',
+        listLabel: 'Protected Models',
+        listPlaceholder: 'Type a model name and press Enter, e.g. claude-opus-4.7 or claude-opus-*',
+        listHint: 'Trailing wildcard * supported. Leave empty to disable.'
+      },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
         allowDispatch: 'Allow /v1/messages dispatch',
