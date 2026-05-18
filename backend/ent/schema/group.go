@@ -171,6 +171,12 @@ func (Group) Fields() []ent.Field {
 			Default([]string{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("会话级模型锁定保护列表，支持 * 通配符；空表示不启用"),
+
+		// 受保护模型的独立额度配置（私有扩展，added by migration 905）
+		field.JSON("protected_model_quotas", map[string]any{}).
+			Default(map[string]any{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}"),
 	}
 }
 

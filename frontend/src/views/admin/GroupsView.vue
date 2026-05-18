@@ -1034,6 +1034,43 @@
           <p class="input-hint">
             {{ t("admin.groups.sessionModelLock.listHint") }}
           </p>
+
+          <!-- 模型独立额度配置（每个保护模型可独立设置日/周限额） -->
+          <div v-if="createForm.protected_models?.length" class="mt-3 space-y-2">
+            <p class="text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.sessionModelLock.quotaTitle") }}
+            </p>
+            <p class="input-hint -mt-1">{{ t("admin.groups.sessionModelLock.quotaHint") }}</p>
+            <div
+              v-for="model in createForm.protected_models"
+              :key="model"
+              class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-dark-400 bg-gray-50 dark:bg-dark-700 px-3 py-2"
+            >
+              <span class="min-w-0 flex-1 truncate text-xs font-mono text-gray-700 dark:text-gray-300">{{ model }}</span>
+              <div class="flex items-center gap-1 shrink-0">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  class="input-field w-24 text-xs py-1"
+                  :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
+                  :value="createForm.protected_model_quotas[model]?.daily_limit_usd ?? ''"
+                  @input="setCreateModelQuota(model, 'daily', ($event.target as HTMLInputElement).value)"
+                />
+                <span class="text-xs text-gray-400 shrink-0">{{ t("admin.groups.sessionModelLock.quotaDailyLabel") }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  class="input-field w-24 text-xs py-1"
+                  :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
+                  :value="createForm.protected_model_quotas[model]?.weekly_limit_usd ?? ''"
+                  @input="setCreateModelQuota(model, 'weekly', ($event.target as HTMLInputElement).value)"
+                />
+                <span class="text-xs text-gray-400 shrink-0">{{ t("admin.groups.sessionModelLock.quotaWeeklyLabel") }}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -2291,6 +2328,43 @@
           <p class="input-hint">
             {{ t("admin.groups.sessionModelLock.listHint") }}
           </p>
+
+          <!-- 模型独立额度配置（每个保护模型可独立设置日/周限额） -->
+          <div v-if="editForm.protected_models?.length" class="mt-3 space-y-2">
+            <p class="text-xs font-medium text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.sessionModelLock.quotaTitle") }}
+            </p>
+            <p class="input-hint -mt-1">{{ t("admin.groups.sessionModelLock.quotaHint") }}</p>
+            <div
+              v-for="model in editForm.protected_models"
+              :key="model"
+              class="flex items-center gap-2 rounded-md border border-gray-200 dark:border-dark-400 bg-gray-50 dark:bg-dark-700 px-3 py-2"
+            >
+              <span class="min-w-0 flex-1 truncate text-xs font-mono text-gray-700 dark:text-gray-300">{{ model }}</span>
+              <div class="flex items-center gap-1 shrink-0">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  class="input-field w-24 text-xs py-1"
+                  :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
+                  :value="editForm.protected_model_quotas[model]?.daily_limit_usd ?? ''"
+                  @input="setEditModelQuota(model, 'daily', ($event.target as HTMLInputElement).value)"
+                />
+                <span class="text-xs text-gray-400 shrink-0">{{ t("admin.groups.sessionModelLock.quotaDailyLabel") }}</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  class="input-field w-24 text-xs py-1"
+                  :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
+                  :value="editForm.protected_model_quotas[model]?.weekly_limit_usd ?? ''"
+                  @input="setEditModelQuota(model, 'weekly', ($event.target as HTMLInputElement).value)"
+                />
+                <span class="text-xs text-gray-400 shrink-0">{{ t("admin.groups.sessionModelLock.quotaWeeklyLabel") }}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- OpenAI Messages 调度配置（仅 openai 平台） -->
@@ -3296,6 +3370,8 @@ const createForm = reactive({
   allow_balance_fallback: false,
   // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
   protected_models: [] as string[],
+  // 受保护模型的独立日/周额度配置（私有扩展）
+  protected_model_quotas: {} as Record<string, { daily_limit_usd?: number | null; weekly_limit_usd?: number | null }>,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -3586,6 +3662,8 @@ const editForm = reactive({
   allow_balance_fallback: false,
   // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
   protected_models: [] as string[],
+  // 受保护模型的独立日/周额度配置（私有扩展）
+  protected_model_quotas: {} as Record<string, { daily_limit_usd?: number | null; weekly_limit_usd?: number | null }>,
 });
 
 type ImagePricingFormState = {
@@ -3820,7 +3898,38 @@ const closeCreateModal = () => {
   createForm.rpm_limit = 0;
   createForm.allow_balance_fallback = false;
   createForm.protected_models = [];
+  createForm.protected_model_quotas = {};
   createModelRoutingRules.value = [];
+};
+
+// 设置 createForm 中单个保护模型的日/周额度值（空字符串 → null）
+const setCreateModelQuota = (
+  model: string,
+  field: 'daily' | 'weekly',
+  raw: string,
+) => {
+  const val = raw === '' ? null : parseFloat(raw);
+  const existing = createForm.protected_model_quotas[model] ?? {};
+  if (field === 'daily') {
+    createForm.protected_model_quotas[model] = { ...existing, daily_limit_usd: val };
+  } else {
+    createForm.protected_model_quotas[model] = { ...existing, weekly_limit_usd: val };
+  }
+};
+
+// 设置 editForm 中单个保护模型的日/周额度值（空字符串 → null）
+const setEditModelQuota = (
+  model: string,
+  field: 'daily' | 'weekly',
+  raw: string,
+) => {
+  const val = raw === '' ? null : parseFloat(raw);
+  const existing = editForm.protected_model_quotas[model] ?? {};
+  if (field === 'daily') {
+    editForm.protected_model_quotas[model] = { ...existing, daily_limit_usd: val };
+  } else {
+    editForm.protected_model_quotas[model] = { ...existing, weekly_limit_usd: val };
+  }
 };
 
 const normalizeOptionalLimit = (
@@ -3959,6 +4068,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allow_balance_fallback = group.allow_balance_fallback ?? false;
   // 会话级模型锁定保护列表（私有扩展）
   editForm.protected_models = [...(group.protected_models ?? [])];
+  editForm.protected_model_quotas = { ...(group.protected_model_quotas ?? {}) };
   // 加载模型路由规则（异步加载账号名称）
   editModelRoutingRules.value = await convertApiFormatToRoutingRules(
     group.model_routing,

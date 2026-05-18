@@ -14796,6 +14796,7 @@ type GroupMutation struct {
 	allow_balance_fallback                  *bool
 	protected_models                        *[]string
 	appendprotected_models                  []string
+	protected_model_quotas                  *map[string]interface{}
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -16655,6 +16656,42 @@ func (m *GroupMutation) ResetProtectedModels() {
 	m.appendprotected_models = nil
 }
 
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (m *GroupMutation) SetProtectedModelQuotas(value map[string]interface{}) {
+	m.protected_model_quotas = &value
+}
+
+// ProtectedModelQuotas returns the value of the "protected_model_quotas" field in the mutation.
+func (m *GroupMutation) ProtectedModelQuotas() (r map[string]interface{}, exists bool) {
+	v := m.protected_model_quotas
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProtectedModelQuotas returns the old "protected_model_quotas" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldProtectedModelQuotas(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProtectedModelQuotas is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProtectedModelQuotas requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProtectedModelQuotas: %w", err)
+	}
+	return oldValue.ProtectedModelQuotas, nil
+}
+
+// ResetProtectedModelQuotas resets all changes to the "protected_model_quotas" field.
+func (m *GroupMutation) ResetProtectedModelQuotas() {
+	m.protected_model_quotas = nil
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -17013,7 +17050,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 36)
+	fields := make([]string, 0, 37)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -17122,6 +17159,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.protected_models != nil {
 		fields = append(fields, group.FieldProtectedModels)
 	}
+	if m.protected_model_quotas != nil {
+		fields = append(fields, group.FieldProtectedModelQuotas)
+	}
 	return fields
 }
 
@@ -17202,6 +17242,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowBalanceFallback()
 	case group.FieldProtectedModels:
 		return m.ProtectedModels()
+	case group.FieldProtectedModelQuotas:
+		return m.ProtectedModelQuotas()
 	}
 	return nil, false
 }
@@ -17283,6 +17325,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowBalanceFallback(ctx)
 	case group.FieldProtectedModels:
 		return m.OldProtectedModels(ctx)
+	case group.FieldProtectedModelQuotas:
+		return m.OldProtectedModelQuotas(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -17543,6 +17587,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProtectedModels(v)
+		return nil
+	case group.FieldProtectedModelQuotas:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProtectedModelQuotas(v)
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
@@ -17928,6 +17979,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldProtectedModels:
 		m.ResetProtectedModels()
+		return nil
+	case group.FieldProtectedModelQuotas:
+		m.ResetProtectedModelQuotas()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

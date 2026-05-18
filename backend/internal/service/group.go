@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -61,6 +62,10 @@ type Group struct {
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	// 支持 * 通配符，例如 "claude-opus-*"；空列表表示不启用
 	ProtectedModels []string
+
+	// 受保护模型的独立日/周额度配置（私有扩展）
+	// key: 模型匹配模式（与 ProtectedModels 中的元素对应）；未配置的模式不限额
+	ProtectedModelQuotas map[string]ProtectedModelQuota
 
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
@@ -155,6 +160,54 @@ func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {
 	}
 
 	return nil
+}
+
+// ProtectedModelQuota 单个受保护模型的额度配置（私有扩展）。
+// nil 指针表示不限制该时间窗口的用量。
+type ProtectedModelQuota struct {
+	DailyLimitUSD  *float64 `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD *float64 `json:"weekly_limit_usd,omitempty"`
+}
+
+// HasDailyLimit 报告是否配置了日限额。
+func (q ProtectedModelQuota) HasDailyLimit() bool {
+	return q.DailyLimitUSD != nil && *q.DailyLimitUSD > 0
+}
+
+// HasWeeklyLimit 报告是否配置了周限额。
+func (q ProtectedModelQuota) HasWeeklyLimit() bool {
+	return q.WeeklyLimitUSD != nil && *q.WeeklyLimitUSD > 0
+}
+
+// GetProtectedModelQuota 返回 model 匹配的第一个额度配置（精确匹配优先，再通配符匹配）。
+// 若没有匹配项，返回 nil。
+func (g *Group) GetProtectedModelQuota(model string) *ProtectedModelQuota {
+	if len(g.ProtectedModelQuotas) == 0 {
+		return nil
+	}
+	// 精确匹配优先
+	if q, ok := g.ProtectedModelQuotas[model]; ok {
+		return &q
+	}
+	// 通配符匹配：按前缀长度降序（最具体的模式优先），确保确定性
+	type candidate struct {
+		pattern string
+		quota   ProtectedModelQuota
+	}
+	var matches []candidate
+	for pattern, q := range g.ProtectedModelQuotas {
+		if matchModelPattern(pattern, model) {
+			matches = append(matches, candidate{pattern, q})
+		}
+	}
+	if len(matches) == 0 {
+		return nil
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return len(matches[i].pattern) > len(matches[j].pattern)
+	})
+	q := matches[0].quota
+	return &q
 }
 
 // matchModelPattern 检查模型是否匹配模式

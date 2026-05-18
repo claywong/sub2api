@@ -660,6 +660,7 @@ var (
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "allow_balance_fallback", Type: field.TypeBool, Default: false},
 		{Name: "protected_models", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "protected_model_quotas", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 	}
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{

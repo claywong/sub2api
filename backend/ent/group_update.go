@@ -663,6 +663,12 @@ func (_u *GroupUpdate) AppendProtectedModels(v []string) *GroupUpdate {
 	return _u
 }
 
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (_u *GroupUpdate) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpdate {
+	_u.mutation.SetProtectedModelQuotas(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1154,6 +1160,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldProtectedModels, value)
 		})
+	}
+	if value, ok := _u.mutation.ProtectedModelQuotas(); ok {
+		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2096,6 +2105,12 @@ func (_u *GroupUpdateOne) AppendProtectedModels(v []string) *GroupUpdateOne {
 	return _u
 }
 
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (_u *GroupUpdateOne) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpdateOne {
+	_u.mutation.SetProtectedModelQuotas(v)
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2617,6 +2632,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldProtectedModels, value)
 		})
+	}
+	if value, ok := _u.mutation.ProtectedModelQuotas(); ok {
+		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

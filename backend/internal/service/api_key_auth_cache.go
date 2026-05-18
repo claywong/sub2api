@@ -96,6 +96,9 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	ProtectedModels []string `json:"protected_models,omitempty"`
+
+	// 受保护模型的独立日/周额度配置（私有扩展）
+	ProtectedModelQuotas map[string]ProtectedModelQuota `json:"protected_model_quotas,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

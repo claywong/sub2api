@@ -8102,6 +8102,10 @@ type RecordUsageInput struct {
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
+
+	// PostBillingHook 订阅计费成功后的可选回调（私有扩展）。
+	// 参数：ctx, userID, groupID, 实际模型名, 实际费用(USD)。
+	PostBillingHook func(ctx context.Context, userID, groupID int64, model string, cost float64)
 }
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
@@ -8512,6 +8516,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		ChannelUsageFields: input.ChannelUsageFields,
+		PostBillingHook:    input.PostBillingHook, // 私有扩展
 	}, &recordUsageOpts{
 		EnableClaudePath: true,
 	})
@@ -8574,6 +8579,7 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	ChannelUsageFields
+	PostBillingHook func(ctx context.Context, userID, groupID int64, model string, cost float64) // 私有扩展
 }
 
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
@@ -8685,6 +8691,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+	// 私有扩展：订阅计费成功后触发 hook（如模型额度更新）
+	// 使用独立 ctx 避免 worker pool defer cancel() 竞态导致 Redis 写入失败
+	if input.PostBillingHook != nil && isSubscriptionBilling && cost != nil && cost.ActualCost > 0 && user != nil && apiKey != nil && apiKey.GroupID != nil {
+		hookCtx := context.WithoutCancel(ctx)
+		go input.PostBillingHook(hookCtx, user.ID, *apiKey.GroupID, usageLog.Model, cost.ActualCost)
+	}
 
 	return nil
 }
