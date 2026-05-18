@@ -283,6 +283,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				)
 			}
 		})
+		if result != nil && result.CapturedResponseBody != "" {
+			clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
+			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
+		}
 		return
 	}
 }
