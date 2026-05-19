@@ -178,6 +178,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
+		writerSizeBeforeForward := c.Writer.Size()
 		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 		if err == nil && result != nil {
 			// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
@@ -211,6 +212,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			} else {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
+					if c.Writer.Size() != writerSizeBeforeForward {
+						h.handleFailoverExhausted(c, failoverErr, true)
+						return
+					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					// Pool mode: retry on the same account
 					if failoverErr.RetryableOnSameAccount {
@@ -303,7 +308,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 // resolveRawCCUpstreamEndpoint returns the actual upstream endpoint for
 // OpenAI Chat Completions requests. For APIKey accounts whose upstream
-// has been probed to not support the Responses API, the request is
+// is forced or probed to not support the Responses API, the request is
 // forwarded directly to /v1/chat/completions — not through the default
 // CC→Responses conversion path.
 func resolveRawCCUpstreamEndpoint(c *gin.Context, account *service.Account) string {

@@ -546,6 +546,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"responses_websockets_v2_enabled",
 		"openai_ws_enabled",
 		"openai_ws_force_http",
+		"openai_responses_mode",
+		"openai_responses_supported",
 		// 配额相关：IsQuotaExceeded() 在调度循环中需要这些字段
 		"quota_limit",
 		"quota_used",
