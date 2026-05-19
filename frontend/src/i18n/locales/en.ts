@@ -5874,7 +5874,7 @@ export default {
         tempUnschedMinutes: 'Pause Duration (minutes)',
         tempUnschedMinutesHint: 'Duration of temporary unschedulable state (1-60 minutes)',
         thresholdCount: 'Trigger Threshold (count)',
-        thresholdCountHint: 'Number of timeouts before triggering action (1-10)',
+        thresholdCountHint: 'Number of timeouts before triggering action (1-60)',
         thresholdWindowMinutes: 'Threshold Window (minutes)',
         thresholdWindowMinutesHint: 'Time window for counting timeouts (1-60 minutes)',
         saved: 'Stream timeout settings saved',

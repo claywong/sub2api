@@ -514,7 +514,7 @@
                       v-model.number="streamTimeoutForm.threshold_count"
                       type="number"
                       min="1"
-                      max="10"
+                      max="60"
                       class="input w-32"
                     />
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">

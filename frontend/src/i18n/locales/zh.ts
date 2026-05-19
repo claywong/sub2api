@@ -6034,7 +6034,7 @@ export default {
         tempUnschedMinutes: '暂停时长（分钟）',
         tempUnschedMinutesHint: '临时不可调度的持续时间（1-60分钟）',
         thresholdCount: '触发阈值（次数）',
-        thresholdCountHint: '累计超时多少次后触发处理（1-10次）',
+        thresholdCountHint: '累计超时多少次后触发处理（1-60次）',
         thresholdWindowMinutes: '阈值窗口（分钟）',
         thresholdWindowMinutesHint: '超时计数的时间窗口（1-60分钟）',
         saved: '流超时设置保存成功',
