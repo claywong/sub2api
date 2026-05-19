@@ -6285,7 +6285,8 @@ export default {
     expiresOn: 'Expires on {date}',
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    protectedModels: 'Protected Model Quotas'
   },
 
   // Onboarding Tour

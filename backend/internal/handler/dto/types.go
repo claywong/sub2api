@@ -118,6 +118,9 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// 受保护模型的独立日/周额度配置（私有扩展，用户侧只读）
+	ProtectedModelQuotas map[string]service.ProtectedModelQuota `json:"protected_model_quotas,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -153,9 +156,6 @@ type AdminGroup struct {
 
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	ProtectedModels []string `json:"protected_models"`
-
-	// 受保护模型的独立日/周额度配置（私有扩展）
-	ProtectedModelQuotas map[string]service.ProtectedModelQuota `json:"protected_model_quotas"`
 }
 
 type Account struct {

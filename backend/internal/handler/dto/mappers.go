@@ -154,7 +154,6 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		SortOrder:                   g.SortOrder,
 		AllowBalanceFallback:        g.AllowBalanceFallback,
 		ProtectedModels:             g.ProtectedModels,
-		ProtectedModelQuotas:        g.ProtectedModelQuotas,
 	}
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -194,6 +193,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		RPMLimit:                        g.RPMLimit,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
+		ProtectedModelQuotas:            g.ProtectedModelQuotas,
 	}
 }
 

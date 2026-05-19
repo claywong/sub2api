@@ -524,6 +524,8 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  // 受保护模型的独立日/周额度配置（私有扩展，用户侧只读）
+  protected_model_quotas?: Record<string, { daily_limit_usd?: number | null; weekly_limit_usd?: number | null }>
   created_at: string
   updated_at: string
 }
@@ -556,9 +558,6 @@ export interface AdminGroup extends Group {
 
   // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议；支持 * 通配符）
   protected_models?: string[]
-
-  // 受保护模型的独立日/周额度配置（私有扩展）
-  protected_model_quotas?: Record<string, { daily_limit_usd?: number | null; weekly_limit_usd?: number | null }>
 }
 
 export interface ApiKey {

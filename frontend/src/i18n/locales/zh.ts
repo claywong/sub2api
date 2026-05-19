@@ -6443,7 +6443,8 @@ export default {
     expiresOn: '{date} 到期',
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    protectedModels: '受保护模型额度'
   },
 
   // Onboarding Tour
