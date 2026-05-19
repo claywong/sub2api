@@ -184,6 +184,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldRpmLimit,
+				group.FieldAllowBalanceFallback,
+				group.FieldProtectedModels,
 			)
 		}).
 		Only(ctx)
