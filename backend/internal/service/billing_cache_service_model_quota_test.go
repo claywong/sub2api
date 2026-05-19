@@ -10,6 +10,7 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -83,13 +84,24 @@ func (c *fakeModelQuotaCacheMap) UpdateModelQuotaUsage(_ context.Context, userID
 
 func ptrF(v float64) *float64 { return &v }
 
+// 测试用常量：protectedModel 必匹配 newQuotaGroup 默认 ProtectedModels；
+// regularModel 不匹配（用于"普通模型不消耗共享额度"场景）。
+const (
+	protectedModel = "claude-opus-4.7"
+	regularModel   = "gpt-5"
+)
+
 func newQuotaGroup(q *ProtectedModelQuota) *Group {
-	return &Group{ID: 1, ProtectedModelQuota: q}
+	return &Group{
+		ID:                  1,
+		ProtectedModels:     []string{"claude-opus-*"},
+		ProtectedModelQuota: q,
+	}
 }
 
 func TestCheckProtectedModelQuota_NilGroup_AllowsAll(t *testing.T) {
 	svc := NewModelQuotaCacheService(&fakeModelQuotaCache{})
-	if err := svc.CheckProtectedModelQuota(context.Background(), nil, 1, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(context.Background(), nil, protectedModel, 1, 1); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
@@ -97,7 +109,7 @@ func TestCheckProtectedModelQuota_NilGroup_AllowsAll(t *testing.T) {
 func TestCheckProtectedModelQuota_NilQuota_AllowsAll(t *testing.T) {
 	svc := NewModelQuotaCacheService(&fakeModelQuotaCache{})
 	g := newQuotaGroup(nil)
-	if err := svc.CheckProtectedModelQuota(context.Background(), g, 1, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(context.Background(), g, protectedModel, 1, 1); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
@@ -106,7 +118,7 @@ func TestCheckProtectedModelQuota_EmptyLimits_AllowsAll(t *testing.T) {
 	// 配置存在但 daily/weekly 都是 0（HasDailyLimit / HasWeeklyLimit 都为 false）
 	svc := NewModelQuotaCacheService(&fakeModelQuotaCache{})
 	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(0), WeeklyLimitUSD: nil})
-	if err := svc.CheckProtectedModelQuota(context.Background(), g, 1, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(context.Background(), g, protectedModel, 1, 1); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
@@ -115,7 +127,7 @@ func TestCheckProtectedModelQuota_UnderLimit_AllowsAll(t *testing.T) {
 	cache := &fakeModelQuotaCache{usage: ModelQuotaUsage{DailyUsage: 1.5, WeeklyUsage: 5}}
 	svc := NewModelQuotaCacheService(cache)
 	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10), WeeklyLimitUSD: ptrF(50)})
-	if err := svc.CheckProtectedModelQuota(context.Background(), g, 1, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(context.Background(), g, protectedModel, 1, 1); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
 }
@@ -124,7 +136,7 @@ func TestCheckProtectedModelQuota_DailyExceeded_Blocks(t *testing.T) {
 	cache := &fakeModelQuotaCache{usage: ModelQuotaUsage{DailyUsage: 10.5}}
 	svc := NewModelQuotaCacheService(cache)
 	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10)})
-	err := svc.CheckProtectedModelQuota(context.Background(), g, 1, 1)
+	err := svc.CheckProtectedModelQuota(context.Background(), g, protectedModel, 1, 1)
 	if !errors.Is(err, ErrModelQuotaDailyExceeded) {
 		t.Fatalf("expected ErrModelQuotaDailyExceeded, got %v", err)
 	}
@@ -134,7 +146,7 @@ func TestCheckProtectedModelQuota_WeeklyExceeded_Blocks(t *testing.T) {
 	cache := &fakeModelQuotaCache{usage: ModelQuotaUsage{DailyUsage: 1, WeeklyUsage: 50}}
 	svc := NewModelQuotaCacheService(cache)
 	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10), WeeklyLimitUSD: ptrF(50)})
-	err := svc.CheckProtectedModelQuota(context.Background(), g, 1, 1)
+	err := svc.CheckProtectedModelQuota(context.Background(), g, protectedModel, 1, 1)
 	if !errors.Is(err, ErrModelQuotaWeeklyExceeded) {
 		t.Fatalf("expected ErrModelQuotaWeeklyExceeded, got %v", err)
 	}
@@ -144,7 +156,7 @@ func TestCheckProtectedModelQuota_RedisError_FailOpen(t *testing.T) {
 	cache := &fakeModelQuotaCache{getErr: errors.New("redis down")}
 	svc := NewModelQuotaCacheService(cache)
 	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10)})
-	if err := svc.CheckProtectedModelQuota(context.Background(), g, 1, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(context.Background(), g, protectedModel, 1, 1); err != nil {
 		t.Fatalf("expected nil on redis error (fail-open), got %v", err)
 	}
 }
@@ -159,16 +171,78 @@ func TestCheckProtectedModelQuota_ErrorTypeIs429(t *testing.T) {
 	}
 }
 
-func TestQueueUpdateModelQuotaUsage_InvokesCache(t *testing.T) {
+func TestQueueUpdateProtectedModelUsage_InvokesCacheForProtectedModel(t *testing.T) {
 	cache := &fakeModelQuotaCache{}
 	svc := NewModelQuotaCacheService(cache)
-	svc.QueueUpdateModelQuotaUsage(context.Background(), 1, 1, 1.23)
-	// QueueUpdateModelQuotaUsage 在 goroutine 中执行；直接调底层 cache 验证语义。
-	if err := cache.UpdateModelQuotaUsage(context.Background(), 1, 1, 1.23); err != nil {
-		t.Fatalf("expected nil, got %v", err)
+	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10)})
+
+	svc.QueueUpdateProtectedModelUsage(context.Background(), g, protectedModel, 1, 1, 1.23)
+	// Queue 在 goroutine 中执行；waitFor 轮询 cache.updates 等待 goroutine 落地。
+	waitFor(t, func() bool { return cache.updates >= 1 }, "expected cache.updates >= 1")
+}
+
+// 场景：普通模型计费不消耗保护额度池 —— Queue 应直接 return 不触达 cache。
+func TestQueueUpdateProtectedModelUsage_SkipsRegularModel(t *testing.T) {
+	cache := &fakeModelQuotaCache{}
+	svc := NewModelQuotaCacheService(cache)
+	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10)})
+
+	svc.QueueUpdateProtectedModelUsage(context.Background(), g, regularModel, 1, 1, 1.23)
+	// 给 goroutine 一点窗口期；如果错误地启动了 goroutine 也能被检出。
+	waitForFalse(t, func() bool { return cache.updates >= 1 }, "regular model should not touch cache")
+}
+
+// 场景：保护模型用满后，普通模型仍可通行（核心需求）。
+// 验证 CheckProtectedModelQuota 仅约束保护列表内 model；普通模型即便共享额度池
+// 已耗尽也不应被拦截，否则会出现"保护模型超限连带普通模型停摆"的事故。
+func TestProtectedQuota_NonProtectedModelStillAllowedAfterExhausted(t *testing.T) {
+	cache := &fakeModelQuotaCache{}
+	svc := NewModelQuotaCacheService(cache)
+	g := newQuotaGroup(&ProtectedModelQuota{DailyLimitUSD: ptrF(10), WeeklyLimitUSD: ptrF(50)})
+	ctx := context.Background()
+
+	// 把额度池用到爆（保护模型计费到 daily 限额）
+	_ = cache.UpdateModelQuotaUsage(ctx, 1, 1, 10)
+
+	// 保护模型：被拦
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, 1, 1); !errors.Is(err, ErrModelQuotaDailyExceeded) {
+		t.Fatalf("protected model should be blocked after quota exhausted, got %v", err)
 	}
-	if cache.updates == 0 {
-		t.Fatalf("expected at least one update invocation, got 0")
+
+	// 普通模型：仍放行（关键断言）
+	if err := svc.CheckProtectedModelQuota(ctx, g, regularModel, 1, 1); err != nil {
+		t.Fatalf("regular model should NOT be blocked by exhausted protected quota, got %v", err)
+	}
+
+	// 即便配置了 weekly 限额且也耗尽，普通模型同样不受影响
+	_ = cache.UpdateModelQuotaUsage(ctx, 1, 1, 50)
+	if err := svc.CheckProtectedModelQuota(ctx, g, regularModel, 1, 1); err != nil {
+		t.Fatalf("regular model should bypass weekly exhaustion too, got %v", err)
+	}
+}
+
+// 辅助：在最多 ~500ms 内轮询条件，避开 goroutine 不确定时序。
+func waitFor(t *testing.T, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("waitFor timeout: %s", msg)
+}
+
+// 辅助：~50ms 内 cond 持续为 false 即视为成功（用于断言"不会发生"）。
+func waitForFalse(t *testing.T, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(50 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if cond() {
+			t.Fatalf("waitForFalse fired: %s", msg)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 
@@ -183,7 +257,7 @@ func TestProtectedQuota_AccumulatesToBlockOnLimit(t *testing.T) {
 	const userID, groupID int64 = 7, 9
 
 	// 初始 0：通过
-	if err := svc.CheckProtectedModelQuota(ctx, g, userID, groupID); err != nil {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, userID, groupID); err != nil {
 		t.Fatalf("expected nil at usage=0, got %v", err)
 	}
 
@@ -191,19 +265,19 @@ func TestProtectedQuota_AccumulatesToBlockOnLimit(t *testing.T) {
 	if err := cache.UpdateModelQuotaUsage(ctx, userID, groupID, 3); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
-	if err := svc.CheckProtectedModelQuota(ctx, g, userID, groupID); err != nil {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, userID, groupID); err != nil {
 		t.Fatalf("expected nil at usage=3/10, got %v", err)
 	}
 
 	// 再累加 4 → 共 7：通过（恰好低于上限）
 	_ = cache.UpdateModelQuotaUsage(ctx, userID, groupID, 4)
-	if err := svc.CheckProtectedModelQuota(ctx, g, userID, groupID); err != nil {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, userID, groupID); err != nil {
 		t.Fatalf("expected nil at usage=7/10, got %v", err)
 	}
 
 	// 再累加 3 → 共 10：拒绝（>=10 即超限，CheckProtectedModelQuota 用的 >=）
 	_ = cache.UpdateModelQuotaUsage(ctx, userID, groupID, 3)
-	if err := svc.CheckProtectedModelQuota(ctx, g, userID, groupID); !errors.Is(err, ErrModelQuotaDailyExceeded) {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, userID, groupID); !errors.Is(err, ErrModelQuotaDailyExceeded) {
 		t.Fatalf("expected ErrModelQuotaDailyExceeded at usage=10/10, got %v", err)
 	}
 }
@@ -216,11 +290,11 @@ func TestProtectedQuota_WeeklyOnly_BlocksOnLimit(t *testing.T) {
 	ctx := context.Background()
 
 	_ = cache.UpdateModelQuotaUsage(ctx, 1, 1, 49.9)
-	if err := svc.CheckProtectedModelQuota(ctx, g, 1, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, 1, 1); err != nil {
 		t.Fatalf("expected nil at usage=49.9/50, got %v", err)
 	}
 	_ = cache.UpdateModelQuotaUsage(ctx, 1, 1, 0.1)
-	if err := svc.CheckProtectedModelQuota(ctx, g, 1, 1); !errors.Is(err, ErrModelQuotaWeeklyExceeded) {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, 1, 1); !errors.Is(err, ErrModelQuotaWeeklyExceeded) {
 		t.Fatalf("expected ErrModelQuotaWeeklyExceeded at usage=50/50, got %v", err)
 	}
 }
@@ -234,17 +308,17 @@ func TestProtectedQuota_IsolatedAcrossUsers(t *testing.T) {
 
 	// user 1 用满 → 拒绝
 	_ = cache.UpdateModelQuotaUsage(ctx, 1, 1, 10)
-	if err := svc.CheckProtectedModelQuota(ctx, g, 1, 1); !errors.Is(err, ErrModelQuotaDailyExceeded) {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, 1, 1); !errors.Is(err, ErrModelQuotaDailyExceeded) {
 		t.Fatalf("user 1 should be blocked, got %v", err)
 	}
 
 	// user 2 同 group，仍可通行（额度池按 user+group 维度独立）
-	if err := svc.CheckProtectedModelQuota(ctx, g, 2, 1); err != nil {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, 2, 1); err != nil {
 		t.Fatalf("user 2 should be allowed, got %v", err)
 	}
 
 	// 同 user 跨 group 也独立
-	if err := svc.CheckProtectedModelQuota(ctx, g, 1, 99); err != nil {
+	if err := svc.CheckProtectedModelQuota(ctx, g, protectedModel, 1, 99); err != nil {
 		t.Fatalf("user 1 group 99 should be allowed, got %v", err)
 	}
 }

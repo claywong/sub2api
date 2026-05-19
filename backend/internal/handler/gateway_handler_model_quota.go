@@ -21,7 +21,7 @@ import (
 )
 
 // applyModelQuotaOrFail 在请求进入上游前检查受保护模型的共享日/周额度。
-//   - 返回 true 表示放行（未配置额度、额度未超限、Redis 故障 fail-open）。
+//   - 返回 true 表示放行（普通模型、未配置额度、额度未超限、Redis 故障 fail-open）。
 //   - 返回 false 表示已写回 429 响应，调用方应立即 return。
 func (h *GatewayHandler) applyModelQuotaOrFail(
 	c *gin.Context,
@@ -33,7 +33,7 @@ func (h *GatewayHandler) applyModelQuotaOrFail(
 	if h.modelQuotaService == nil || group == nil {
 		return true
 	}
-	err := h.modelQuotaService.CheckProtectedModelQuota(c.Request.Context(), group, userID, groupID)
+	err := h.modelQuotaService.CheckProtectedModelQuota(c.Request.Context(), group, model, userID, groupID)
 	if err == nil {
 		return true
 	}
@@ -56,13 +56,14 @@ func (h *GatewayHandler) applyModelQuotaOrFail(
 }
 
 // makeModelQuotaHook 构造 RecordUsageInput.PostBillingHook。
-// 当组未配置 ProtectedModelQuota 时返回 nil（零开销）。
+// 当组未配置 ProtectedModelQuota 或没有 ProtectedModels 时返回 nil（零开销）。
+// hook 内部按 model 过滤：只有保护模型的计费才累加共享额度池。
 func (h *GatewayHandler) makeModelQuotaHook(group *service.Group) func(ctx context.Context, userID, groupID int64, model string, cost float64) {
-	if h.modelQuotaService == nil || group == nil || group.ProtectedModelQuota == nil {
+	if h.modelQuotaService == nil || group == nil || group.ProtectedModelQuota == nil || len(group.ProtectedModels) == 0 {
 		return nil
 	}
 	svc := h.modelQuotaService
-	return func(ctx context.Context, userID, groupID int64, _ string, cost float64) {
-		svc.QueueUpdateModelQuotaUsage(ctx, userID, groupID, cost)
+	return func(ctx context.Context, userID, groupID int64, model string, cost float64) {
+		svc.QueueUpdateProtectedModelUsage(ctx, group, model, userID, groupID, cost)
 	}
 }

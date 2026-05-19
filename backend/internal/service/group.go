@@ -178,6 +178,20 @@ func (q ProtectedModelQuota) HasWeeklyLimit() bool {
 	return q.WeeklyLimitUSD != nil && *q.WeeklyLimitUSD > 0
 }
 
+// IsProtectedModel 判断 model 是否匹配 g.ProtectedModels 中任一模式。
+// 用于把"是否走共享额度池"的判断收敛到 Group 上。
+func (g *Group) IsProtectedModel(model string) bool {
+	if g == nil || len(g.ProtectedModels) == 0 || model == "" {
+		return false
+	}
+	for _, p := range g.ProtectedModels {
+		if matchModelPattern(p, model) {
+			return true
+		}
+	}
+	return false
+}
+
 // matchModelPattern 检查模型是否匹配模式
 // 支持 * 通配符，如 "claude-opus-*" 匹配 "claude-opus-4-20250514"
 func matchModelPattern(pattern, model string) bool {

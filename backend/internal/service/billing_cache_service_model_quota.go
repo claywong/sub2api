@@ -2,14 +2,15 @@
 //
 // 文件作用：受保护模型的 per-user 共享日/周额度检查与异步更新服务。
 //   由 GatewayHandler 在请求前调用 CheckProtectedModelQuota，
-//   在计费后调用 QueueUpdateModelQuotaUsage 更新缓存（fail-open）。
+//   在计费后调用 QueueUpdateProtectedModelUsage 更新缓存（fail-open）。
 //
 // 包含类型/方法：
 //   - ModelQuotaCacheService（结构体与构造）
 //   - ModelQuotaCacheService.CheckProtectedModelQuota
-//   - ModelQuotaCacheService.QueueUpdateModelQuotaUsage
+//   - ModelQuotaCacheService.QueueUpdateProtectedModelUsage
 //
 // 额度检查语义：
+//   - 仅对 group.ProtectedModels 中匹配的 model 启用检查/累加
 //   - 冷缓存（首次请求）= 0 用量 → 通过（不拦截）
 //   - 计费成功后 UpdateModelQuotaUsage 写入/更新缓存
 //   - Redis 故障时 fail-open（不阻塞请求）
@@ -48,6 +49,7 @@ func NewModelQuotaCacheService(cache ModelQuotaCache) *ModelQuotaCacheService {
 //
 // 快速 bypass（任一满足直接返回 nil）：
 //   - group == nil 或 ProtectedModelQuota 未配置
+//   - model 不在 group.ProtectedModels 中（普通模型不走共享额度）
 //   - 配置的配额均未设置（nil 或 0）
 //
 // 冷缓存（key 不存在）时，使用量视为 0，请求通过。
@@ -55,9 +57,14 @@ func NewModelQuotaCacheService(cache ModelQuotaCache) *ModelQuotaCacheService {
 func (s *ModelQuotaCacheService) CheckProtectedModelQuota(
 	ctx context.Context,
 	group *Group,
+	model string,
 	userID, groupID int64,
 ) error {
 	if group == nil || group.ProtectedModelQuota == nil {
+		return nil
+	}
+	// 仅对保护列表内的 model 应用共享额度限制；普通模型不消耗也不受限。
+	if !group.IsProtectedModel(model) {
 		return nil
 	}
 	quota := group.ProtectedModelQuota
@@ -82,13 +89,19 @@ func (s *ModelQuotaCacheService) CheckProtectedModelQuota(
 	return nil
 }
 
-// QueueUpdateModelQuotaUsage 异步更新共享额度用量缓存（计费成功后调用）。
+// QueueUpdateProtectedModelUsage 异步累加共享额度用量（计费成功后调用）。
+// 仅对保护列表内 model 累加；普通模型计费不消耗共享额度池。
 // 非关键路径；故障仅打日志，不影响主流程。
-func (s *ModelQuotaCacheService) QueueUpdateModelQuotaUsage(
+func (s *ModelQuotaCacheService) QueueUpdateProtectedModelUsage(
 	ctx context.Context,
+	group *Group,
+	model string,
 	userID, groupID int64,
 	costUSD float64,
 ) {
+	if group == nil || group.ProtectedModelQuota == nil || !group.IsProtectedModel(model) {
+		return
+	}
 	go func() {
 		if err := s.cache.UpdateModelQuotaUsage(ctx, userID, groupID, costUSD); err != nil {
 			logger.LegacyPrintf("service.model_quota",
