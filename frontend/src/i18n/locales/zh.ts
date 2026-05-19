@@ -2175,8 +2175,8 @@ export default {
         listLabel: '保护模型列表',
         listPlaceholder: '输入模型名后按回车，例如 claude-opus-4.7 或 claude-opus-*',
         listHint: '支持末尾通配符 *；留空则不启用本功能。',
-        quotaTitle: '模型独立额度',
-        quotaHint: '为保护列表中的模型配置独立的日/周使用上限（USD），超出后返回 429。留空不限制。',
+        quotaTitle: '共享额度',
+        quotaHint: '所有受保护模型共用同一日/周使用上限（USD），超出后返回 429。关闭则不限制。',
         quotaDailyLabel: '日限额 (USD)',
         quotaWeeklyLabel: '周限额 (USD)',
         quotaPlaceholder: '不限制'

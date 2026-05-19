@@ -2091,8 +2091,8 @@ export default {
         listLabel: 'Protected Models',
         listPlaceholder: 'Type a model name and press Enter, e.g. claude-opus-4.7 or claude-opus-*',
         listHint: 'Trailing wildcard * supported. Leave empty to disable.',
-        quotaTitle: 'Per-Model Quota',
-        quotaHint: 'Set independent daily/weekly spend limits (USD) per protected model. Exceeding returns 429. Leave blank for no limit.',
+        quotaTitle: 'Shared Quota',
+        quotaHint: 'All protected models share one daily/weekly spend limit (USD). Exceeding returns 429. Turn off for no limit.',
         quotaDailyLabel: 'Daily Limit (USD)',
         quotaWeeklyLabel: 'Weekly Limit (USD)',
         quotaPlaceholder: 'No limit'

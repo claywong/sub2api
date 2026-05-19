@@ -118,8 +118,8 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
-	// 受保护模型的独立日/周额度配置（私有扩展，用户侧只读）
-	ProtectedModelQuotas map[string]service.ProtectedModelQuota `json:"protected_model_quotas,omitempty"`
+	// 受保护模型的共享日/周额度配置（私有扩展，用户侧只读）
+	ProtectedModelQuota *service.ProtectedModelQuota `json:"protected_model_quota,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -521,6 +521,10 @@ type UserSubscription struct {
 	DailyUsageUSD   float64 `json:"daily_usage_usd"`
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
+
+	// 受保护模型共享额度的实时用量（从 Redis 缓存读取；未配置或无用量时为 0）
+	ProtectedModelDailyUsageUSD  float64 `json:"protected_model_daily_usage_usd,omitempty"`
+	ProtectedModelWeeklyUsageUSD float64 `json:"protected_model_weekly_usage_usd,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

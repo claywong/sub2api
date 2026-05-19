@@ -1,6 +1,6 @@
 // 私有扩展（不属于 upstream sub2api）。
 //
-// 文件作用：为受保护模型配置的 per-user 日/周额度提供 Redis 缓存支持。
+// 文件作用：为受保护模型配置的 per-user 共享日/周额度提供 Redis 缓存支持。
 //   通过在 billingCache 上新增方法实现，不修改 billing_cache.go。
 //
 // 包含类型/方法：
@@ -8,7 +8,7 @@
 //   - billingCache.UpdateModelQuotaUsage
 //   - NewModelQuotaCache（暴露 service.ModelQuotaCache 接口）
 //
-// Redis key 格式：billing:mquota:{userID}:{groupID}:{model}
+// Redis key 格式：billing:mquota:{userID}:{groupID}
 // Hash 字段：daily_usage, weekly_usage, daily_win_start, weekly_win_start
 //
 // merge 策略：全新文件，无 upstream 冲突。
@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -65,16 +64,15 @@ var updateModelQuotaUsageScript = redis.NewScript(`
 	return 1
 `)
 
-// modelQuotaKey 生成 Redis key。model 中特殊字符替换为下划线。
-func modelQuotaKey(userID, groupID int64, model string) string {
-	safe := strings.NewReplacer("/", "_", ":", "_", " ", "_").Replace(model)
-	return fmt.Sprintf("%s%d:%d:%s", modelQuotaKeyPrefix, userID, groupID, safe)
+// modelQuotaKey 生成 Redis key（按 user+group 聚合，所有受保护模型共享）。
+func modelQuotaKey(userID, groupID int64) string {
+	return fmt.Sprintf("%s%d:%d", modelQuotaKeyPrefix, userID, groupID)
 }
 
 // GetModelQuotaUsage 读取当前 daily/weekly 使用量（自动感知窗口是否过期）。
 // 若 key 不存在返回零值和 nil。
-func (c *billingCache) GetModelQuotaUsage(ctx context.Context, userID, groupID int64, model string) (service.ModelQuotaUsage, error) {
-	key := modelQuotaKey(userID, groupID, model)
+func (c *billingCache) GetModelQuotaUsage(ctx context.Context, userID, groupID int64) (service.ModelQuotaUsage, error) {
+	key := modelQuotaKey(userID, groupID)
 	data, err := c.rdb.HGetAll(ctx, key).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return service.ModelQuotaUsage{}, err
@@ -106,8 +104,8 @@ func (c *billingCache) GetModelQuotaUsage(ctx context.Context, userID, groupID i
 }
 
 // SetModelQuotaUsage 初始化缓存条目（用于从 DB 同步初始值）。
-func (c *billingCache) SetModelQuotaUsage(ctx context.Context, userID, groupID int64, model string, data service.ModelQuotaUsage) error {
-	key := modelQuotaKey(userID, groupID, model)
+func (c *billingCache) SetModelQuotaUsage(ctx context.Context, userID, groupID int64, data service.ModelQuotaUsage) error {
+	key := modelQuotaKey(userID, groupID)
 	now := time.Now().Unix()
 	fields := map[string]any{
 		mqFieldDailyUsage:     data.DailyUsage,
@@ -124,8 +122,8 @@ func (c *billingCache) SetModelQuotaUsage(ctx context.Context, userID, groupID i
 
 // UpdateModelQuotaUsage 异步安全地增加日/周用量计数（窗口过期自动重置）。
 // key 不存在时返回 nil（fail-open：缓存未热身不阻塞请求）。
-func (c *billingCache) UpdateModelQuotaUsage(ctx context.Context, userID, groupID int64, model string, cost float64) error {
-	key := modelQuotaKey(userID, groupID, model)
+func (c *billingCache) UpdateModelQuotaUsage(ctx context.Context, userID, groupID int64, cost float64) error {
+	key := modelQuotaKey(userID, groupID)
 	now := time.Now().Unix()
 	const daySec = 86400
 	const weekSec = 7 * 86400
