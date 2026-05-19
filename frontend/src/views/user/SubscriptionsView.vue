@@ -217,26 +217,53 @@
               </p>
             </div>
 
-            <!-- Protected Model Quotas -->
-            <template v-if="subscription.group?.protected_model_quotas && Object.keys(subscription.group.protected_model_quotas).length > 0">
+            <!-- Protected Model Shared Quota -->
+            <template v-if="subscription.group?.protected_model_quota && (subscription.group.protected_model_quota.daily_limit_usd || subscription.group.protected_model_quota.weekly_limit_usd)">
               <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
                 <p class="mb-2 text-xs font-medium text-gray-500 dark:text-dark-400">
                   {{ t('userSubscriptions.protectedModels') }}
                 </p>
-                <div class="space-y-2">
-                  <div
-                    v-for="(quota, model) in subscription.group.protected_model_quotas"
-                    :key="model"
-                    class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-700"
-                  >
-                    <p class="mb-1 truncate text-xs font-medium text-gray-700 dark:text-gray-300">{{ model }}</p>
-                    <div class="flex flex-wrap gap-x-4 gap-y-0.5">
-                      <span v-if="quota.daily_limit_usd" class="text-xs text-gray-500 dark:text-dark-400">
-                        {{ t('userSubscriptions.daily') }}: ${{ quota.daily_limit_usd.toFixed(2) }}
+                <div class="space-y-2 rounded-lg bg-gray-50 px-3 py-3 dark:bg-dark-700">
+                  <div v-if="subscription.group.protected_model_quota.daily_limit_usd">
+                    <div class="mb-1 flex items-center justify-between text-xs">
+                      <span class="text-gray-600 dark:text-dark-300">{{ t('userSubscriptions.daily') }}</span>
+                      <span class="font-mono text-gray-500 dark:text-dark-400">
+                        ${{ (subscription.protected_model_daily_usage_usd ?? 0).toFixed(2) }} / ${{ subscription.group.protected_model_quota.daily_limit_usd.toFixed(2) }}
                       </span>
-                      <span v-if="quota.weekly_limit_usd" class="text-xs text-gray-500 dark:text-dark-400">
-                        {{ t('userSubscriptions.weekly') }}: ${{ quota.weekly_limit_usd.toFixed(2) }}
+                    </div>
+                    <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+                      <div
+                        class="h-full rounded-full transition-all"
+                        :class="protectedQuotaBarClass(
+                          subscription.protected_model_daily_usage_usd ?? 0,
+                          subscription.group.protected_model_quota.daily_limit_usd
+                        )"
+                        :style="{ width: protectedQuotaPercent(
+                          subscription.protected_model_daily_usage_usd ?? 0,
+                          subscription.group.protected_model_quota.daily_limit_usd
+                        ) + '%' }"
+                      ></div>
+                    </div>
+                  </div>
+                  <div v-if="subscription.group.protected_model_quota.weekly_limit_usd">
+                    <div class="mb-1 flex items-center justify-between text-xs">
+                      <span class="text-gray-600 dark:text-dark-300">{{ t('userSubscriptions.weekly') }}</span>
+                      <span class="font-mono text-gray-500 dark:text-dark-400">
+                        ${{ (subscription.protected_model_weekly_usage_usd ?? 0).toFixed(2) }} / ${{ subscription.group.protected_model_quota.weekly_limit_usd.toFixed(2) }}
                       </span>
+                    </div>
+                    <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
+                      <div
+                        class="h-full rounded-full transition-all"
+                        :class="protectedQuotaBarClass(
+                          subscription.protected_model_weekly_usage_usd ?? 0,
+                          subscription.group.protected_model_quota.weekly_limit_usd
+                        )"
+                        :style="{ width: protectedQuotaPercent(
+                          subscription.protected_model_weekly_usage_usd ?? 0,
+                          subscription.group.protected_model_quota.weekly_limit_usd
+                        ) + '%' }"
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -384,6 +411,19 @@ function formatResetTime(windowStart: string | null, windowHours: number): strin
   }
 
   return `${minutes}m`
+}
+
+function protectedQuotaPercent(used: number, limit: number): number {
+  if (!limit || limit <= 0) return 0
+  return Math.min(100, Math.max(0, (used / limit) * 100))
+}
+
+function protectedQuotaBarClass(used: number, limit: number): string {
+  const pct = protectedQuotaPercent(used, limit)
+  if (pct >= 100) return 'bg-red-500'
+  if (pct >= 80) return 'bg-orange-500'
+  if (pct >= 50) return 'bg-yellow-500'
+  return 'bg-emerald-500'
 }
 
 onMounted(() => {

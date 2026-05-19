@@ -1,7 +1,8 @@
 // 私有扩展（不属于 upstream sub2api）。
 //
-// 文件作用：ProtectedModelQuotas 在 service 层（map[string]ProtectedModelQuota）
+// 文件作用：ProtectedModelQuota（共享额度）在 service 层（*ProtectedModelQuota）
 //   与 ent 层（map[string]interface{}）之间的双向转换工具函数。
+//   ent 仍使用 JSON map 存储（约定 key 为 sharedQuotaKey），避免 schema 变更。
 //   被 group_repo.go（写入）和 api_key_repo.go（读取）共同调用。
 //
 // merge 策略：全新文件，无 upstream 冲突。
@@ -14,43 +15,47 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-// toRawQuotaMap 将 service 层的 ProtectedModelQuotas 转换为 ent 所需的 map[string]interface{}。
-// ent 使用 JSON 序列化写入 DB；nil 输入返回空 map（不返回 nil，避免 JSON null）。
-func toRawQuotaMap(quotas map[string]service.ProtectedModelQuota) map[string]interface{} {
-	if len(quotas) == 0 {
+// sharedQuotaKey 是 ent JSON map 中存放共享额度的唯一 key。
+const sharedQuotaKey = "*"
+
+// toRawQuota 将 service 层的 *ProtectedModelQuota 转换为 ent 所需的 map[string]interface{}。
+// nil 输入返回空 map（避免 JSON null）。
+func toRawQuota(q *service.ProtectedModelQuota) map[string]interface{} {
+	if q == nil {
 		return map[string]interface{}{}
 	}
-	raw := make(map[string]interface{}, len(quotas))
-	for pattern, q := range quotas {
-		// 通过 JSON 往返确保字段名一致（使用 ProtectedModelQuota 的 json tag）
-		b, _ := json.Marshal(q)
-		var m map[string]interface{}
-		_ = json.Unmarshal(b, &m)
-		raw[pattern] = m
+	b, err := json.Marshal(q)
+	if err != nil {
+		return map[string]interface{}{}
 	}
-	return raw
+	var inner map[string]interface{}
+	if err := json.Unmarshal(b, &inner); err != nil {
+		return map[string]interface{}{}
+	}
+	return map[string]interface{}{sharedQuotaKey: inner}
 }
 
-// fromRawQuotaMap 将 ent 层读取到的 map[string]interface{} 转换回 service 层类型。
-// 若 raw 为空或转换失败，返回 nil（等同于未配置额度）。
-func fromRawQuotaMap(raw map[string]interface{}) map[string]service.ProtectedModelQuota {
+// fromRawQuota 将 ent 层读取到的 map[string]interface{} 转换回 *ProtectedModelQuota。
+// 若 raw 为空或无有效条目，返回 nil（等同于未配置额度）。
+// 兼容老数据：若没有 sharedQuotaKey 但有其他 key，取首个条目作为共享额度。
+func fromRawQuota(raw map[string]interface{}) *service.ProtectedModelQuota {
 	if len(raw) == 0 {
 		return nil
 	}
-	result := make(map[string]service.ProtectedModelQuota, len(raw))
-	for pattern, v := range raw {
-		b, err := json.Marshal(v)
-		if err != nil {
-			continue
+	v, ok := raw[sharedQuotaKey]
+	if !ok {
+		for _, vv := range raw {
+			v = vv
+			break
 		}
-		var q service.ProtectedModelQuota
-		if err := json.Unmarshal(b, &q); err != nil {
-			continue
-		}
-		result[pattern] = q
 	}
-	if len(result) == 0 {
+	b, err := json.Marshal(v)
+	if err != nil {
 		return nil
 	}
-	return result
+	var q service.ProtectedModelQuota
+	if err := json.Unmarshal(b, &q); err != nil {
+		return nil
+	}
+	return &q
 }

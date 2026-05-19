@@ -275,7 +275,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			RPMLimit:                        apiKey.Group.RPMLimit,
 			AllowBalanceFallback:            apiKey.Group.AllowBalanceFallback,
 			ProtectedModels:                 apiKey.Group.ProtectedModels,
-			ProtectedModelQuotas:            apiKey.Group.ProtectedModelQuotas,
+			ProtectedModelQuota:             apiKey.Group.ProtectedModelQuota,
 		}
 	}
 	return snapshot
@@ -348,7 +348,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			AllowBalanceFallback:            snapshot.Group.AllowBalanceFallback,
 			ProtectedModels:                 snapshot.Group.ProtectedModels,
-			ProtectedModelQuotas:            snapshot.Group.ProtectedModelQuotas,
+			ProtectedModelQuota:             snapshot.Group.ProtectedModelQuota,
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)

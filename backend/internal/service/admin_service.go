@@ -219,8 +219,8 @@ type CreateGroupInput struct {
 	AllowBalanceFallback bool
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	ProtectedModels []string
-	// 受保护模型的独立日/周额度配置（私有扩展）
-	ProtectedModelQuotas map[string]ProtectedModelQuota
+	// 受保护模型的共享日/周额度配置（私有扩展）
+	ProtectedModelQuota *ProtectedModelQuota
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -265,8 +265,8 @@ type UpdateGroupInput struct {
 	AllowBalanceFallback *bool
 	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空切片表示清空。
 	ProtectedModels *[]string
-	// 受保护模型的独立日/周额度配置（私有扩展）；nil 表示未提供不改动，空 map 表示清空。
-	ProtectedModelQuotas *map[string]ProtectedModelQuota
+	// 受保护模型的共享日/周额度配置（私有扩展）；nil 表示未提供不改动。
+	ProtectedModelQuota **ProtectedModelQuota
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1704,7 +1704,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 		AllowBalanceFallback:            input.AllowBalanceFallback,
 		ProtectedModels:                 input.ProtectedModels,
-		ProtectedModelQuotas:            input.ProtectedModelQuotas,
+		ProtectedModelQuota:             input.ProtectedModelQuota,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1960,8 +1960,8 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.ProtectedModels != nil {
 		group.ProtectedModels = *input.ProtectedModels
 	}
-	if input.ProtectedModelQuotas != nil {
-		group.ProtectedModelQuotas = *input.ProtectedModelQuotas
+	if input.ProtectedModelQuota != nil {
+		group.ProtectedModelQuota = *input.ProtectedModelQuota
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 
