@@ -40,7 +40,7 @@ func (h *GatewayHandler) applySessionModelLockOrFail(c *gin.Context, reqLog *zap
 			zap.String("current_model", lockErr.CurrentModel),
 		)
 		h.errorResponse(c, http.StatusForbidden, "permission_error",
-			fmt.Sprintf("model %q is locked in this session (first model: %q)", lockErr.CurrentModel, lockErr.FirstModel))
+			fmt.Sprintf("当前会话首个模型为：%q，不允许切换到锁定模型 %q，如果需要切换，请 /clear 或新开会话后切换", lockErr.FirstModel, lockErr.CurrentModel))
 		return false
 	}
 
