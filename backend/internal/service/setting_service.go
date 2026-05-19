@@ -4070,8 +4070,8 @@ func (s *SettingService) GetStreamTimeoutSettings(ctx context.Context) (*StreamT
 	if settings.ThresholdCount < 1 {
 		settings.ThresholdCount = 1
 	}
-	if settings.ThresholdCount > 10 {
-		settings.ThresholdCount = 10
+	if settings.ThresholdCount > 60 {
+		settings.ThresholdCount = 60
 	}
 	if settings.ThresholdWindowMinutes < 1 {
 		settings.ThresholdWindowMinutes = 1
@@ -4364,8 +4364,8 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 	if settings.TempUnschedMinutes < 1 || settings.TempUnschedMinutes > 60 {
 		return fmt.Errorf("temp_unsched_minutes must be between 1-60")
 	}
-	if settings.ThresholdCount < 1 || settings.ThresholdCount > 10 {
-		return fmt.Errorf("threshold_count must be between 1-10")
+	if settings.ThresholdCount < 1 || settings.ThresholdCount > 60 {
+		return fmt.Errorf("threshold_count must be between 1-60")
 	}
 	if settings.ThresholdWindowMinutes < 1 || settings.ThresholdWindowMinutes > 60 {
 		return fmt.Errorf("threshold_window_minutes must be between 1-60")
