@@ -501,6 +501,12 @@ func (_c *GroupCreate) SetProtectedModels(v []string) *GroupCreate {
 	return _c
 }
 
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (_c *GroupCreate) SetProtectedModelQuotas(v map[string]interface{}) *GroupCreate {
+	_c.mutation.SetProtectedModelQuotas(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -730,6 +736,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultProtectedModels
 		_c.mutation.SetProtectedModels(v)
 	}
+	if _, ok := _c.mutation.ProtectedModelQuotas(); !ok {
+		v := group.DefaultProtectedModelQuotas
+		_c.mutation.SetProtectedModelQuotas(v)
+	}
 	return nil
 }
 
@@ -834,6 +844,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ProtectedModels(); !ok {
 		return &ValidationError{Name: "protected_models", err: errors.New(`ent: missing required field "Group.protected_models"`)}
+	}
+	if _, ok := _c.mutation.ProtectedModelQuotas(); !ok {
+		return &ValidationError{Name: "protected_model_quotas", err: errors.New(`ent: missing required field "Group.protected_model_quotas"`)}
 	}
 	return nil
 }
@@ -1005,6 +1018,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ProtectedModels(); ok {
 		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
 		_node.ProtectedModels = value
+	}
+	if value, ok := _c.mutation.ProtectedModelQuotas(); ok {
+		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
+		_node.ProtectedModelQuotas = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1726,6 +1743,18 @@ func (u *GroupUpsert) UpdateProtectedModels() *GroupUpsert {
 	return u
 }
 
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (u *GroupUpsert) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsert {
+	u.Set(group.FieldProtectedModelQuotas, v)
+	return u
+}
+
+// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProtectedModelQuotas() *GroupUpsert {
+	u.SetExcluded(group.FieldProtectedModelQuotas)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2426,6 +2455,20 @@ func (u *GroupUpsertOne) SetProtectedModels(v []string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateProtectedModels() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProtectedModels()
+	})
+}
+
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (u *GroupUpsertOne) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModelQuotas(v)
+	})
+}
+
+// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProtectedModelQuotas() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModelQuotas()
 	})
 }
 
@@ -3295,6 +3338,20 @@ func (u *GroupUpsertBulk) SetProtectedModels(v []string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateProtectedModels() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateProtectedModels()
+	})
+}
+
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (u *GroupUpsertBulk) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModelQuotas(v)
+	})
+}
+
+// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProtectedModelQuotas() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModelQuotas()
 	})
 }
 

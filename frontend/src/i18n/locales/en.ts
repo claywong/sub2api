@@ -2090,7 +2090,12 @@ export default {
           'Models in this list cannot be switched to mid-conversation unless the session starts with them. Same Claude Code session_id is tracked for 24h. Prevents "build context cheap, upgrade to expensive" abuse. Applies to Anthropic /v1/messages only.',
         listLabel: 'Protected Models',
         listPlaceholder: 'Type a model name and press Enter, e.g. claude-opus-4.7 or claude-opus-*',
-        listHint: 'Trailing wildcard * supported. Leave empty to disable.'
+        listHint: 'Trailing wildcard * supported. Leave empty to disable.',
+        quotaTitle: 'Per-Model Quota',
+        quotaHint: 'Set independent daily/weekly spend limits (USD) per protected model. Exceeding returns 429. Leave blank for no limit.',
+        quotaDailyLabel: 'Daily Limit (USD)',
+        quotaWeeklyLabel: 'Weekly Limit (USD)',
+        quotaPlaceholder: 'No limit'
       },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
@@ -6280,7 +6285,8 @@ export default {
     expiresOn: 'Expires on {date}',
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    protectedModels: 'Protected Model Quotas'
   },
 
   // Onboarding Tour

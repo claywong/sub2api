@@ -2174,7 +2174,12 @@ export default {
           '把"昂贵模型"加入保护列表后，同一个 Claude Code 会话（按 session_id）如果首次没使用该模型，后续就不允许中途切换到该模型，可防止"先用便宜模型 build 上下文、再升级到贵模型"的滥用。仅对 Anthropic /v1/messages 生效，TTL 24 小时。',
         listLabel: '保护模型列表',
         listPlaceholder: '输入模型名后按回车，例如 claude-opus-4.7 或 claude-opus-*',
-        listHint: '支持末尾通配符 *；留空则不启用本功能。'
+        listHint: '支持末尾通配符 *；留空则不启用本功能。',
+        quotaTitle: '模型独立额度',
+        quotaHint: '为保护列表中的模型配置独立的日/周使用上限（USD），超出后返回 429。留空不限制。',
+        quotaDailyLabel: '日限额 (USD)',
+        quotaWeeklyLabel: '周限额 (USD)',
+        quotaPlaceholder: '不限制'
       },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',
@@ -6438,7 +6443,8 @@ export default {
     expiresOn: '{date} 到期',
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    protectedModels: '受保护模型额度'
   },
 
   // Onboarding Tour

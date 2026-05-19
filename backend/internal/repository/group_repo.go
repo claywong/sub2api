@@ -80,6 +80,10 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 
 	// 会话级模型锁定保护列表（私有扩展，始终设置；nil 与空数组等价）
 	builder = builder.SetProtectedModels(groupIn.ProtectedModels)
+	// 受保护模型额度配置（私有扩展）
+	if groupIn.ProtectedModelQuotas != nil {
+		builder = builder.SetProtectedModelQuotas(toRawQuotaMap(groupIn.ProtectedModelQuotas))
+	}
 
 	created, err := builder.Save(ctx)
 	if err == nil {
@@ -202,6 +206,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 
 	// 会话级模型锁定保护列表（私有扩展，始终设置；nil 与空数组等价）
 	builder = builder.SetProtectedModels(groupIn.ProtectedModels)
+	// 受保护模型额度配置（私有扩展）
+	builder = builder.SetProtectedModelQuotas(toRawQuotaMap(groupIn.ProtectedModelQuotas))
 
 	updated, err := builder.Save(ctx)
 	if err != nil {

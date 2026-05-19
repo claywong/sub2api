@@ -52,7 +52,8 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
-	sessionModelLockService   *service.SessionModelLockService // 私有扩展：会话级模型锁定
+	sessionModelLockService   *service.SessionModelLockService   // 私有扩展：会话级模型锁定
+	modelQuotaService         *service.ModelQuotaCacheService    // 私有扩展：受保护模型独立额度
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -72,6 +73,7 @@ func NewGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 	sessionModelLockService *service.SessionModelLockService, // 私有扩展
+	modelQuotaService *service.ModelQuotaCacheService,        // 私有扩展
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -110,6 +112,7 @@ func NewGatewayHandler(
 		cfg:                       cfg,
 		settingService:            settingService,
 		sessionModelLockService:   sessionModelLockService,
+		modelQuotaService:         modelQuotaService,
 	}
 }
 
@@ -268,6 +271,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 私有扩展：会话级模型锁定（Anthropic /v1/messages）
 	if !h.applySessionModelLockOrFail(c, reqLog, apiKey.Group, parsedReq) {
 		return
+	}
+	// 私有扩展：受保护模型日/周额度检查
+	if apiKey.Group != nil && apiKey.User != nil && apiKey.GroupID != nil {
+		if !h.applyModelQuotaOrFail(c, reqLog, apiKey.Group, parsedReq.Model, apiKey.User.ID, *apiKey.GroupID) {
+			return
+		}
 	}
 
 	// 计算粘性会话hash
@@ -529,6 +538,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					ForceCacheBilling:  fs.ForceCacheBilling,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					PostBillingHook:    h.makeModelQuotaHook(apiKey.Group), // 私有扩展
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -1563,6 +1573,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	if !h.applySessionModelLockOrFail(c, reqLog, apiKey.Group, parsedReq) {
 		return
 	}
+	// 私有扩展：受保护模型日/周额度检查（count_tokens 不计费，跳过）
 
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{

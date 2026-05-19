@@ -869,6 +869,10 @@ func init() {
 	groupDescProtectedModels := groupFields[32].Descriptor()
 	// group.DefaultProtectedModels holds the default value on creation for the protected_models field.
 	group.DefaultProtectedModels = groupDescProtectedModels.Default.([]string)
+	// groupDescProtectedModelQuotas is the schema descriptor for protected_model_quotas field.
+	groupDescProtectedModelQuotas := groupFields[33].Descriptor()
+	// group.DefaultProtectedModelQuotas holds the default value on creation for the protected_model_quotas field.
+	group.DefaultProtectedModelQuotas = groupDescProtectedModelQuotas.Default.(map[string]interface{})
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

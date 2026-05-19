@@ -91,6 +91,8 @@ type Group struct {
 	AllowBalanceFallback bool `json:"allow_balance_fallback,omitempty"`
 	// 会话级模型锁定保护列表，支持 * 通配符；空表示不启用
 	ProtectedModels []string `json:"protected_models,omitempty"`
+	// per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}
+	ProtectedModelQuotas map[string]interface{} `json:"protected_model_quotas,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the GroupQuery when eager-loading is set.
 	Edges        GroupEdges `json:"edges"`
@@ -197,7 +199,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldProtectedModels:
+		case group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldProtectedModels, group.FieldProtectedModelQuotas:
 			values[i] = new([]byte)
 		case group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldImageRateIndependent, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldAllowBalanceFallback:
 			values[i] = new(sql.NullBool)
@@ -464,6 +466,14 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 					return fmt.Errorf("unmarshal field protected_models: %w", err)
 				}
 			}
+		case group.FieldProtectedModelQuotas:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field protected_model_quotas", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ProtectedModelQuotas); err != nil {
+					return fmt.Errorf("unmarshal field protected_model_quotas: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -667,6 +677,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("protected_models=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProtectedModels))
+	builder.WriteString(", ")
+	builder.WriteString("protected_model_quotas=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ProtectedModelQuotas))
 	builder.WriteByte(')')
 	return builder.String()
 }

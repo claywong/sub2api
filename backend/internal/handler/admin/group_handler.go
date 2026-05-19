@@ -119,6 +119,8 @@ type CreateGroupRequest struct {
 	AllowBalanceFallback bool `json:"allow_balance_fallback"`
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	ProtectedModels []string `json:"protected_models"`
+	// 受保护模型的独立日/周额度配置（私有扩展）
+	ProtectedModelQuotas map[string]service.ProtectedModelQuota `json:"protected_model_quotas"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -163,6 +165,8 @@ type UpdateGroupRequest struct {
 	AllowBalanceFallback *bool `json:"allow_balance_fallback"`
 	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空数组表示清空
 	ProtectedModels *[]string `json:"protected_models"`
+	// 受保护模型的独立日/周额度配置（私有扩展）；nil 表示未提供不改动，空 map 表示清空
+	ProtectedModelQuotas *map[string]service.ProtectedModelQuota `json:"protected_model_quotas"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -286,6 +290,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
 		ProtectedModels:                 req.ProtectedModels,
+		ProtectedModelQuotas:            req.ProtectedModelQuotas,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -343,6 +348,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
 		ProtectedModels:                 req.ProtectedModels,
+		ProtectedModelQuotas:            req.ProtectedModelQuotas,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {

@@ -217,6 +217,32 @@
               </p>
             </div>
 
+            <!-- Protected Model Quotas -->
+            <template v-if="subscription.group?.protected_model_quotas && Object.keys(subscription.group.protected_model_quotas).length > 0">
+              <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
+                <p class="mb-2 text-xs font-medium text-gray-500 dark:text-dark-400">
+                  {{ t('userSubscriptions.protectedModels') }}
+                </p>
+                <div class="space-y-2">
+                  <div
+                    v-for="(quota, model) in subscription.group.protected_model_quotas"
+                    :key="model"
+                    class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-dark-700"
+                  >
+                    <p class="mb-1 truncate text-xs font-medium text-gray-700 dark:text-gray-300">{{ model }}</p>
+                    <div class="flex flex-wrap gap-x-4 gap-y-0.5">
+                      <span v-if="quota.daily_limit_usd" class="text-xs text-gray-500 dark:text-dark-400">
+                        {{ t('userSubscriptions.daily') }}: ${{ quota.daily_limit_usd.toFixed(2) }}
+                      </span>
+                      <span v-if="quota.weekly_limit_usd" class="text-xs text-gray-500 dark:text-dark-400">
+                        {{ t('userSubscriptions.weekly') }}: ${{ quota.weekly_limit_usd.toFixed(2) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <!-- No limits configured - Unlimited badge -->
             <div
               v-if="
