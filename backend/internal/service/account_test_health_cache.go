@@ -456,8 +456,8 @@ func (c *AccountTestHealthCache) Snapshot(accountID int64) HealthSnapshot {
 }
 
 // UpdateFromTest 根据测试结果更新健康状态。
-// 同时维护：(a) test 退避状态机（ConsecFails/RetryInterval/NextRetryAt）；
-// (b) 滑动窗口（通过 Record-语义写入活动桶，与真实调用融合）。
+// ConsecFails 仅由此函数驱动（定时测试专属），真实请求不影响 ConsecFails。
+// 同时维护滑动窗口（与真实调用融合，供 HealthVerdict 三态判定使用）。
 func (c *AccountTestHealthCache) UpdateFromTest(accountID int64, result *ScheduledTestResult) {
 	if result == nil {
 		return
@@ -560,11 +560,7 @@ func (c *AccountTestHealthCache) PassesHardFilter(accountID int64) bool {
 }
 
 // ReportRealCall 记录一次真实业务调用结果（gateway 层，区别于主动 test）。
-// 内部调用 Record 写入窗口桶，并维护 ConsecFails（成功清零、失败累加）。
-//
-// 行为：
-//   - success=true 时，如 ConsecFails > 0 则清零（真实流量验证账号可用，重置 test 累计的失败）
-//   - success=false 时 ConsecFails++
+// 只写滑动窗口，不影响 ConsecFails（ConsecFails 仅由定时测试驱动）。
 //
 // 调用方应在上报前过滤 context.Canceled / 客户端中断等"非账号问题"，避免误报。
 func (c *AccountTestHealthCache) ReportRealCall(accountID int64, success bool) {
@@ -572,7 +568,7 @@ func (c *AccountTestHealthCache) ReportRealCall(accountID int64, success bool) {
 }
 
 // RecordRealCall 真实调用上报的扩展版本，可同时携带 TTFT/Duration/OutputTokens。
-// 与 ReportRealCall 行为一致：写入窗口桶 + 维护 ConsecFails。
+// 只写滑动窗口，不影响 ConsecFails（ConsecFails 仅由定时测试驱动）。
 func (c *AccountTestHealthCache) RecordRealCall(accountID int64, sample CallSample) {
 	if c == nil || accountID <= 0 {
 		return
@@ -581,13 +577,6 @@ func (c *AccountTestHealthCache) RecordRealCall(accountID int64, sample CallSamp
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.recordSampleLocked(sample, time.Now(), c.cfg.slowThresholdMs)
-	if sample.Success {
-		if h.ConsecFails > 0 {
-			h.ConsecFails = 0
-		}
-	} else {
-		h.ConsecFails++
-	}
 }
 
 // HealthVerdict 基于滑动窗口快照返回三态判定结果。
