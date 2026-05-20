@@ -247,6 +247,8 @@ s.launchRetryIfNeeded(plan)
 - 滑动窗口（写入 TTFT 样本，成功/失败计数）
 - 退避状态机（成功清零 ConsecFails；失败累加并计算下次补测间隔）
 
+> **ConsecFails 仅由此入口驱动**。真实请求的成败不影响 ConsecFails，只写滑动窗口。
+
 ### 入口2：真实请求完成（`reportAnthropicForwardResult`）
 
 ```go
@@ -255,6 +257,8 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 ```
 
 `RecordAnthropicCall` → `healthCache.RecordRealCall`，写入完整 CallSample（Success + TTFTMs + DurationMs + OutputTokens）。
+
+> **注**：`RecordRealCall` 只写滑动窗口，**不影响 ConsecFails**。ConsecFails 仅由定时测试（`UpdateFromTest`）驱动，真实请求失败不会触发硬过滤或补测逻辑。
 
 **不上报的情况**（对应 `error_owner = 'client'` 或非账号问题，避免用户请求问题污染账号健康评分）：
 - `context.Canceled`（客户端中断，非账号问题）
@@ -317,10 +321,11 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 
 | 场景 | 行为 |
 |------|------|
-| 账号无定时测试计划 | ConsecFails 永远为 0，不触发退火/TempUnschedulable；HealthVerdict 由真实请求数据驱动 |
+| 账号无定时测试计划 | ConsecFails 永远为 0，不触发退火/TempUnschedulable；HealthVerdict 由真实请求数据驱动（真实请求失败不影响 ConsecFails） |
 | 进程重启 | 内存缓存清空；TempUnschedulable 在 DB 中持久，仍然生效 |
 | 多实例部署 | 内存缓存各实例独立；TempUnschedulable 写 DB 所有实例共享 |
-| 供应商偶发抖动（1次失败后恢复） | ConsecFails=1，立即补测成功，归零，对调度无任何影响 |
+| 供应商偶发抖动（真实请求1次失败后恢复） | 只写滑动窗口，ConsecFails 不变，对退火/TempUnschedulable 无任何影响 |
+| 定时测试偶发抖动（1次失败后恢复） | ConsecFails=1，立即补测成功，归零，对调度无任何影响 |
 | 供应商快速拒绝连接（<1s） | 退火总耗时 ~35s 完成四次失败，触发 TempUnschedulable |
 | 供应商挂起不响应 | 每次测试耗尽 10s 超时，退火总耗时 ~75s 触发 TempUnschedulable |
 | TempUnschedulable 期间供应商恢复 | 到期补测成功，立即恢复，ConsecFails 归零 |
