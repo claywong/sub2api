@@ -3879,8 +3879,11 @@ const handleSubmit = async () => {
 
     // For apikey/bedrock accounts, handle quota_limit in extra
     if (props.account.type === 'apikey' || props.account.type === 'bedrock') {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
-        (props.account.extra as Record<string, unknown>) || {}
+      // 用 'extra' in updatePayload 判断是否已被前面的块显式设置（即使值为 undefined），
+      // 避免 buildAnthropicExtra 返回 undefined 时回退到 props.account.extra 带回旧字段
+      const currentExtra = ('extra' in updatePayload
+        ? (updatePayload.extra as Record<string, unknown>)
+        : (props.account.extra as Record<string, unknown>)) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
