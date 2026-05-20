@@ -1065,23 +1065,10 @@ type SchedulingDebugConfig struct {
 
 // AccountHealthConfig Anthropic 账号健康感知调度阈值，0 表示使用内置默认值。
 //
-// 仅保留 ScheduledTestRunner 退避状态机相关参数；
 // 滑动窗口与三态判定的阈值见 GatewaySchedulingConfig.Health（SchedulingHealthConfig）。
 type AccountHealthConfig struct {
-	// 是否启用账号健康感知调度（HealthVerdict 三态 + ConsecFails 硬过滤），默认 false。
+	// 是否启用账号健康感知调度（HealthVerdict 三态），默认 false。
 	Enabled bool `mapstructure:"enabled"`
-	// 连续失败几次触发硬过滤（跳过调度），默认 2
-	HardFilterThreshold int `mapstructure:"hard_filter_threshold"`
-	// 连续失败几次触发临时隔离，默认 3
-	TempUnschedThreshold int `mapstructure:"temp_unsched_threshold"`
-	// 首次临时隔离时长（分钟），默认 10
-	TempUnschedInitMinutes int `mapstructure:"temp_unsched_init_minutes"`
-	// 临时隔离最长时长（分钟），默认 60
-	TempUnschedMaxMinutes int `mapstructure:"temp_unsched_max_minutes"`
-	// 补测退避步长（秒），默认 30
-	RetryIntervalStepSeconds int `mapstructure:"retry_interval_step_seconds"`
-	// 补测退避上限（秒），默认 300
-	RetryIntervalMaxSeconds int `mapstructure:"retry_interval_max_seconds"`
 	// 慢请求判定阈值（ms），默认 20000；用于 HealthSnapshot.SlowRate 统计
 	SlowThresholdMs int `mapstructure:"slow_threshold_ms"`
 }
