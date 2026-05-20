@@ -276,8 +276,6 @@ func TestToWebhookError_Fields(t *testing.T) {
 		ClientRequestID:      "crid-1",
 		UpstreamStatusCode:   &upCode,
 		UpstreamErrorMessage: &upMsg,
-		IsRetryable:          true,
-		RetryCount:           1,
 		UpstreamLatencyMs:    &latency,
 		CreatedAt:            time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC),
 	}
@@ -294,9 +292,6 @@ func TestToWebhookError_Fields(t *testing.T) {
 	}
 	if *w.UpstreamStatusCode != upCode {
 		t.Errorf("upstream_status_code: got %d", *w.UpstreamStatusCode)
-	}
-	if !w.IsRetryable {
-		t.Error("is_retryable should be true")
 	}
 	if w.CreatedAt != "2026-05-09T00:00:00Z" {
 		t.Errorf("created_at: got %q", w.CreatedAt)

@@ -57,9 +57,6 @@ type OpsWebhookError struct {
 	UpstreamStatusCode   *int    `json:"upstream_status_code,omitempty"`
 	UpstreamErrorMessage *string `json:"upstream_error_message,omitempty"`
 
-	IsRetryable bool  `json:"is_retryable"`
-	RetryCount  int   `json:"retry_count,omitempty"`
-
 	UpstreamLatencyMs *int64 `json:"upstream_latency_ms,omitempty"`
 	ResponseLatencyMs *int64 `json:"response_latency_ms,omitempty"`
 
@@ -259,9 +256,6 @@ func toWebhookError(e *OpsInsertErrorLogInput) *OpsWebhookError {
 
 		UpstreamStatusCode:   e.UpstreamStatusCode,
 		UpstreamErrorMessage: e.UpstreamErrorMessage,
-
-		IsRetryable: e.IsRetryable,
-		RetryCount:  e.RetryCount,
 
 		UpstreamLatencyMs: e.UpstreamLatencyMs,
 		ResponseLatencyMs: e.ResponseLatencyMs,

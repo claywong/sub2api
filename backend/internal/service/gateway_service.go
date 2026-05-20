@@ -4599,6 +4599,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		anthropicHeaderTimeout = time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout) * time.Second
 	}
 
+
 	// 重试循环
 	var resp *http.Response
 	var lastTrace *HTTPTraceMetrics // 记录最后一次成功 DoWithTLS 的连接指标
@@ -5140,6 +5141,7 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	if input.RequestStream && s.cfg != nil && s.cfg.Gateway.AnthropicResponseHeaderTimeout > 0 {
 		passthroughHeaderTimeout = time.Duration(s.cfg.Gateway.AnthropicResponseHeaderTimeout) * time.Second
 	}
+
 
 	var resp *http.Response
 	retryStart := time.Now()
@@ -6375,7 +6377,6 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 	if err != nil {
 		return nil, err
 	}
-	setOpsUpstreamRequestBody(c, vertexBody)
 	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
 	if err != nil {
 		return nil, err
