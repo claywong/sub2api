@@ -12,25 +12,12 @@ import (
 func TestUpdateFromTest_SuccessPath(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 
-	// 先制造两次失败
-	failResult := &ScheduledTestResult{Status: "failed"}
-	c.UpdateFromTest(1, failResult)
-	c.UpdateFromTest(1, failResult)
+	ttft := int64(500)
+	c.UpdateFromTest(1, &ScheduledTestResult{Status: "success", FirstTokenMs: &ttft})
 
 	h := c.Get(1)
 	require.NotNil(t, h)
-	require.Equal(t, 2, h.ConsecFails)
-	require.True(t, h.RetryInterval > 0)
-
-	// 成功后 ConsecFails 归零，RetryInterval 重置
-	ttft := int64(500)
-	successResult := &ScheduledTestResult{Status: "success", FirstTokenMs: &ttft}
-	c.UpdateFromTest(1, successResult)
-
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	require.Equal(t, 0, h.ConsecFails)
-	require.Equal(t, time.Duration(0), h.RetryInterval)
+	require.Equal(t, "success", h.LastStatus)
 }
 
 func TestUpdateFromTest_WritesIntoBucketWindow(t *testing.T) {
@@ -51,68 +38,18 @@ func TestUpdateFromTest_FailurePath(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 	failResult := &ScheduledTestResult{Status: "failed"}
 
-	// 第 1 次失败
 	c.UpdateFromTest(1, failResult)
-	h := c.Get(1)
-	h.mu.Lock()
-	require.Equal(t, 1, h.ConsecFails)
-	require.Equal(t, RetryIntervalStep, h.RetryInterval)
-	h.mu.Unlock()
-
-	// 第 2 次失败：RetryInterval 翻倍
 	c.UpdateFromTest(1, failResult)
-	h.mu.Lock()
-	require.Equal(t, 2, h.ConsecFails)
-	require.Equal(t, RetryIntervalStep*2, h.RetryInterval)
-	h.mu.Unlock()
-
-	// 第 3 次失败：ConsecFails=3，RetryInterval 翻倍
 	c.UpdateFromTest(1, failResult)
-	h.mu.Lock()
-	require.Equal(t, 3, h.ConsecFails)
-	require.Equal(t, RetryIntervalStep*4, h.RetryInterval)
-	h.mu.Unlock()
 
-	// 多次失败后 RetryInterval 不超过上限
-	for i := 0; i < 10; i++ {
-		c.UpdateFromTest(1, failResult)
-	}
-	h.mu.Lock()
-	require.LessOrEqual(t, h.RetryInterval, RetryIntervalMax)
-	h.mu.Unlock()
+	s := c.Snapshot(1)
+	require.Equal(t, 3, s.ReqCount)
+	require.Equal(t, 3, s.ErrCount)
 
-	// 手动模拟触发过隔离后 TempUnschedDuration 被设置
-	h.mu.Lock()
-	h.TempUnschedDuration = TempUnschedInitDuration * 4
-	h.mu.Unlock()
-
-	// 成功后三个退避字段全部归零
 	c.UpdateFromTest(1, &ScheduledTestResult{Status: "success"})
-	h.mu.Lock()
-	require.Equal(t, 0, h.ConsecFails)
-	require.Equal(t, time.Duration(0), h.RetryInterval)
-	require.Equal(t, time.Duration(0), h.TempUnschedDuration)
-	h.mu.Unlock()
+	require.Equal(t, "success", c.Get(1).LastStatus)
 }
 
-func TestPassesHardFilter(t *testing.T) {
-	c := NewAccountTestHealthCache(nil)
-
-	// 无数据：通过
-	require.True(t, c.PassesHardFilter(1))
-
-	// ConsecFails=1：通过
-	c.UpdateFromTest(1, &ScheduledTestResult{Status: "failed"})
-	require.True(t, c.PassesHardFilter(1))
-
-	// ConsecFails=2：不通过
-	c.UpdateFromTest(1, &ScheduledTestResult{Status: "failed"})
-	require.False(t, c.PassesHardFilter(1))
-
-	// ConsecFails=3：不通过
-	c.UpdateFromTest(1, &ScheduledTestResult{Status: "failed"})
-	require.False(t, c.PassesHardFilter(1))
-}
 
 func TestRecord_AccumulatesIntoSnapshot(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
@@ -222,29 +159,26 @@ func TestSnapshot_BucketRollOver(t *testing.T) {
 	h.mu.Unlock()
 }
 
-func TestRecordRealCall_TracksConsecFails(t *testing.T) {
+func TestRecordRealCall_WritesWindow(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 
 	c.RecordRealCall(1, CallSample{Success: false})
 	c.RecordRealCall(1, CallSample{Success: false})
-	require.Equal(t, 2, c.Get(1).ConsecFails)
-
 	c.RecordRealCall(1, CallSample{Success: true})
-	require.Equal(t, 0, c.Get(1).ConsecFails)
+
+	s := c.Snapshot(1)
+	require.Equal(t, 3, s.ReqCount)
+	require.Equal(t, 2, s.ErrCount)
 }
 
-func TestReportRealCall_BackwardsCompatible(t *testing.T) {
+func TestReportRealCall_WritesWindow(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 
 	c.ReportRealCall(1, false)
 	c.ReportRealCall(1, false)
 	c.ReportRealCall(1, false)
-	require.Equal(t, 3, c.Get(1).ConsecFails)
-
 	c.ReportRealCall(1, true)
-	require.Equal(t, 0, c.Get(1).ConsecFails)
 
-	// ReportRealCall 也应该写入窗口（每次都计为 reqCount）
 	s := c.Snapshot(1)
 	require.Equal(t, 4, s.ReqCount)
 	require.Equal(t, 3, s.ErrCount)

@@ -105,18 +105,19 @@ func (s *GatewayService) logSchedulerSelected(layer string, account *Account, se
 		account.ID, account.Priority, acquired)
 }
 
-// RecordAnthropicCall 上报一次真实 Anthropic 请求的完整样本到健康缓存。
-// 与"主动 test"路径融合，进入同一份滑动窗口，供 HealthVerdict 三态判定使用。
+// RecordAnthropicCall 上报一次真实 Anthropic 请求的完整样本。
+// healthCache（account 级）供 HealthVerdict 三态判定；
+// modelQualityCache（account+model 级）供质量分桶调度使用。
 //
 // 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
 //   - 上游错误（4xx/5xx/429/超时、UpstreamFailoverError 等）→ Success=false
 //   - 客户端中断（context.Canceled）→ 调用方应跳过，不上报
 //   - 请求内容问题（PromptTooLong/BetaBlocked）→ 调用方应跳过
-func (s *GatewayService) RecordAnthropicCall(accountID int64, sample CallSample) {
-	if s.healthCache == nil {
-		return
+func (s *GatewayService) RecordAnthropicCall(accountID int64, model string, sample CallSample) {
+	if s.healthCache != nil {
+		s.healthCache.RecordRealCall(accountID, sample)
 	}
-	s.healthCache.RecordRealCall(accountID, sample)
+	s.modelQualityCache.Record(accountID, model, sample)
 }
 
 // AnthropicHealthSnapshot 返回账号当前 10min 滑动窗口的指标快照，供日志和监控使用。

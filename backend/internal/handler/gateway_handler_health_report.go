@@ -65,6 +65,7 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 	}
 
 	sample := service.CallSample{Success: err == nil}
+	model := ""
 	if result != nil {
 		if result.FirstTokenMs != nil && *result.FirstTokenMs > 0 {
 			sample.TTFTMs = *result.FirstTokenMs
@@ -84,6 +85,7 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 		sample.CacheReadTokens = result.Usage.CacheReadInputTokens
 		sample.CacheCreationTokens = result.Usage.CacheCreationInputTokens
 		sample.InputTokens = result.Usage.InputTokens
+		model = result.Model
 	}
 
 	// 失败样本写入健康缓存时打 warn，便于排查账号进入 StickyOnly/Excluded 的原因。
@@ -123,5 +125,5 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 		}
 	}
 
-	h.gatewayService.RecordAnthropicCall(account.ID, sample)
+	h.gatewayService.RecordAnthropicCall(account.ID, model, sample)
 }

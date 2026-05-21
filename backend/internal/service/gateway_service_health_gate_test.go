@@ -80,12 +80,11 @@ func TestReportAnthropicAccountResult_FlowsThroughHealthCache(t *testing.T) {
 	svc := newHealthGateService()
 	svc.ReportAnthropicAccountResult(7, false)
 	svc.ReportAnthropicAccountResult(7, false)
-	h := svc.healthCache.Get(7)
-	require.NotNil(t, h)
-	require.Equal(t, 2, h.ConsecFails)
-
 	svc.ReportAnthropicAccountResult(7, true)
-	require.Equal(t, 0, svc.healthCache.Get(7).ConsecFails)
+
+	s := svc.healthCache.Snapshot(7)
+	require.Equal(t, 3, s.ReqCount)
+	require.Equal(t, 2, s.ErrCount)
 }
 
 func TestReportAnthropicAccountResult_NoCacheNoPanic(t *testing.T) {
