@@ -31,6 +31,9 @@ import (
 // 上报给健康缓存，进入 10 分钟滑动窗口。让"主动 test"和"用户真实调用"在窗口指标上融合，
 // 供 HealthVerdict 三态判定与 weighted 算法的加权打分使用。
 //
+// reqModel 必须传入调度时使用的原始模型（渠道映射前），与 SelectAccountWithLoadAwareness
+// 的 requestedModel 保持一致，确保 quality cache 的写入 key 与调度读取 key 匹配。
+//
 // 失败语义与 ops error_owner 分类对齐——只有 error_owner='provider' 的情况才计为失败：
 //   - UpstreamFailoverError（上游 4xx/5xx/429/超时触发 failover）→ 计为失败
 //   - 网络/传输层错误 → 计为失败
@@ -38,7 +41,7 @@ import (
 //   - 客户端中断（context.Canceled）→ 跳过（不是账号问题）
 //   - 请求内容问题（BetaBlockedError / ClientRequestError）→ 跳过（error_owner='client'）
 //   - 流正常但客户端中途断开（result.ClientDisconnect）→ 跳过
-func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, err error, result *service.ForwardResult) {
+func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, reqModel string, err error, result *service.ForwardResult) {
 	if h == nil || h.gatewayService == nil {
 		return
 	}
@@ -65,7 +68,6 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 	}
 
 	sample := service.CallSample{Success: err == nil}
-	model := ""
 	if result != nil {
 		if result.FirstTokenMs != nil && *result.FirstTokenMs > 0 {
 			sample.TTFTMs = *result.FirstTokenMs
@@ -85,7 +87,6 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 		sample.CacheReadTokens = result.Usage.CacheReadInputTokens
 		sample.CacheCreationTokens = result.Usage.CacheCreationInputTokens
 		sample.InputTokens = result.Usage.InputTokens
-		model = result.Model
 	}
 
 	// 失败样本写入健康缓存时打 warn，便于排查账号进入 StickyOnly/Excluded 的原因。
@@ -125,5 +126,5 @@ func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, 
 		}
 	}
 
-	h.gatewayService.RecordAnthropicCall(account.ID, model, sample)
+	h.gatewayService.RecordAnthropicCall(account.ID, reqModel, sample)
 }

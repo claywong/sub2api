@@ -849,7 +849,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
 						// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
-						h.reportAnthropicForwardResult(account, err, result)
+						h.reportAnthropicForwardResult(account, reqModel, err, result)
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
@@ -857,7 +857,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					// 同账号重试：本次失败是中间重试，不计入健康窗口，避免虚高 errCount。
 					// 最终失败（重试耗尽切换账号或 Exhausted）时 IsSameAccountRetry=false，正常上报。
 					if !fs.IsSameAccountRetry {
-						h.reportAnthropicForwardResult(account, err, result)
+						h.reportAnthropicForwardResult(account, reqModel, err, result)
 					}
 					switch action {
 					case FailoverContinue:
@@ -870,7 +870,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					}
 				}
 				// 非 failoverErr 的普通错误（网络层、未知错误等），直接上报。
-				h.reportAnthropicForwardResult(account, err, result)
+				h.reportAnthropicForwardResult(account, reqModel, err, result)
 				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
@@ -895,7 +895,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
 			// 成功路径无条件上报（含经历同账号重试后最终成功的情况）。
-			h.reportAnthropicForwardResult(account, nil, result)
+			h.reportAnthropicForwardResult(account, reqModel, nil, result)
 
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
