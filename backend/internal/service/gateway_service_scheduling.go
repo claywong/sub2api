@@ -135,9 +135,9 @@ func (s *GatewayService) AnthropicHealthVerdictThresholds() HealthVerdictConfig 
 	return s.healthVerdictConfig()
 }
 
-// ReportAnthropicAccountResult 将真实请求的成败结果上报到健康缓存。
+// ReportAnthropicAccountResult 将真实请求的成败结果上报到健康缓存（滑动窗口）。
 // 与 ReportAnthropicAccountTTFT/Duration 配合使用，让"用户真实调用"和"主动 test"
-// 在 ConsecFails 维度上融合，使 HealthVerdict 三态判定能感知真实流量的失败。
+// 共用同一份滑动窗口，使 HealthVerdict 三态判定能感知真实流量的失败。
 //
 // 失败语义参考 docs/anthropic-scheduling-weighted.md §10：
 //   - 上游错误（4xx/5xx/429/超时）→ success=false

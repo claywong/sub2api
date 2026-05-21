@@ -4,24 +4,19 @@
 
 Anthropic 账号调度需要感知供应商的健康状态，避免将流量持续路由到延迟高、错误率高或不可用的账号。
 
-本方案通过两个正交机制实现：
-
-1. **退火隔离**（Layer A + Layer B）：定时测试连续失败时快速隔离账号
-2. **质量感知调度**（HealthVerdict 三态）：基于滑动窗口指标（错误率、TTFT、OTPS）软性限制选号
+本方案通过 **质量感知调度**（HealthVerdict 三态）实现：基于滑动窗口指标（错误率、TTFT、OTPS）软性限制选号。
 
 ## 整体架构
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  Layer A：退火测试状态机（内存）                                    │
-│  定时测试驱动，感知连续失败，加速补测，达阈值触发 Layer B              │
-├──────────────────────────────────────────────────────────────────┤
-│  Layer B：TempUnschedulable（DB，现有机制）                        │
-│  账号级硬不可调度，粘性会话由 shouldClearStickySession 自动清除      │
-├──────────────────────────────────────────────────────────────────┤
 │  HealthVerdict 三态（内存滑动窗口）                                 │
 │  基于 10min 滑动窗口的错误率/TTFT/OTPS 判定 OK/StickyOnly/Excluded │
 │  需 account_health.enabled=true 才生效                             │
+├──────────────────────────────────────────────────────────────────┤
+│  TempUnschedulable（DB，现有机制）                                  │
+│  账号级硬不可调度，粘性会话由 shouldClearStickySession 自动清除      │
+│  由 HealthExcluded 首次切换时异步触发                               │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,13 +30,8 @@ type AccountTestHealth struct {
     buckets [10]metricBucket
     cursor  int
 
-    // 退避状态机（定时测试专用，窗口外）
-    ConsecFails         int
-    RetryInterval       time.Duration
-    NextRetryAt         time.Time
-    TempUnschedDuration time.Duration
-    LastStatus          string
-    LastTestedAt        time.Time
+    LastStatus   string
+    LastTestedAt time.Time
 }
 
 // 每个时间桶记录 1 分钟内的累计指标
@@ -98,77 +88,6 @@ OTPS = (output_tokens - 1) * 1000 / (duration_ms - ttft_ms)
 ```
 
 过滤条件：`output_tokens >= 10` 且 `duration_ms > ttft_ms > 0`，避免除零或负值。
-
----
-
-## Layer A：退火测试状态机
-
-### 状态流转
-
-```
-正常（ConsecFails=0）
-  ↓ 定时测试失败
-ConsecFails=1
-  · 立即触发一次补测（delay=0）
-
-ConsecFails=2（>= HardFilterThreshold=2）
-  · 新会话：Layer 2 硬过滤跳过（PassesHardFilter=false）
-  · 粘性会话：继续服务
-  · 投退火补测（RetryInterval=15s，每次失败翻倍，上限 5min）
-
-ConsecFails >= TempUnschedThreshold（=4）
-  · 触发 SetTempUnschedulable（写 DB，初始 30min）
-  · 粘性会话：下次请求 shouldClearStickySession 检测 IsSchedulable()=false，清除绑定，强制重选
-  · TempUnschedulable 到期后自动触发补测（AutoRecover 路径）
-    ├── 成功 → ConsecFails=0，RetryInterval 重置，恢复正常
-    └── 失败 → 重新进入退火，TempUnschedDuration 翻倍（上限 60min）
-```
-
-### 退火时间线（cron=5min，测试超时=10s）
-
-```
-T+0s    cron 触发，第 1 次失败（耗时 ≤10s）
-          ConsecFails=1，立即投补测
-
-T+10s   第 1 次补测，失败（耗时 ≤10s）
-          ConsecFails=2，硬过滤生效，投 15s 退火补测
-
-T+35s   第 2 次补测，失败（耗时 ≤10s）
-          ConsecFails=3，投 30s 退火补测
-
-T+75s   第 3 次补测，失败（耗时 ≤10s）
-          ConsecFails=4，触发 TempUnschedulable（30min）
-
-从第一次失败到完全隔离：约 75 秒
-```
-
-### 补测超时
-
-退火补测使用独立 10s 超时（与 cron 的 5min context 隔离），避免供应商挂起时阻塞：
-
-```go
-ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-defer cancel()
-result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
-```
-
----
-
-## Layer B：TempUnschedulable
-
-| 操作 | 调用 |
-|------|------|
-| 触发 | `rateLimitSvc.SetTempUnschedulableForScheduledTest(ctx, accountID, until, reason)` |
-| reason | `"定时测试连续失败：连续失败 N 次，最后状态: error"` |
-| 恢复 | `rateLimitSvc.RecoverAccountAfterSuccessfulTest`（`tryRecoverAccount`） |
-| 粘性清除 | `shouldClearStickySession → IsSchedulable()=false`，下次请求自动触发 |
-
-TempUnschedulable 时长翻倍规则（`TempUnschedDuration` 字段持久化在内存中）：
-
-```
-第 1 次触发：30min
-第 2 次触发：60min（上限）
-```
 
 ---
 
@@ -240,12 +159,9 @@ OTPSAvg  <  OTPSStickyOnlyMin（=20 tokens/s）→ HealthStickyOnly
 ```go
 // scheduled_test_runner_service.go
 s.healthCache.UpdateFromTest(plan.AccountID, result)
-s.launchRetryIfNeeded(plan)
 ```
 
-`UpdateFromTest` 同时维护：
-- 滑动窗口（写入 TTFT 样本，成功/失败计数）
-- 退避状态机（成功清零 ConsecFails；失败累加并计算下次补测间隔）
+`UpdateFromTest` 写入滑动窗口（TTFT 样本，成功/失败计数），并检查 HealthVerdict 是否变化。
 
 ### 入口2：真实请求完成（`reportAnthropicForwardResult`）
 
@@ -262,8 +178,7 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 - `ClientRequestError`（上游返回 400 `invalid_request_error`，属于用户请求格式问题）
 - `result.ClientDisconnect`（流正常但客户端中途断开）
 
-> **注**：`PromptTooLongError` 仅由 Antigravity 路径返回，Anthropic 平台账号不会产生此错误，无需在此排除。
-> 上游触发 failover 的 400（如 `isRetryLater400` 服务端临时限流）仍返回 `UpstreamFailoverError`，会正常计入失败。
+> **注**：上游触发 failover 的 400（如 `isRetryLater400` 服务端临时限流）仍返回 `UpstreamFailoverError`，会正常计入失败。
 
 ---
 
@@ -273,8 +188,8 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 |------|------|
 | `service/account_test_health_cache.go` | 核心数据结构：环形 bucket 滑动窗口、CallSample、HealthSnapshot、HealthVerdict 三态判定、OTPS 计算 |
 | `service/gateway_service_scheduling.go` | `isAccountSchedulableForHealth`、`onHealthVerdictChange`、`healthVerdictConfig`、`logSchedulerSelected` 等健康调度方法 |
-| `service/scheduled_test_runner_service.go` | `runOnePlan` 更新健康缓存；`launchRetryIfNeeded` 退火补测；`triggerTempUnschedForScheduledTest` 隔离触发 |
-| `service/gateway_service.go` | Layer 2 健康过滤调用（`isAccountSchedulableForHealth`、`PassesHardFilter`）；Layer 1.5 `healthOK` 检查；`RecordAnthropicCall` 上报入口 |
+| `service/scheduled_test_runner_service.go` | `runOnePlan` 更新健康缓存；`tryRecoverAccount` 测试成功后自动恢复 |
+| `service/gateway_service.go` | Layer 2 健康过滤调用（`isAccountSchedulableForHealth`）；Layer 1.5 `healthOK` 检查；`RecordAnthropicCall` 上报入口 |
 | `handler/gateway_handler.go` | `reportAnthropicForwardResult` 上报真实请求样本 |
 | `service/wire.go` / `cmd/server/wire_gen.go` | 注入 `AccountTestHealthCache` |
 
@@ -284,17 +199,11 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 
 ## 关键参数
 
-### 退避状态机（`gateway.scheduling.account_health`）
+### 账号健康配置（`gateway.scheduling.account_health`）
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `enabled` | false | **总开关**，false 时 HealthVerdict 三态和 PassesHardFilter 均不生效 |
-| `hard_filter_threshold` | 2 | ConsecFails 达到此值，新会话硬过滤（`PassesHardFilter=false`） |
-| `temp_unsched_threshold` | 4 | ConsecFails 达到此值，触发 TempUnschedulable |
-| `temp_unsched_init_minutes` | 30min | TempUnschedulable 初始时长 |
-| `temp_unsched_max_minutes` | 60min | TempUnschedulable 最大时长 |
-| `retry_interval_step_seconds` | 15s | 退火补测间隔步长（每次失败翻倍） |
-| `retry_interval_max_seconds` | 300s | 退火补测间隔上限 |
+| `enabled` | false | **总开关**，false 时 HealthVerdict 三态不生效 |
 | `slow_threshold_ms` | 20000ms | 慢请求判定阈值（DurationMs ≥ 此值计入 slowCount） |
 
 ### HealthVerdict 三态阈值（`gateway.scheduling.health`）
@@ -317,14 +226,12 @@ h.gatewayService.RecordAnthropicCall(account.ID, sample)
 
 | 场景 | 行为 |
 |------|------|
-| 账号无定时测试计划 | ConsecFails 永远为 0，不触发退火/TempUnschedulable；HealthVerdict 由真实请求数据驱动 |
+| 账号无定时测试计划 | HealthVerdict 由真实请求数据驱动 |
 | 进程重启 | 内存缓存清空；TempUnschedulable 在 DB 中持久，仍然生效 |
 | 多实例部署 | 内存缓存各实例独立；TempUnschedulable 写 DB 所有实例共享 |
-| 供应商偶发抖动（1次失败后恢复） | ConsecFails=1，立即补测成功，归零，对调度无任何影响 |
-| 供应商快速拒绝连接（<1s） | 退火总耗时 ~35s 完成四次失败，触发 TempUnschedulable |
-| 供应商挂起不响应 | 每次测试耗尽 10s 超时，退火总耗时 ~75s 触发 TempUnschedulable |
-| TempUnschedulable 期间供应商恢复 | 到期补测成功，立即恢复，ConsecFails 归零 |
-| TempUnschedulable 到期仍失败 | 时长翻倍重入，最大 60min |
+| 供应商偶发抖动（真实请求1次失败后恢复） | 只写滑动窗口，样本不足 MinSamples 时不触发判定 |
+| 定时测试偶发抖动（1次失败后恢复） | 写滑动窗口，样本不足时不触发判定，对调度无影响 |
 | 样本不足（冷启动） | ReqCount < MinSamples → HealthOK，冷启动保护，不惩罚新账号 |
 | OTPS 样本不足（output_tokens < 10 或非流式） | HasOTPS=false → 不参与 OTPSStickyOnly 判定 |
-| `account_health.enabled=false`（默认） | HealthVerdict 三态和 PassesHardFilter 均不生效，Layer 2 不增加健康过滤 |
+| `account_health.enabled=false`（默认） | HealthVerdict 三态不生效，Layer 2 不增加健康过滤 |
+

@@ -11,24 +11,7 @@ import (
 
 // 内置默认值，config 字段为零时回退到这里
 const (
-	defaultHardFilterThreshold     = 2
-	defaultTempUnschedThreshold    = 4
-	defaultTempUnschedInitDuration = 30 * time.Minute
-	defaultTempUnschedMaxDuration  = 60 * time.Minute
-	defaultRetryIntervalStep       = 15 * time.Second
-	defaultRetryIntervalMax        = 5 * time.Minute
-	defaultSlowThresholdMs         = 20000
-)
-
-// 向后兼容的包级别常量，供外部直接引用的代码过渡期使用
-const (
-	HardFilterThreshold     = defaultHardFilterThreshold
-	TempUnschedThreshold    = defaultTempUnschedThreshold    // 4
-	TempUnschedInitDuration = defaultTempUnschedInitDuration // 30min
-	TempUnschedMaxDuration  = defaultTempUnschedMaxDuration
-	RetryIntervalStep       = defaultRetryIntervalStep // 15s
-	RetryIntervalMax        = defaultRetryIntervalMax
-	SlowThreshold           = defaultSlowThresholdMs
+	defaultSlowThresholdMs = 20000
 )
 
 // 滑动窗口（bucketed rolling window）
@@ -42,45 +25,15 @@ const (
 
 // healthCfg 持有从 config.AccountHealthConfig 解析后的有效值（已完成零值回退）
 type healthCfg struct {
-	hardFilterThreshold  int
-	tempUnschedThreshold int
-	tempUnschedInit      time.Duration
-	tempUnschedMax       time.Duration
-	retryIntervalStep    time.Duration
-	retryIntervalMax     time.Duration
-	slowThresholdMs      int
+	slowThresholdMs int
 }
 
 func resolveHealthCfg(c *config.AccountHealthConfig) healthCfg {
 	r := healthCfg{
-		hardFilterThreshold:  defaultHardFilterThreshold,
-		tempUnschedThreshold: defaultTempUnschedThreshold,
-		tempUnschedInit:      defaultTempUnschedInitDuration,
-		tempUnschedMax:       defaultTempUnschedMaxDuration,
-		retryIntervalStep:    defaultRetryIntervalStep,
-		retryIntervalMax:     defaultRetryIntervalMax,
-		slowThresholdMs:      defaultSlowThresholdMs,
+		slowThresholdMs: defaultSlowThresholdMs,
 	}
 	if c == nil {
 		return r
-	}
-	if c.HardFilterThreshold > 0 {
-		r.hardFilterThreshold = c.HardFilterThreshold
-	}
-	if c.TempUnschedThreshold > 0 {
-		r.tempUnschedThreshold = c.TempUnschedThreshold
-	}
-	if c.TempUnschedInitMinutes > 0 {
-		r.tempUnschedInit = time.Duration(c.TempUnschedInitMinutes) * time.Minute
-	}
-	if c.TempUnschedMaxMinutes > 0 {
-		r.tempUnschedMax = time.Duration(c.TempUnschedMaxMinutes) * time.Minute
-	}
-	if c.RetryIntervalStepSeconds > 0 {
-		r.retryIntervalStep = time.Duration(c.RetryIntervalStepSeconds) * time.Second
-	}
-	if c.RetryIntervalMaxSeconds > 0 {
-		r.retryIntervalMax = time.Duration(c.RetryIntervalMaxSeconds) * time.Second
 	}
 	if c.SlowThresholdMs > 0 {
 		r.slowThresholdMs = c.SlowThresholdMs
@@ -230,9 +183,6 @@ func (s HealthSnapshot) HasCacheHit() bool { return s.CacheHitSampleCount > 0 }
 // AccountTestHealth 存储单个账号的健康状态。
 // 滑动窗口（buckets）记录最近 10 分钟的请求/错误/TTFT/OTPS/慢率聚合数据，
 // 主动 test 与真实调用共用同一份窗口（融合视图）。
-//
-// 退避状态机字段（ConsecFails/RetryInterval/NextRetryAt/TempUnschedDuration）
-// 是 ScheduledTestRunner 专用的窗口外状态，不参与 Snapshot 聚合。
 type AccountTestHealth struct {
 	mu sync.Mutex
 
@@ -240,13 +190,8 @@ type AccountTestHealth struct {
 	buckets [healthBucketCount]metricBucket
 	cursor  int
 
-	// test runner 退避状态机（窗口外）
-	ConsecFails         int
-	RetryInterval       time.Duration
-	NextRetryAt         time.Time
-	TempUnschedDuration time.Duration
-	LastStatus          string
-	LastTestedAt        time.Time
+	LastStatus   string
+	LastTestedAt time.Time
 
 	// lastVerdict 记录上一次 HealthVerdict() 返回值，用于状态变化日志去抖。
 	lastVerdict HealthVerdict
@@ -429,7 +374,6 @@ func (h *AccountTestHealth) recordSampleLocked(sample CallSample, now time.Time,
 }
 
 // Record 上报一次调用样本（主动 test 或真实 gateway 调用）。
-// 这是窗口数据的统一入口；ConsecFails 由 UpdateFromTest/ReportRealCall 各自维护。
 func (c *AccountTestHealthCache) Record(accountID int64, sample CallSample) {
 	if c == nil || accountID <= 0 {
 		return
@@ -455,9 +399,7 @@ func (c *AccountTestHealthCache) Snapshot(accountID int64) HealthSnapshot {
 	return h.snapshotLocked(time.Now(), healthBucketCount*healthBucketSeconds)
 }
 
-// UpdateFromTest 根据测试结果更新健康状态。
-// 同时维护：(a) test 退避状态机（ConsecFails/RetryInterval/NextRetryAt）；
-// (b) 滑动窗口（通过 Record-语义写入活动桶，与真实调用融合）。
+// UpdateFromTest 根据测试结果更新健康状态（滑动窗口）。
 func (c *AccountTestHealthCache) UpdateFromTest(accountID int64, result *ScheduledTestResult) {
 	if result == nil {
 		return
@@ -474,25 +416,7 @@ func (c *AccountTestHealthCache) UpdateFromTest(accountID int64, result *Schedul
 	if result.FirstTokenMs != nil && *result.FirstTokenMs > 0 {
 		sample.TTFTMs = int(*result.FirstTokenMs)
 	}
-	// ScheduledTestResult 当前未携带 duration/output tokens；OTPS 待 test runner 后续扩展。
 	h.recordSampleLocked(sample, now, c.cfg.slowThresholdMs)
-
-	if sample.Success {
-		h.ConsecFails = 0
-		h.RetryInterval = 0
-		h.TempUnschedDuration = 0
-	} else {
-		h.ConsecFails++
-		if h.RetryInterval == 0 {
-			h.RetryInterval = c.cfg.retryIntervalStep
-		} else {
-			h.RetryInterval *= 2
-			if h.RetryInterval > c.cfg.retryIntervalMax {
-				h.RetryInterval = c.cfg.retryIntervalMax
-			}
-		}
-		h.NextRetryAt = now.Add(h.RetryInterval)
-	}
 	c.checkVerdictChangeLocked(accountID, h)
 }
 
@@ -548,31 +472,14 @@ func verdictFromSnapshot(s HealthSnapshot, cfg HealthVerdictConfig) HealthVerdic
 	return HealthOK
 }
 
-// PassesHardFilter 返回账号是否通过硬过滤
-func (c *AccountTestHealthCache) PassesHardFilter(accountID int64) bool {
-	h := c.Get(accountID)
-	if h == nil {
-		return true
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.ConsecFails < c.cfg.hardFilterThreshold
-}
-
-// ReportRealCall 记录一次真实业务调用结果（gateway 层，区别于主动 test）。
-// 内部调用 Record 写入窗口桶，并维护 ConsecFails（成功清零、失败累加）。
-//
-// 行为：
-//   - success=true 时，如 ConsecFails > 0 则清零（真实流量验证账号可用，重置 test 累计的失败）
-//   - success=false 时 ConsecFails++
-//
-// 调用方应在上报前过滤 context.Canceled / 客户端中断等"非账号问题"，避免误报。
+// Reset 清除指定账号的健康缓存（滑动窗口），使 HealthVerdict 立即返回 OK。 记录一次真实业务调用结果（gateway 层，区别于主动 test）。
+// 只写滑动窗口。调用方应在上报前过滤 context.Canceled / 客户端中断等"非账号问题"，避免误报。
 func (c *AccountTestHealthCache) ReportRealCall(accountID int64, success bool) {
 	c.RecordRealCall(accountID, CallSample{Success: success})
 }
 
 // RecordRealCall 真实调用上报的扩展版本，可同时携带 TTFT/Duration/OutputTokens。
-// 与 ReportRealCall 行为一致：写入窗口桶 + 维护 ConsecFails。
+// 只写滑动窗口。
 func (c *AccountTestHealthCache) RecordRealCall(accountID int64, sample CallSample) {
 	if c == nil || accountID <= 0 {
 		return
@@ -581,24 +488,11 @@ func (c *AccountTestHealthCache) RecordRealCall(accountID int64, sample CallSamp
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.recordSampleLocked(sample, time.Now(), c.cfg.slowThresholdMs)
-	if sample.Success {
-		if h.ConsecFails > 0 {
-			h.ConsecFails = 0
-		}
-	} else {
-		h.ConsecFails++
-	}
 }
 
 // HealthVerdict 基于滑动窗口快照返回三态判定结果。
 //
 // 优先级：Hard > Soft > OK。窗口样本数不足 minSamples 时返回 OK（避免新账号被误判）。
-//
-// 配套的 gateway 层封装 isAccountSchedulableForHealth(account, isSticky) 应根据
-// 三态返回值决定是否放行：
-//   - HealthOK         → 任何路径放行
-//   - HealthStickyOnly → 仅 isSticky=true 路径放行
-//   - HealthExcluded   → 全部拦截
 func (c *AccountTestHealthCache) HealthVerdict(accountID int64, cfg HealthVerdictConfig) HealthVerdict {
 	if c == nil || accountID <= 0 {
 		return HealthOK
@@ -616,7 +510,6 @@ func (c *AccountTestHealthCache) HealthVerdict(accountID int64, cfg HealthVerdic
 	}
 	s := h.snapshotLocked(time.Now(), windowSec)
 
-	// 样本数不足：除了 ConsecFails 外不做"窗口"判定
 	if cfg.MinSamples > 0 && s.ReqCount < cfg.MinSamples {
 		return HealthOK
 	}
@@ -807,12 +700,7 @@ func (c *AccountTestHealthCache) HealthVerdictWithChange(accountID int64, cfg He
 	return current, prev, false
 }
 
-// Cfg 暴露已解析的有效配置，供 ScheduledTestRunnerService 等外部组件读取
-func (c *AccountTestHealthCache) Cfg() healthCfg {
-	return c.cfg
-}
-
-// Reset 清除指定账号的健康缓存（滑动窗口 + ConsecFails），使 HealthVerdict 立即返回 OK。
+// Reset 清除指定账号的健康缓存（滑动窗口），使 HealthVerdict 立即返回 OK。
 // 供 admin 手动恢复 Excluded/StickyOnly 状态时调用。
 func (c *AccountTestHealthCache) Reset(accountID int64) {
 	if c == nil || accountID <= 0 {
