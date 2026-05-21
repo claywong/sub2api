@@ -21,9 +21,10 @@ type ScheduledTestRunnerService struct {
 	healthCache    *AccountTestHealthCache
 	cfg            *config.Config
 
-	cron      *cron.Cron
-	startOnce sync.Once
-	stopOnce  sync.Once
+	cron        *cron.Cron
+	startOnce   sync.Once
+	stopOnce    sync.Once
+	retryStates *retryStateMap
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -42,6 +43,7 @@ func NewScheduledTestRunnerService(
 		rateLimitSvc:   rateLimitSvc,
 		healthCache:    healthCache,
 		cfg:            cfg,
+		retryStates:    newRetryStateMap(),
 	}
 }
 
@@ -142,6 +144,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	// 更新健康缓存
 	if s.healthCache != nil {
 		s.healthCache.UpdateFromTest(plan.AccountID, result)
+		s.launchRetryIfNeeded(plan, result)
 	}
 
 	// Auto-recover account if test succeeded and auto_recover is enabled.
