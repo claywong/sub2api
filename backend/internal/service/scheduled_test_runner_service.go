@@ -125,6 +125,10 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
+	if s.shouldSkipUnschedulableAccount(ctx, plan, "ScheduledTestRunner") {
+		return
+	}
+
 	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
@@ -161,6 +165,26 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) shouldSkipUnschedulableAccount(ctx context.Context, plan *ScheduledTestPlan, source string) bool {
+	if s == nil || plan == nil || s.accountTestSvc == nil || s.accountTestSvc.accountRepo == nil {
+		return false
+	}
+	account, err := s.accountTestSvc.accountRepo.GetByID(ctx, plan.AccountID)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[%s] plan=%d account=%d schedulable check failed: %v",
+			source, plan.ID, plan.AccountID, err)
+		return false
+	}
+	if account == nil || account.IsSchedulable() {
+		return false
+	}
+	logger.LegacyPrintf("service.scheduled_test_runner",
+		"[%s] plan=%d account=%d account_name=%s skipped because account is not schedulable",
+		source, plan.ID, plan.AccountID, plan.AccountName)
+	return true
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.
