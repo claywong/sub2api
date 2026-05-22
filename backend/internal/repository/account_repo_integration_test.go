@@ -763,10 +763,10 @@ func (s *AccountRepoSuite) TestSetError() {
 	s.Require().NoError(err)
 	s.Require().Equal(service.StatusError, got.Status)
 	s.Require().Equal("something went wrong", got.ErrorMessage)
-	s.Require().False(got.Schedulable)
+	s.Require().True(got.Schedulable)
 }
 
-func (s *AccountRepoSuite) TestUpdateErrorStatusUnschedulesAccount() {
+func (s *AccountRepoSuite) TestUpdateErrorStatusPreservesSchedulableFlag() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-update-err", Status: service.StatusActive, Schedulable: true})
 	account.Status = service.StatusError
 	account.ErrorMessage = "token revoked"
@@ -778,7 +778,7 @@ func (s *AccountRepoSuite) TestUpdateErrorStatusUnschedulesAccount() {
 	s.Require().NoError(err)
 	s.Require().Equal(service.StatusError, got.Status)
 	s.Require().Equal("token revoked", got.ErrorMessage)
-	s.Require().False(got.Schedulable)
+	s.Require().True(got.Schedulable)
 }
 
 func (s *AccountRepoSuite) TestClearError_SyncSchedulerSnapshotOnRecovery() {

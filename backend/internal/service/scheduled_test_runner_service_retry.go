@@ -13,11 +13,11 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
-// retryMaxAttempts 补测最大次数（不含原始测试）。
-const retryMaxAttempts = 10
+// defaultRetryMaxAttempts 补测默认最大次数（不含原始测试）。
+const defaultRetryMaxAttempts = 10
 
 // retryDelay 返回第 attempt 次补测前的等待时长（0-indexed）。
-// 序列：5s, 15s, 30s, 30s, ...（最多 retryMaxAttempts 次）
+// 序列：5s, 15s, 30s, 30s, ...
 func retryDelay(attempt int) time.Duration {
 	switch attempt {
 	case 0:
@@ -51,7 +51,10 @@ func (m *retryStateMap) clear(planID int64) {
 }
 
 // nextAttempt 返回下一次补测的 attempt 编号（0-indexed）；已达上限时返回 -1。
-func (m *retryStateMap) nextAttempt(planID int64) int {
+func (m *retryStateMap) nextAttempt(planID int64, maxAttempts int) int {
+	if maxAttempts <= 0 {
+		maxAttempts = defaultRetryMaxAttempts
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	st, ok := m.states[planID]
@@ -59,7 +62,7 @@ func (m *retryStateMap) nextAttempt(planID int64) int {
 		st = &planRetryState{}
 		m.states[planID] = st
 	}
-	if st.attempt >= retryMaxAttempts {
+	if st.attempt >= maxAttempts {
 		return -1
 	}
 	n := st.attempt
@@ -75,15 +78,32 @@ func (s *ScheduledTestRunnerService) launchRetryIfNeeded(plan *ScheduledTestPlan
 		s.retryStates.clear(plan.ID)
 		return
 	}
-	attempt := s.retryStates.nextAttempt(plan.ID)
+	maxAttempts := s.retryMaxAttempts()
+	attempt := s.retryStates.nextAttempt(plan.ID, maxAttempts)
 	if attempt < 0 {
 		logger.LegacyPrintf("service.scheduled_test_runner",
 			"[RetryTest] plan=%d account=%d reached max retries (%d), giving up until next scheduled run",
-			plan.ID, plan.AccountID, retryMaxAttempts)
+			plan.ID, plan.AccountID, maxAttempts)
 		s.retryStates.clear(plan.ID)
 		return
 	}
 	go s.runRetryTest(plan, attempt)
+}
+
+func (s *ScheduledTestRunnerService) retryMaxAttempts() int {
+	maxAttempts := defaultRetryMaxAttempts
+	if s == nil || s.cfg == nil {
+		return maxAttempts
+	}
+	health := s.cfg.Gateway.Scheduling.Health
+	requiredSamples := max(health.MinSamples, health.ErrCountHard)
+	if requiredSamples <= 0 {
+		return maxAttempts
+	}
+	if requiredSamples > maxAttempts {
+		maxAttempts = requiredSamples
+	}
+	return maxAttempts
 }
 
 // runRetryTest 等待退避时长后执行一次补测，结果写入滑动窗口以积累 MinSamples。
