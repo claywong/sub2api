@@ -46,6 +46,7 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 		nil,
 		nil, // healthCache
 		nil, // requestLogRepo
+		nil, // userPlatformQuotaRepo
 	)
 }
 

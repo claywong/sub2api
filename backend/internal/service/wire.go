@@ -440,8 +440,9 @@ func ProvideBillingCacheService(
 	rpmCache UserRPMCache,
 	rateRepo UserGroupRateRepository,
 	cfg *config.Config,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *BillingCacheService {
-	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg)
+	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, userPlatformQuotaRepo)
 }
 
 // ProvideAPIKeyService wires APIKeyService and connects rate-limit cache invalidation.
@@ -477,7 +478,8 @@ var ProviderSet = wire.NewSet(
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
-	NewSessionModelLockService, // 私有扩展：会话级模型锁定
+	NewSessionModelLockService,  // 私有扩展：会话级模型锁定
+	NewModelQuotaCacheService,   // 私有扩展：受保护模型独立额度服务
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
