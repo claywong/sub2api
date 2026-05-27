@@ -870,20 +870,24 @@ func init() {
 	groupDescMessagesDispatchModelConfig := groupFields[29].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
+	// groupDescModelsListConfig is the schema descriptor for models_list_config field.
+	groupDescModelsListConfig := groupFields[30].Descriptor()
+	// group.DefaultModelsListConfig holds the default value on creation for the models_list_config field.
+	group.DefaultModelsListConfig = groupDescModelsListConfig.Default.(domain.GroupModelsListConfig)
 	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
-	groupDescRpmLimit := groupFields[30].Descriptor()
+	groupDescRpmLimit := groupFields[31].Descriptor()
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	// groupDescAllowBalanceFallback is the schema descriptor for allow_balance_fallback field.
-	groupDescAllowBalanceFallback := groupFields[31].Descriptor()
+	groupDescAllowBalanceFallback := groupFields[32].Descriptor()
 	// group.DefaultAllowBalanceFallback holds the default value on creation for the allow_balance_fallback field.
 	group.DefaultAllowBalanceFallback = groupDescAllowBalanceFallback.Default.(bool)
 	// groupDescProtectedModels is the schema descriptor for protected_models field.
-	groupDescProtectedModels := groupFields[32].Descriptor()
+	groupDescProtectedModels := groupFields[33].Descriptor()
 	// group.DefaultProtectedModels holds the default value on creation for the protected_models field.
 	group.DefaultProtectedModels = groupDescProtectedModels.Default.([]string)
 	// groupDescProtectedModelQuotas is the schema descriptor for protected_model_quotas field.
-	groupDescProtectedModelQuotas := groupFields[33].Descriptor()
+	groupDescProtectedModelQuotas := groupFields[34].Descriptor()
 	// group.DefaultProtectedModelQuotas holds the default value on creation for the protected_model_quotas field.
 	group.DefaultProtectedModelQuotas = groupDescProtectedModelQuotas.Default.(map[string]interface{})
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
