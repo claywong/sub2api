@@ -101,7 +101,7 @@ func TestBalanceFallbackOnSubscriptionQuotaExceeded(t *testing.T) {
 
 		var capturedSub *service.UserSubscription
 		router := gin.New()
-		router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, cfg)))
+		router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, nil, cfg)))
 		router.GET("/t", func(c *gin.Context) {
 			capturedSub, _ = GetSubscriptionFromContext(c)
 			c.JSON(http.StatusOK, gin.H{"ok": true})
