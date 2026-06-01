@@ -186,7 +186,9 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				// 避免出现"中间件放行 → handler 才发现超限 → 错过余额兜底"的窗口期。
 				// 仅把"额度超限"类错误注入 fallback 流程；服务不可用 / 熔断打开等瞬时错误交由 handler 层 CheckBillingEligibility
 				// 走它原有的 503 语义，避免被误报成 403 SUBSCRIPTION_INVALID。
-				if validateErr == nil && billingCacheService != nil {
+				// needsMaintenance=true 表示窗口刚过期、内存已清零但 Redis 缓存尚未被 DoWindowMaintenance 刷新，
+				// 此时 Redis 里的旧用量仍是超限值，跳过二次检查防止误判为超限触发余额兜底。
+				if validateErr == nil && !needsMaintenance && billingCacheService != nil {
 					if cacheErr := billingCacheService.CheckSubscriptionUsageLimit(c.Request.Context(), apiKey.User.ID, apiKey.Group, subscription); cacheErr != nil {
 						if errors.Is(cacheErr, service.ErrDailyLimitExceeded) ||
 							errors.Is(cacheErr, service.ErrWeeklyLimitExceeded) ||
