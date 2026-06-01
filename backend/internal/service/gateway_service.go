@@ -5207,7 +5207,7 @@ type anthropicPassthroughRequestBuilder func(
 	body []byte,
 	token string,
 	tokenType string,
-) (*http.Request, error)
+) (*http.Request, []byte, error)
 
 type anthropicPassthroughForwardInput struct {
 	Body          []byte
@@ -5304,8 +5304,7 @@ func (s *GatewayService) forwardAnthropicPassthroughWithInput(
 	retryStart := time.Now()
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
-		wireBody := input.Body
-		upstreamReq, err := buildRequest(upstreamCtx, c, account, input.Body, token, tokenType)
+		upstreamReq, wireBody, err := buildRequest(upstreamCtx, c, account, input.Body, token, tokenType)
 		releaseUpstreamCtx()
 		if err != nil {
 			return nil, err
@@ -5597,9 +5596,8 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthroughForMode(
 	body []byte,
 	token string,
 	_ string,
-) (*http.Request, error) {
-	req, _, err := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
-	return req, err
+) (*http.Request, []byte, error) {
+	return s.buildUpstreamRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
 }
 
 func (s *GatewayService) forwardAnthropicFullPassthroughWithInput(
@@ -5628,7 +5626,7 @@ func (s *GatewayService) buildUpstreamRequestAnthropicFullPassthrough(
 	body []byte,
 	token string,
 	tokenType string,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
 	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, tokenType, "/v1/messages")
 }
 
@@ -9797,13 +9795,13 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	account *Account,
 	body []byte,
 	token string,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
 	targetURL := claudeAPICountTokensURL
 	baseURL := account.GetBaseURL()
 	if baseURL != "" {
 		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
 	}
@@ -9820,7 +9818,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if c != nil && c.Request != nil {
@@ -9849,7 +9847,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
 
-	return req, nil
+	return req, body, nil
 }
 
 // buildCountTokensRequestAnthropicAPIKeyPassthroughForMode /

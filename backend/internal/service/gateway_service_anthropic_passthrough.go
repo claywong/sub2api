@@ -104,10 +104,10 @@ func (s *GatewayService) buildAnthropicSafePassthroughRequest(
 	token string,
 	tokenType string,
 	path string,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
 	targetURL, err := s.buildAnthropicPassthroughTargetURL(account, path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
@@ -123,7 +123,7 @@ func (s *GatewayService) buildAnthropicSafePassthroughRequest(
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if c != nil && c.Request != nil {
@@ -148,7 +148,7 @@ func (s *GatewayService) buildAnthropicSafePassthroughRequest(
 		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 
-	return req, nil
+	return req, body, nil
 }
 
 // forwardCountTokensAnthropicPassthrough 是 count_tokens 透传的通用框架。
@@ -177,7 +177,7 @@ func (s *GatewayService) forwardCountTokensAnthropicPassthrough(
 		return fmt.Errorf("%s requires %s token, got: %s", errorLabel, expected, tokenType)
 	}
 
-	upstreamReq, err := buildRequest(ctx, c, account, body, token, tokenType)
+	upstreamReq, _, err := buildRequest(ctx, c, account, body, token, tokenType)
 	if err != nil {
 		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
 		return err
@@ -288,7 +288,7 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthroughForMod
 	body []byte,
 	token string,
 	_ string,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
 	return s.buildCountTokensRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
 }
 
@@ -315,6 +315,6 @@ func (s *GatewayService) buildCountTokensRequestAnthropicFullPassthrough(
 	body []byte,
 	token string,
 	tokenType string,
-) (*http.Request, error) {
+) (*http.Request, []byte, error) {
 	return s.buildAnthropicSafePassthroughRequest(ctx, c, account, body, token, tokenType, "/v1/messages/count_tokens")
 }
