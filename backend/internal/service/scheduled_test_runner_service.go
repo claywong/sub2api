@@ -126,6 +126,12 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
 	if s.shouldSkipUnschedulableAccount(ctx, plan, "ScheduledTestRunner") {
+		// 账号不可调度时仍需推进 next_run_at，否则每分钟都会重复捞到此 plan。
+		if plan.NextRunAt != nil {
+			if nextRun, err := computeNextRun(plan.CronExpression, *plan.NextRunAt); err == nil {
+				_ = s.planRepo.UpdateAfterRun(ctx, plan.ID, *plan.NextRunAt, nextRun)
+			}
+		}
 		return
 	}
 
@@ -156,7 +162,13 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 
-	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
+	// 以 plan.NextRunAt（计划时间）为基准计算下次，而非 time.Now()，
+	// 避免测试耗时导致调度时间持续漂移。
+	schedBase := time.Now()
+	if plan.NextRunAt != nil {
+		schedBase = *plan.NextRunAt
+	}
+	nextRun, err := computeNextRun(plan.CronExpression, schedBase)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d computeNextRun error: %v", plan.ID, err)
 		return
