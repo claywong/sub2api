@@ -45,6 +45,11 @@ type OpsService struct {
 	// webhookDispatcher forwards prepared error events to an external endpoint.
 	// Nil when ops.webhook.url is not configured.
 	webhookDispatcher *OpsErrorWebhookDispatcher
+
+	// quotaAutoPauseSink 由 wire 注入（通常是 SettingService.SetOpenAIQuotaAutoPauseSettings）。
+	// UpdateOpsAdvancedSettings 写入新配置后调用，把最新的 quota auto-pause 全局默认阈值
+	// 立即同步到调度热路径读取的内存缓存，避免下次请求才能感知新值。
+	quotaAutoPauseSink func(OpsOpenAIAccountQuotaAutoPauseSettings)
 }
 
 // CleanupReloader 由 OpsCleanupService 实现。
@@ -68,6 +73,16 @@ func (s *OpsService) SetWebhookDispatcher(d *OpsErrorWebhookDispatcher) {
 		return
 	}
 	s.webhookDispatcher = d
+}
+
+// SetOpenAIQuotaAutoPauseSettingsSink 由 wire 注入，把最新的 quota auto-pause 全局默认
+// 阈值 push 到调度热路径读取的内存缓存。同 SetCleanupReloader 的解耦目的：避免 OpsService
+// 持有 *SettingService 引入循环依赖。
+func (s *OpsService) SetOpenAIQuotaAutoPauseSettingsSink(sink func(OpsOpenAIAccountQuotaAutoPauseSettings)) {
+	if s == nil {
+		return
+	}
+	s.quotaAutoPauseSink = sink
 }
 
 func NewOpsService(

@@ -271,7 +271,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
-		h.submitUsageRecordTask(func(ctx context.Context) {
+		h.submitUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
 				Result:             result,
 				QuotaPlatform:      quotaPlatform,

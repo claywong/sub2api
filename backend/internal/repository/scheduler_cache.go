@@ -573,6 +573,17 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"rpm_sticky_buffer",
 		// Antigravity 积分透支：IsOveragesEnabled() 和 IsSchedulableForModelWithContext() 需要
 		"allow_overages",
+		"codex_5h_used_percent",
+		"codex_7d_used_percent",
+		"codex_5h_reset_at",
+		"codex_7d_reset_at",
+		"codex_5h_reset_after_seconds",
+		"codex_7d_reset_after_seconds",
+		"codex_usage_updated_at",
+		"auto_pause_5h_threshold",
+		"auto_pause_7d_threshold",
+		"auto_pause_5h_disabled",
+		"auto_pause_7d_disabled",
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

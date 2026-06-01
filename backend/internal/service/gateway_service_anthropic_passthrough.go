@@ -110,6 +110,17 @@ func (s *GatewayService) buildAnthropicSafePassthroughRequest(
 		return nil, err
 	}
 
+	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
+	// 依此决定是否保留 body 中的 context_management。避免"客户端 body 带字段但
+	// header 忘记带 beta token"的客户端 bug 在透传场景下让上游 400。
+	clientBeta := ""
+	if c != nil && c.Request != nil {
+		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+	}
+	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
+		body = sanitized
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
