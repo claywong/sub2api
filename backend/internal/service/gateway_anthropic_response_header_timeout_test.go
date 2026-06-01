@@ -104,7 +104,7 @@ func TestForward_AnthropicResponseHeaderTimeout_StreamPassesTimeout(t *testing.T
 
 	account := anthropicTestAccount()
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-3-5-sonnet-20241022",
 		Stream: true,
 	}
@@ -139,7 +139,7 @@ func TestForward_AnthropicResponseHeaderTimeout_NonStreamZeroTimeout(t *testing.
 
 	account := anthropicTestAccount()
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-3-5-sonnet-20241022",
 		Stream: false,
 	}
@@ -179,7 +179,7 @@ func TestForward_AnthropicResponseHeaderTimeout_ZeroDisabled(t *testing.T) {
 
 	account := anthropicTestAccount()
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-3-5-sonnet-20241022",
 		Stream: true,
 	}
@@ -213,7 +213,7 @@ func TestForward_AnthropicResponseHeaderTimeout_OpenAINotAffected(t *testing.T) 
 
 	account := openaiTestAccount()
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "gpt-4o",
 		Stream: false,
 	}

@@ -120,7 +120,7 @@ func TestGatewayService_AnthropicFullPassthrough_ForwardPreservesOAuthAndSetupTo
 			svc := newAnthropicFullPassthroughServiceForTest(upstream)
 			account := newAnthropicFullPassthroughAccountForTest(tt.accountType)
 			parsed := &ParsedRequest{
-				Body:   body,
+				Body:   NewRequestBodyRef(body),
 				Model:  "claude-sonnet-4-20250514",
 				Stream: false,
 			}
@@ -182,7 +182,7 @@ func TestGatewayService_AnthropicFullPassthrough_ForwardPreservesAPIKeyRequest(t
 	svc := newAnthropicFullPassthroughServiceForTest(upstream)
 	account := newAnthropicFullPassthroughAccountForTest(AccountTypeAPIKey)
 	parsed := &ParsedRequest{
-		Body:   body,
+		Body:   NewRequestBodyRef(body),
 		Model:  "claude-sonnet-4-20250514",
 		Stream: false,
 	}
@@ -245,7 +245,7 @@ func TestGatewayService_AnthropicFullPassthrough_CountTokensPreservesRequestsAcr
 			svc := newAnthropicFullPassthroughServiceForTest(upstream)
 			account := newAnthropicFullPassthroughAccountForTest(tt.accountType)
 			parsed := &ParsedRequest{
-				Body:  body,
+				Body:  NewRequestBodyRef(body),
 				Model: "claude-sonnet-4-20250514",
 			}
 
