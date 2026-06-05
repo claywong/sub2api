@@ -190,13 +190,18 @@ func (s *ScheduledTestRunnerService) shouldSkipUnschedulableAccount(ctx context.
 			source, plan.ID, plan.AccountID, err)
 		return false
 	}
-	if account == nil || account.IsSchedulable() {
+	if account == nil {
 		return false
 	}
-	logger.LegacyPrintf("service.scheduled_test_runner",
-		"[%s] plan=%d account=%d account_name=%s skipped because account is not schedulable",
-		source, plan.ID, plan.AccountID, plan.AccountName)
-	return true
+	// 只跳过手动关闭调度的账号（Schedulable = false）
+	// 不跳过 error/限流/过载等状态，让它们能通过定时测试 + auto-recover 恢复
+	if !account.Schedulable {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[%s] plan=%d account=%d account_name=%s skipped: Schedulable=false (manually disabled)",
+			source, plan.ID, plan.AccountID, plan.AccountName)
+		return true
+	}
+	return false
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.
