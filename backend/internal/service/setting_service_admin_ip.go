@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -37,7 +38,7 @@ func (s *SettingService) GetAdminAPIKeyIPWhitelist(ctx context.Context) ([]strin
 // 无效的 IP/CIDR 格式会被拒绝。
 func (s *SettingService) SetAdminAPIKeyIPWhitelist(ctx context.Context, ips []string) error {
 	if invalid := ip.ValidateIPPatterns(ips); len(invalid) > 0 {
-		return infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP/CIDR patterns: "+joinStrings(invalid))
+		return infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP/CIDR patterns: "+strings.Join(invalid, ", "))
 	}
 	if len(ips) == 0 {
 		return s.settingRepo.Set(ctx, SettingKeyAdminAPIKeyIPWhitelist, "[]")
@@ -65,16 +66,4 @@ func (s *SettingService) GetAdminAPIKeyCompiledIPWhitelist(ctx context.Context) 
 		return nil, nil
 	}
 	return ip.CompileIPRules(list), nil
-}
-
-// joinStrings 将字符串切片拼接为逗号分隔的字符串（避免引入 strings 包依赖）。
-func joinStrings(ss []string) string {
-	result := ""
-	for i, s := range ss {
-		if i > 0 {
-			result += ", "
-		}
-		result += s
-	}
-	return result
 }
