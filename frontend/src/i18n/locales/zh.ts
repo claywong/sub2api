@@ -6260,7 +6260,21 @@ export default {
         keyCopied: '密钥已复制到剪贴板',
         keyWarning: '此密钥仅显示一次，请立即复制保存。',
         securityWarning: '警告：此密钥拥有完整的管理员权限，请妥善保管。',
-        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>'
+        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>',
+        ipWhitelist: {
+          title: 'IP 白名单',
+          description: '仅允许指定 IP 或 CIDR 段访问，留空表示不限制',
+          placeholder: '192.168.1.100\n10.0.0.0/8',
+          hint: '每行一个 IP 地址或 CIDR 网段。留空时任意 IP 均可访问。',
+          save: '保存白名单',
+          saving: '保存中...',
+          clear: '清空（不限制）',
+          saved: 'IP 白名单已保存',
+          cleared: 'IP 白名单已清空',
+          invalidFormat: 'IP 格式有误，请检查后重试',
+          currentList: '当前白名单',
+          empty: '（不限制，任意 IP 可访问）'
+        }
       },
       soraS3: {
         title: 'Sora 存储配置',

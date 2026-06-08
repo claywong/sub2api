@@ -6105,7 +6105,21 @@ export default {
         keyCopied: 'Key copied to clipboard',
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
-        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
+        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>',
+        ipWhitelist: {
+          title: 'IP Whitelist',
+          description: 'Only allow specified IPs or CIDR ranges. Leave empty to allow all IPs.',
+          placeholder: '192.168.1.100\n10.0.0.0/8',
+          hint: 'One IP address or CIDR range per line. Leave empty to allow any IP.',
+          save: 'Save Whitelist',
+          saving: 'Saving...',
+          clear: 'Clear (Allow All)',
+          saved: 'IP whitelist saved',
+          cleared: 'IP whitelist cleared',
+          invalidFormat: 'Invalid IP format, please check and retry',
+          currentList: 'Current Whitelist',
+          empty: '(Unrestricted — any IP is allowed)'
+        }
       },
       soraS3: {
         title: 'Sora Storage',

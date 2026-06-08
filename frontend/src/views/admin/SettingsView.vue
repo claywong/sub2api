@@ -195,6 +195,54 @@
                     {{ t("admin.settings.adminApiKey.usage") }}
                   </p>
                 </div>
+
+                <!-- IP Whitelist -->
+                <div
+                  v-if="adminApiKeyIpWhitelistLoaded"
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <div class="mb-2">
+                    <label
+                      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.adminApiKey.ipWhitelist.title") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.adminApiKey.ipWhitelist.description") }}
+                    </p>
+                  </div>
+                  <textarea
+                    v-model="adminApiKeyIpWhitelistText"
+                    rows="4"
+                    class="input w-full font-mono text-sm"
+                    :placeholder="t('admin.settings.adminApiKey.ipWhitelist.placeholder')"
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t("admin.settings.adminApiKey.ipWhitelist.hint") }}
+                  </p>
+                  <div class="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      @click="saveAdminApiKeyIpWhitelist"
+                      :disabled="adminApiKeyIpWhitelistSaving"
+                      class="btn btn-primary btn-sm"
+                    >
+                      {{
+                        adminApiKeyIpWhitelistSaving
+                          ? t("admin.settings.adminApiKey.ipWhitelist.saving")
+                          : t("admin.settings.adminApiKey.ipWhitelist.save")
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      @click="clearAdminApiKeyIpWhitelist"
+                      :disabled="adminApiKeyIpWhitelistSaving"
+                      class="btn btn-secondary btn-sm"
+                    >
+                      {{ t("admin.settings.adminApiKey.ipWhitelist.clear") }}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -6865,6 +6913,11 @@ const adminApiKeyExists = ref(false);
 const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
+
+// Admin API Key IP 白名单
+const adminApiKeyIpWhitelistText = ref("");
+const adminApiKeyIpWhitelistSaving = ref(false);
+const adminApiKeyIpWhitelistLoaded = ref(false);
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // Overload Cooldown (529) 状态
@@ -8539,13 +8592,47 @@ async function sendTestEmail() {
 async function loadAdminApiKey() {
   adminApiKeyLoading.value = true;
   try {
-    const status = await adminAPI.settings.getAdminApiKey();
+    const [status, ipResult] = await Promise.all([
+      adminAPI.settings.getAdminApiKey(),
+      adminAPI.settings.getAdminApiKeyIpWhitelist().catch(() => ({ ip_whitelist: [] as string[] })),
+    ]);
     adminApiKeyExists.value = status.exists;
     adminApiKeyMasked.value = status.masked_key;
+    adminApiKeyIpWhitelistText.value = (ipResult.ip_whitelist ?? []).join("\n");
+    adminApiKeyIpWhitelistLoaded.value = true;
   } catch (_error: unknown) {
     // Silent fail - admin API key status is non-critical
   } finally {
     adminApiKeyLoading.value = false;
+  }
+}
+
+async function saveAdminApiKeyIpWhitelist() {
+  const lines = adminApiKeyIpWhitelistText.value
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  adminApiKeyIpWhitelistSaving.value = true;
+  try {
+    await adminAPI.settings.updateAdminApiKeyIpWhitelist(lines);
+    appStore.showSuccess(t("admin.settings.adminApiKey.ipWhitelist.saved"));
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.adminApiKey.ipWhitelist.invalidFormat")));
+  } finally {
+    adminApiKeyIpWhitelistSaving.value = false;
+  }
+}
+
+async function clearAdminApiKeyIpWhitelist() {
+  adminApiKeyIpWhitelistSaving.value = true;
+  try {
+    await adminAPI.settings.deleteAdminApiKeyIpWhitelist();
+    adminApiKeyIpWhitelistText.value = "";
+    appStore.showSuccess(t("admin.settings.adminApiKey.ipWhitelist.cleared"));
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    adminApiKeyIpWhitelistSaving.value = false;
   }
 }
 

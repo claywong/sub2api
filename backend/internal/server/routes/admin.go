@@ -444,6 +444,10 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
 		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
 		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		// Admin API Key IP 白名单
+		adminSettings.GET("/admin-api-key/ip-whitelist", h.Admin.Setting.GetAdminAPIKeyIPWhitelist)
+		adminSettings.PUT("/admin-api-key/ip-whitelist", h.Admin.Setting.UpdateAdminAPIKeyIPWhitelist)
+		adminSettings.DELETE("/admin-api-key/ip-whitelist", h.Admin.Setting.DeleteAdminAPIKeyIPWhitelist)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)
