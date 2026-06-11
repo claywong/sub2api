@@ -135,6 +135,8 @@ docs/*
 !docs/anthropic-account-scheduling.md
 !docs/anthropic-scheduling-health-aware.md
 !docs/ops-error-webhook.md
+!docs/legal/
+!docs/legal/*.md
 .serena/
 .codex/
 frontend/coverage/
