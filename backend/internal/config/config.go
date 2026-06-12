@@ -1110,6 +1110,35 @@ type GatewaySchedulingConfig struct {
 	Health SchedulingHealthConfig `mapstructure:"health"`
 	// Debug 调度调试观测开关。
 	Debug SchedulingDebugConfig `mapstructure:"debug"`
+
+	// WeightedSelection Layer 2 质量加权选号（私有扩展），默认关闭。
+	WeightedSelection WeightedSelectionConfig `mapstructure:"weighted_selection"`
+}
+
+// WeightedSelectionConfig Layer 2 质量加权选号配置（私有扩展，不属于 upstream sub2api）。
+// 同 Priority 内按连续质量分划分"体验相近带"，带内按账号倍率倒数加权随机选号。
+// 所有数值 0 表示使用内置默认值；Enabled=false（零值）时走原分桶漏斗。
+type WeightedSelectionConfig struct {
+	// 总开关，默认 false（走原 Priority → 分桶 → LoadRate → LRU 漏斗）
+	Enabled bool `mapstructure:"enabled"`
+	// 质量打分滑动窗口长度（分钟），默认 60；HealthVerdict 的 10min 窗口不受影响
+	QualityWindowMinutes int `mapstructure:"quality_window_minutes"`
+	// 体验相近带宽度 ε：score >= bestScore - ε 的账号入带，默认 0.10
+	BandEpsilon float64 `mapstructure:"band_epsilon"`
+	// 带内成本权重陡峭度 β：weight = (1/倍率)^β，默认 1.0
+	CostBeta float64 `mapstructure:"cost_beta"`
+	// 带外/探索保底权重占带内最大权重的比例，默认 0.05
+	ExploreFloor float64 `mapstructure:"explore_floor"`
+	// TTFT 满分阈值（ms），默认 1000
+	TTFTFullScoreMs int `mapstructure:"ttft_full_score_ms"`
+	// TTFT 零分阈值（ms），默认 10000
+	TTFTZeroScoreMs int `mapstructure:"ttft_zero_score_ms"`
+	// OTPS 满分阈值（tokens/s），默认 80
+	OTPSFullScore float64 `mapstructure:"otps_full_score"`
+	// 质量分权重（三者内部归一化），默认 0.40 / 0.35 / 0.25
+	WTTFT float64 `mapstructure:"w_ttft"`
+	WOTPS float64 `mapstructure:"w_otps"`
+	WErr  float64 `mapstructure:"w_err"`
 }
 
 // SchedulingHealthConfig HealthVerdict 三态判定阈值。

@@ -2174,18 +2174,24 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		// 分层过滤选择：优先级 → TTFT桶 → OTPS桶 → CacheHit桶 → 负载率 → LRU
 		qCache := s.qualityBucketCache()
 		for len(available) > 0 {
-			// 1. 取优先级最小的集合（支持容差，让倍率接近的账号一起进入下一步）
-			candidates := filterByMinPriority(available)
-			// 2. 取 TTFT 分桶最优的集合（account+model 维度，health 未启用时透传）
-			candidates = filterByMinTTFTBucket(candidates, qCache, requestedModel)
-			// 3. 取 OTPS 分桶最优的集合（account+model 维度，health 未启用时透传）
-			candidates = filterByMinOTPSBucket(candidates, qCache, requestedModel)
-			// 4. 取缓存命中率分桶最优的集合（account+model 维度，降低成本）
-			candidates = filterByMinCacheHitBucket(candidates, qCache, requestedModel)
-			// 5. 取负载率最低的集合
-			candidates = filterByMinLoadRate(candidates)
-			// 6. LRU 选择最久未用的账号
-			selected := selectByLRU(candidates, preferOAuth)
+			var selected *accountWithLoad
+			if s.isWeightedSelectionEnabled() {
+				// 质量加权选号（私有扩展）：Priority → 相近带 → 倍率加权随机
+				selected = s.selectByWeightedQuality(available, requestedModel, groupID, sessionHash)
+			} else {
+				// 1. 取优先级最小的集合（支持容差，让倍率接近的账号一起进入下一步）
+				candidates := filterByMinPriority(available)
+				// 2. 取 TTFT 分桶最优的集合（account+model 维度，health 未启用时透传）
+				candidates = filterByMinTTFTBucket(candidates, qCache, requestedModel)
+				// 3. 取 OTPS 分桶最优的集合（account+model 维度，health 未启用时透传）
+				candidates = filterByMinOTPSBucket(candidates, qCache, requestedModel)
+				// 4. 取缓存命中率分桶最优的集合（account+model 维度，降低成本）
+				candidates = filterByMinCacheHitBucket(candidates, qCache, requestedModel)
+				// 5. 取负载率最低的集合
+				candidates = filterByMinLoadRate(candidates)
+				// 6. LRU 选择最久未用的账号
+				selected = selectByLRU(candidates, preferOAuth)
+			}
 			if selected == nil {
 				break
 			}
