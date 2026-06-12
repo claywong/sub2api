@@ -28,17 +28,20 @@ func SetClaudeCodeClientContext(c *gin.Context, body []byte, parsedReq *service.
 	// Fast path：非 Claude CLI UA 直接判定 false，避免热路径二次 JSON 反序列化。
 	if !claudeCodeValidator.ValidateUserAgent(ua) {
 		ctx := service.SetClaudeCodeClient(c.Request.Context(), false)
+		// 私有扩展：记录判定失败原因，供 claude_code_only 拒绝点打日志排障。
+		ctx = service.WithClaudeCodeRejectInfo(ctx, service.CCRejectUAMismatch, ua, c.Request.URL.Path)
 		c.Request = c.Request.WithContext(ctx)
 		return
 	}
 
 	isClaudeCode := false
+	var bodyMap map[string]any
 	if !strings.Contains(c.Request.URL.Path, "messages") {
 		// 与 Validate 行为一致：非 messages 路径 UA 命中即可视为 Claude Code 客户端。
 		isClaudeCode = true
 	} else {
 		// 仅在确认为 Claude CLI 且 messages 路径时再做 body 解析。
-		bodyMap := claudeCodeBodyMapFromParsedRequest(parsedReq)
+		bodyMap = claudeCodeBodyMapFromParsedRequest(parsedReq)
 		if bodyMap == nil && len(body) > 0 {
 			_ = json.Unmarshal(body, &bodyMap)
 		}
@@ -47,6 +50,10 @@ func SetClaudeCodeClientContext(c *gin.Context, body []byte, parsedReq *service.
 
 	// 更新 request context
 	ctx := service.SetClaudeCodeClient(c.Request.Context(), isClaudeCode)
+	// 私有扩展：判定失败时诊断具体原因并写入 ctx，供 claude_code_only 拒绝点打日志。
+	if !isClaudeCode {
+		ctx = service.WithClaudeCodeRejectInfo(ctx, service.DiagnoseClaudeCodeReject(c.Request, bodyMap), ua, c.Request.URL.Path)
+	}
 
 	// 仅在确认为 Claude Code 客户端时提取版本号写入 context
 	if isClaudeCode {

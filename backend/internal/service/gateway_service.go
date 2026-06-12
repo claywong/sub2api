@@ -2356,6 +2356,7 @@ func (s *GatewayService) resolveGatewayGroup(ctx context.Context, groupID *int64
 		}
 
 		if group.FallbackGroupID == nil {
+			LogClaudeCodeReject(ctx, group) // 私有扩展：打印判定失败原因，便于排障
 			return nil, nil, ErrClaudeCodeOnly
 		}
 		currentID = *group.FallbackGroupID
