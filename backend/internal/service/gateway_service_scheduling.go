@@ -120,6 +120,14 @@ func (s *GatewayService) RecordAnthropicCall(accountID int64, model string, samp
 	s.modelQualityCache.Record(accountID, model, sample)
 }
 
+// ModelQualityCache 暴露内部质量缓存指针，仅供 admin 监控接口使用。
+func (s *GatewayService) ModelQualityCache() *AccountModelQualityCache {
+	if s == nil {
+		return nil
+	}
+	return s.modelQualityCache
+}
+
 // AnthropicHealthSnapshot 返回账号当前 10min 滑动窗口的指标快照，供日志和监控使用。
 // healthCache 为 nil 时返回零值快照（不影响调用方）。
 func (s *GatewayService) AnthropicHealthSnapshot(accountID int64) HealthSnapshot {

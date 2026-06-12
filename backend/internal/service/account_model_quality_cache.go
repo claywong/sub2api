@@ -32,11 +32,17 @@ const (
 	qualityBucketMaxTTFTSamples = 64
 )
 
-// accountModelKey sync.Map 的 key，按账号+模型维度隔离质量指标。
-type accountModelKey struct {
+// AccountModelCacheKey 是 account+model 维度的缓存键（供 admin 接口枚举使用）。
+type AccountModelCacheKey struct {
 	accountID int64
 	model     string
 }
+
+func (k AccountModelCacheKey) AccountID() int64 { return k.accountID }
+func (k AccountModelCacheKey) Model() string    { return k.model }
+
+// accountModelKey sync.Map 的 key，按账号+模型维度隔离质量指标。
+type accountModelKey = AccountModelCacheKey
 
 // qualityBucket 质量窗口的单个时间桶：复用 metricBucket 的累计字段，
 // 额外保留有限 TTFT 原始样本用于 P90 估计。
@@ -211,6 +217,21 @@ func (c *AccountModelQualityCache) Snapshot(accountID int64, model string) Healt
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.snapshotLocked(time.Now(), sec)
+}
+
+// ListTrackedKeys 返回当前有记录的所有 accountModelKey（仅供 admin 监控接口使用）。
+func (c *AccountModelQualityCache) ListTrackedKeys() []accountModelKey {
+	if c == nil {
+		return nil
+	}
+	var keys []accountModelKey
+	c.m.Range(func(k, _ any) bool {
+		if key, ok := k.(accountModelKey); ok {
+			keys = append(keys, key)
+		}
+		return true
+	})
+	return keys
 }
 
 // SnapshotWithP90 返回窗口聚合快照与 TTFT P90 估计（ms，0 表示无样本）。

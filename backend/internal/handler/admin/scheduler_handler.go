@@ -100,3 +100,85 @@ func buildSnapshotItem(cache *service.AccountTestHealthCache, accountID int64) S
 		},
 	}
 }
+
+// QualityItem 单账号+模型的质量指标视图。
+type QualityItem struct {
+	AccountID          int64   `json:"account_id"`
+	Model              string  `json:"model"`
+	TTFTSampleCount    int     `json:"ttft_sample_count"`
+	TTFTAvgMs          float64 `json:"ttft_avg_ms"`
+	TTFTP90Ms          float64 `json:"ttft_p90_ms"`
+	TTFTEffMs          float64 `json:"ttft_eff_ms"` // 0.5*avg+0.5*p90，加权选号实际使用值
+	OTPSSampleCount    int     `json:"otps_sample_count"`
+	OTPSAvg            float64 `json:"otps_avg"`
+	CacheHitSampleCount int    `json:"cache_hit_sample_count"`
+	CacheHitRateAvg    float64 `json:"cache_hit_rate_avg"`
+	TTFTBucket         int     `json:"ttft_bucket"`
+	OTPSBucket         int     `json:"otps_bucket"`
+	CacheHitBucket     int     `json:"cache_hit_bucket"`
+}
+
+// GetQuality 返回 account+model 维度的质量指标快照。
+// GET /api/v1/admin/scheduler/quality
+// 可选 query: account_id, model
+func (h *SchedulerAdminHandler) GetQuality(c *gin.Context) {
+	if h.gatewayService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Gateway service not available")
+		return
+	}
+	cache := h.gatewayService.ModelQualityCache()
+	if cache == nil {
+		response.Success(c, []QualityItem{})
+		return
+	}
+
+	filterAccountID := int64(0)
+	if s := strings.TrimSpace(c.Query("account_id")); s != "" {
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || id <= 0 {
+			response.BadRequest(c, "invalid account_id")
+			return
+		}
+		filterAccountID = id
+	}
+	filterModel := strings.TrimSpace(c.Query("model"))
+
+	keys := cache.ListTrackedKeys()
+	out := make([]QualityItem, 0, len(keys))
+	for _, key := range keys {
+		if filterAccountID > 0 && key.AccountID() != filterAccountID {
+			continue
+		}
+		if filterModel != "" && key.Model() != filterModel {
+			continue
+		}
+		out = append(out, buildQualityItem(cache, key))
+	}
+	response.Success(c, out)
+}
+
+func buildQualityItem(cache *service.AccountModelQualityCache, key service.AccountModelCacheKey) QualityItem {
+	snap, p90 := cache.SnapshotWithP90(key.AccountID(), key.Model())
+	ttftEff := 0.0
+	if snap.HasTTFT() {
+		ttftEff = snap.TTFTAvg()
+		if p90 > 0 {
+			ttftEff = 0.5*snap.TTFTAvg() + 0.5*p90
+		}
+	}
+	return QualityItem{
+		AccountID:           key.AccountID(),
+		Model:               key.Model(),
+		TTFTSampleCount:     snap.TTFTSampleCount,
+		TTFTAvgMs:           snap.TTFTAvg(),
+		TTFTP90Ms:           p90,
+		TTFTEffMs:           ttftEff,
+		OTPSSampleCount:     snap.OTPSSampleCount,
+		OTPSAvg:             snap.OTPSAvg(),
+		CacheHitSampleCount: snap.CacheHitSampleCount,
+		CacheHitRateAvg:     snap.CacheHitRateAvg(),
+		TTFTBucket:          service.TTFTBucket(snap.TTFTAvg(), snap.HasTTFT()),
+		OTPSBucket:          service.OTPSBucket(snap.OTPSAvg(), snap.HasOTPS()),
+		CacheHitBucket:      service.CacheHitBucket(snap.CacheHitRateAvg(), snap.HasCacheHit()),
+	}
+}

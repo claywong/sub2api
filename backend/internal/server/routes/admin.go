@@ -142,6 +142,7 @@ func registerSchedulerRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	scheduler := admin.Group("/scheduler")
 	{
 		scheduler.GET("/snapshot", h.Admin.Scheduler.GetSnapshot)
+		scheduler.GET("/quality", h.Admin.Scheduler.GetQuality)
 	}
 }
 
