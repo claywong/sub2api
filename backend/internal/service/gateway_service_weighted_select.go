@@ -10,6 +10,7 @@
 // 新增方法：
 //   - weightedSelectionConfig() / isWeightedSelectionEnabled()
 //   - computeQualityScore(accountID, model) (score, detail)
+//   - QualityScoreForAccount(accountID, model) float64  ← admin 观测用
 //   - selectByWeightedQuality(available, model, groupID, sessionHash) *accountWithLoad
 //
 // 与 upstream 合并策略：
@@ -140,6 +141,13 @@ func (s *GatewayService) computeQualityScore(accountID int64, model string, cfg 
 	wSum := cfg.WTTFT + cfg.WOTPS + cfg.WErr
 	d.Score = (cfg.WTTFT*ttftScore + cfg.WOTPS*otpsScore + cfg.WErr*errScore) / wSum
 	return d.Score, d
+}
+
+// QualityScoreForAccount 返回账号在指定模型上的综合质量分（0~1），供 admin 观测使用。
+// 加权选号未启用时仍可调用，返回基于当前缓存数据的计算结果。
+func (s *GatewayService) QualityScoreForAccount(accountID int64, model string) float64 {
+	score, _ := s.computeQualityScore(accountID, model, s.weightedSelectionConfig())
+	return score
 }
 
 // selectByWeightedQuality 在已通过全部过滤、LoadRate<100 的候选中加权随机选号。

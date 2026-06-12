@@ -103,19 +103,20 @@ func buildSnapshotItem(cache *service.AccountTestHealthCache, accountID int64) S
 
 // QualityItem 单账号+模型的质量指标视图。
 type QualityItem struct {
-	AccountID          int64   `json:"account_id"`
-	Model              string  `json:"model"`
-	TTFTSampleCount    int     `json:"ttft_sample_count"`
-	TTFTAvgMs          float64 `json:"ttft_avg_ms"`
-	TTFTP90Ms          float64 `json:"ttft_p90_ms"`
-	TTFTEffMs          float64 `json:"ttft_eff_ms"` // 0.5*avg+0.5*p90，加权选号实际使用值
-	OTPSSampleCount    int     `json:"otps_sample_count"`
-	OTPSAvg            float64 `json:"otps_avg"`
-	CacheHitSampleCount int    `json:"cache_hit_sample_count"`
-	CacheHitRateAvg    float64 `json:"cache_hit_rate_avg"`
-	TTFTBucket         int     `json:"ttft_bucket"`
-	OTPSBucket         int     `json:"otps_bucket"`
-	CacheHitBucket     int     `json:"cache_hit_bucket"`
+	AccountID           int64   `json:"account_id"`
+	Model               string  `json:"model"`
+	Score               float64 `json:"score"`
+	TTFTSampleCount     int     `json:"ttft_sample_count"`
+	TTFTAvgMs           float64 `json:"ttft_avg_ms"`
+	TTFTP90Ms           float64 `json:"ttft_p90_ms"`
+	TTFTEffMs           float64 `json:"ttft_eff_ms"` // 0.5*avg+0.5*p90，加权选号实际使用值
+	OTPSSampleCount     int     `json:"otps_sample_count"`
+	OTPSAvg             float64 `json:"otps_avg"`
+	CacheHitSampleCount int     `json:"cache_hit_sample_count"`
+	CacheHitRateAvg     float64 `json:"cache_hit_rate_avg"`
+	TTFTBucket          int     `json:"ttft_bucket"`
+	OTPSBucket          int     `json:"otps_bucket"`
+	CacheHitBucket      int     `json:"cache_hit_bucket"`
 }
 
 // GetQuality 返回 account+model 维度的质量指标快照。
@@ -152,12 +153,12 @@ func (h *SchedulerAdminHandler) GetQuality(c *gin.Context) {
 		if filterModel != "" && key.Model() != filterModel {
 			continue
 		}
-		out = append(out, buildQualityItem(cache, key))
+		out = append(out, buildQualityItem(cache, key, h.gatewayService))
 	}
 	response.Success(c, out)
 }
 
-func buildQualityItem(cache *service.AccountModelQualityCache, key service.AccountModelCacheKey) QualityItem {
+func buildQualityItem(cache *service.AccountModelQualityCache, key service.AccountModelCacheKey, gw *service.GatewayService) QualityItem {
 	snap, p90 := cache.SnapshotWithP90(key.AccountID(), key.Model())
 	ttftEff := 0.0
 	if snap.HasTTFT() {
@@ -166,9 +167,14 @@ func buildQualityItem(cache *service.AccountModelQualityCache, key service.Accou
 			ttftEff = 0.5*snap.TTFTAvg() + 0.5*p90
 		}
 	}
+	score := 0.0
+	if gw != nil {
+		score = gw.QualityScoreForAccount(key.AccountID(), key.Model())
+	}
 	return QualityItem{
 		AccountID:           key.AccountID(),
 		Model:               key.Model(),
+		Score:               score,
 		TTFTSampleCount:     snap.TTFTSampleCount,
 		TTFTAvgMs:           snap.TTFTAvg(),
 		TTFTP90Ms:           p90,
