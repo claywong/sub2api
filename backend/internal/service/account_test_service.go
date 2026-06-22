@@ -266,7 +266,6 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	}
 	payloadBytes, _ := json.Marshal(payload)
 	payloadBytes = rewriteSystemForNonClaudeCode(payloadBytes, payload["system"])
-	payloadBytes = signBillingHeaderCCH(payloadBytes)
 
 	// Send test_start event
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
