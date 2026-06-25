@@ -133,6 +133,9 @@ func (s *ScheduledTestRunnerService) runRetryTest(plan *ScheduledTestPlan, attem
 		logger.LegacyPrintf("service.scheduled_test_runner",
 			"[RetryTest] plan=%d account=%d account_name=%s attempt=%d recovered",
 			plan.ID, plan.AccountID, plan.AccountName, attempt+1)
+		if plan.AutoRecover {
+			s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
+		}
 	} else {
 		logger.LegacyPrintf("service.scheduled_test_runner",
 			"[WARN] [RetryTest] plan=%d account=%d account_name=%s attempt=%d failed: %s",
