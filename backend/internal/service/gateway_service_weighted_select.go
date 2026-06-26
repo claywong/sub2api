@@ -1,16 +1,20 @@
 // gateway_service_weighted_select.go
 // =============================================================================
-// 私有扩展（不属于 upstream sub2api）：Layer 2 质量加权选号。
+// 私有扩展（不属于 upstream sub2api）：Layer 2 性价比加权选号。
 //
-// 设计文档：docs/anthropic-scheduling-weighted-selection.md
+// 核心公式（一行）：
 //
-// 排序逻辑：Priority（人工意图）→ 质量相近带（体验优先，TTFT 含 P90 长尾惩罚）
+//	weight = quality / effRate^β
 //
-//	→ 带内按账号倍率倒数加权 → 加权随机；带外保留探索 floor。
+//	quality = (1 - errRate) × ttftFactor × otpsFactor       // 0~1
+//	effRate = rate × (1 - 0.9 × shrunkHit)                  // 期望单 token 成本
+//
+// 无样本时 ttftFactor/otpsFactor/successRate 各自取 1（不奖不罚，鼓励冷启动探索）。
+// 缓存命中率不进 quality（避免自增强污染），只折进 effRate。
 //
 // 新增方法：
 //   - weightedSelectionConfig() / isWeightedSelectionEnabled()
-//   - computeQualityScore(accountID, model) (score, detail)
+//   - computeQualityScore(accountID, model) (quality, detail)
 //   - QualityScoreForAccount(accountID, model) float64  ← admin 观测用
 //   - selectByWeightedQuality(available, model, groupID, sessionHash) *accountWithLoad
 //
@@ -27,72 +31,43 @@ import (
 	mathrand "math/rand"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
-// 内置默认值（配置为 0 时生效），与设计文档 §6 一致。
+// 写死的内部常量：调参意义不大，藏在代码里减少配置噪音。
 const (
-	defaultWSBandEpsilon  = 0.10
-	defaultWSCostBeta     = 1.0
-	defaultWSExploreFloor = 0.05
-	defaultWSTTFTFullMs   = 1000.0
-	defaultWSTTFTZeroMs   = 10000.0
-	defaultWSOTPSFull     = 80.0
-	defaultWSWTTFT        = 0.40
-	defaultWSWOTPS        = 0.35
-	defaultWSWErr         = 0.25
-	wsNeutralScore        = 0.5  // 无样本中性分
-	wsMinRateMultiplier   = 0.05 // 倍率下限，防止 0 倍率账号权重无穷大
-
-	// 缓存命中率作为"带内有效成本"因子的内置默认值（私有扩展）。
-	// cache_discount 兼作开关：0=关闭（effRate=rate），>0=启用并控制折扣强度。
-	defaultWSCacheHitShrinkK = 20  // cache_hit_shrink_k 默认值
-	wsMaxCacheDiscount       = 0.9 // 折扣封顶，保证 effRate ≥ 0.1·rate，杜绝 1/0
+	wsTTFTZeroMs        = 15000.0 // TTFT P90 ≥ 15s → ttftFactor = 0
+	wsOTPSFullScore     = 80.0    // OTPS ≥ 80 tokens/s → otpsFactor = 1
+	wsCacheDiscount     = 0.9     // 缓存命中折扣强度（对应 Anthropic cache_read ≈ 0.1× 价格）
+	wsCacheHitShrinkK   = 20.0    // 命中率样本量收缩系数：effHit = hit × N/(N+K)
+	wsMinRateMultiplier = 0.05    // 倍率下限，防止 0 倍率账号 effRate → 0
 )
 
 // weightedSelectionConfig 返回填充默认值后的加权选号配置。
-func (s *GatewayService) weightedSelectionConfig() config.WeightedSelectionConfig {
+// 极简方案：实际只用到 QualityWindowMinutes 和 CostAggressiveness。
+func (s *GatewayService) weightedSelectionConfig() weightedSelectionRuntimeConfig {
 	c := s.schedulingConfig().WeightedSelection
-	if c.QualityWindowMinutes <= 0 {
-		c.QualityWindowMinutes = defaultQualityWindowMinutes
+	rt := weightedSelectionRuntimeConfig{
+		QualityWindowMinutes: c.QualityWindowMinutes,
+		CostAggressiveness:   c.CostAggressiveness,
 	}
-	if c.BandEpsilon <= 0 {
-		c.BandEpsilon = defaultWSBandEpsilon
+	if rt.QualityWindowMinutes <= 0 {
+		rt.QualityWindowMinutes = defaultQualityWindowMinutes
 	}
-	if c.CostBeta <= 0 {
-		c.CostBeta = defaultWSCostBeta
+	if rt.CostAggressiveness <= 0 {
+		rt.CostAggressiveness = 1.0
 	}
-	if c.ExploreFloor <= 0 {
-		c.ExploreFloor = defaultWSExploreFloor
-	}
-	if c.TTFTFullScoreMs <= 0 {
-		c.TTFTFullScoreMs = int(defaultWSTTFTFullMs)
-	}
-	if c.TTFTZeroScoreMs <= c.TTFTFullScoreMs {
-		c.TTFTZeroScoreMs = int(defaultWSTTFTZeroMs)
-	}
-	if c.OTPSFullScore <= 0 {
-		c.OTPSFullScore = defaultWSOTPSFull
-	}
-	if c.WTTFT <= 0 && c.WOTPS <= 0 && c.WErr <= 0 {
-		c.WTTFT, c.WOTPS, c.WErr = defaultWSWTTFT, defaultWSWOTPS, defaultWSWErr
-	}
-	// 缓存成本因子：cache_discount 兼作开关（0=关闭，零 diff 回归），仅做边界 clamp，不回退默认值。
-	if c.CacheDiscount < 0 {
-		c.CacheDiscount = 0
-	}
-	if c.CacheDiscount > wsMaxCacheDiscount {
-		c.CacheDiscount = wsMaxCacheDiscount
-	}
-	if c.CacheHitShrinkK <= 0 {
-		c.CacheHitShrinkK = defaultWSCacheHitShrinkK
-	}
-	return c
+	return rt
 }
 
-// isWeightedSelectionEnabled 返回是否启用质量加权选号，默认 false。
-// 启用时顺带同步质量窗口长度（幂等，原子比较）。
+// weightedSelectionRuntimeConfig 内部使用，与 config 解耦（兼容期里 config struct 仍带废弃字段）。
+type weightedSelectionRuntimeConfig struct {
+	QualityWindowMinutes int
+	CostAggressiveness   float64
+}
+
+// isWeightedSelectionEnabled 返回是否启用加权选号，默认 false。
+// 启用时同步质量窗口长度（幂等）。
 func (s *GatewayService) isWeightedSelectionEnabled() bool {
 	c := s.schedulingConfig().WeightedSelection
 	if !c.Enabled {
@@ -108,47 +83,45 @@ func (s *GatewayService) isWeightedSelectionEnabled() bool {
 
 // qualityScoreDetail 单账号打分明细，供调试日志使用。
 type qualityScoreDetail struct {
-	Score        float64
-	TTFTEffMs    float64 // 0 表示无样本
+	Quality      float64 // 综合质量分（0~1）
+	TTFTP90Ms    float64 // 0 表示无样本
 	OTPSAvg      float64 // 0 表示无样本
 	ErrRate      float64 // -1 表示无样本
-	CacheHitRate float64 // -1 表示无样本；仅用于带内成本权重与日志，不进 Score
-	CacheHitN    int     // 缓存命中率样本数（样本量收缩用）
+	CacheHitRate float64 // -1 表示无样本
+	CacheHitN    int     // 缓存命中率样本数
 	Rate         float64 // 账号倍率（clamp 后）
-	EffRate      float64 // 有效成本倍率（含缓存折扣；CacheCostEnabled 关时等于 Rate）
+	EffRate      float64 // 有效成本倍率（含缓存折扣）
 	Weight       float64 // 最终抽签权重
-	InBand       bool
 }
 
-// computeQualityScore 计算账号在指定模型上的连续质量分（0~1）。
+// computeQualityScore 计算账号在指定模型上的综合质量分（0~1）：
 //
-//	score = wTTFT·ttftScore + wOTPS·otpsScore + wErr·errScore（权重归一化）
-//	ttftEff = 0.5·avg + 0.5·P90（无 P90 样本时退化为 avg）
-//	各分量无样本时取 0.5 中性分（冷启动不奖不罚）。
+//	quality = (1 - errRate) × ttftFactor × otpsFactor
+//	ttftFactor = clamp01(1 - p90 / 15000)    // 无样本取 1
+//	otpsFactor = clamp01(otpsAvg / 80)       // 无样本取 1
+//	successRate = 1 - errRate                // 无样本取 1
 //
-// 错误率来自账号级健康窗口（10min，HealthVerdict 同源），TTFT/OTPS 来自
-// account+model 质量窗口（默认 60min）。定时测试数据不进质量窗口（见设计文档 §4）。
-func (s *GatewayService) computeQualityScore(accountID int64, model string, cfg config.WeightedSelectionConfig) (float64, qualityScoreDetail) {
+// 无样本各项取 1（不奖不罚），让冷启动账号有充分探索机会。
+// 错误率来自账号级健康窗口（10min），TTFT/OTPS 来自 account+model 质量窗口（默认 60min）。
+func (s *GatewayService) computeQualityScore(accountID int64, model string) (float64, qualityScoreDetail) {
 	d := qualityScoreDetail{ErrRate: -1, CacheHitRate: -1}
 
-	ttftScore, otpsScore, errScore := wsNeutralScore, wsNeutralScore, wsNeutralScore
+	ttftFactor, otpsFactor, successRate := 1.0, 1.0, 1.0
 
 	if s.modelQualityCache != nil {
 		snap, p90 := s.modelQualityCache.SnapshotWithP90(accountID, model)
 		if snap.HasTTFT() {
-			ttftEff := snap.TTFTAvg()
-			if p90 > 0 {
-				ttftEff = 0.5*snap.TTFTAvg() + 0.5*p90
+			ttftRef := p90
+			if ttftRef <= 0 {
+				ttftRef = snap.TTFTAvg() // P90 不可得时退化用 avg
 			}
-			d.TTFTEffMs = ttftEff
-			full, zero := float64(cfg.TTFTFullScoreMs), float64(cfg.TTFTZeroScoreMs)
-			ttftScore = clamp01(1 - (ttftEff-full)/(zero-full))
+			d.TTFTP90Ms = ttftRef
+			ttftFactor = clamp01(1 - ttftRef/wsTTFTZeroMs)
 		}
 		if snap.HasOTPS() {
 			d.OTPSAvg = snap.OTPSAvg()
-			otpsScore = clamp01(snap.OTPSAvg() / cfg.OTPSFullScore)
+			otpsFactor = clamp01(snap.OTPSAvg() / wsOTPSFullScore)
 		}
-		// 缓存命中率仅带出供"带内成本权重"使用，不参与 score（避免自增强偏差污染体验带划分）。
 		if snap.HasCacheHit() {
 			d.CacheHitRate = snap.CacheHitRateAvg()
 			d.CacheHitN = snap.CacheHitSampleCount
@@ -159,37 +132,33 @@ func (s *GatewayService) computeQualityScore(accountID int64, model string, cfg 
 		hs := s.healthCache.Snapshot(accountID)
 		if hs.ReqCount > 0 {
 			d.ErrRate = hs.ErrRate()
-			errScore = clamp01(1 - hs.ErrRate())
+			successRate = clamp01(1 - hs.ErrRate())
 		}
 	}
 
-	wSum := cfg.WTTFT + cfg.WOTPS + cfg.WErr
-	d.Score = (cfg.WTTFT*ttftScore + cfg.WOTPS*otpsScore + cfg.WErr*errScore) / wSum
-	return d.Score, d
+	d.Quality = successRate * ttftFactor * otpsFactor
+	return d.Quality, d
 }
 
 // QualityScoreForAccount 返回账号在指定模型上的综合质量分（0~1），供 admin 观测使用。
-// 加权选号未启用时仍可调用，返回基于当前缓存数据的计算结果。
+// 加权选号未启用时仍可调用。
 func (s *GatewayService) QualityScoreForAccount(accountID int64, model string) float64 {
-	score, _ := s.computeQualityScore(accountID, model, s.weightedSelectionConfig())
-	return score
+	q, _ := s.computeQualityScore(accountID, model)
+	return q
 }
 
-// selectByWeightedQuality 在已通过全部过滤、LoadRate<100 的候选中加权随机选号。
+// selectByWeightedQuality 在已通过全部过滤、LoadRate<100 的候选中按性价比加权随机选号。
 //
-// 流程（设计文档 §3）：
+// 流程：
 //  1. filterByMinPriority：Priority 人工意图最高，严格取最小值组；
-//  2. 组内算连续质量分，划"体验相近带"（score >= best - ε）；
-//  3. 带内 weight = (1/倍率)^β，带外 weight = floor × 带内最大权重；
-//  4. 按 weight 加权随机抽一个返回。
+//  2. 每个候选计算 weight = quality / effRate^β；
+//  3. 按 weight 加权随机抽一个。
 //
 // 返回 nil 表示候选为空（调用方按原逻辑 break）。
 func (s *GatewayService) selectByWeightedQuality(available []accountWithLoad, model string, groupID *int64, sessionHash string) *accountWithLoad {
 	if len(available) == 0 {
 		return nil
 	}
-	cfg := s.weightedSelectionConfig()
-
 	candidates := filterByMinPriority(available)
 	if len(candidates) == 0 {
 		return nil
@@ -198,62 +167,21 @@ func (s *GatewayService) selectByWeightedQuality(available []accountWithLoad, mo
 		return &candidates[0]
 	}
 
+	cfg := s.weightedSelectionConfig()
 	details := make([]qualityScoreDetail, len(candidates))
-	bestScore := 0.0
-	for i := range candidates {
-		score, d := s.computeQualityScore(candidates[i].account.ID, model, cfg)
-		details[i] = d
-		if score > bestScore {
-			bestScore = score
-		}
-	}
-
-	// 划带 + 算权重：带内按"有效成本"倒数加权，带外稍后统一给探索 floor。
-	// 有效成本 effRate = 倍率 × (1 - cache_discount × 收缩后命中率)；
-	// CacheCostEnabled 关闭或无命中样本时 effRate = rate，逐位等于原行为。
-	maxInBand := 0.0
-	for i := range candidates {
-		rate := candidates[i].account.BillingRateMultiplier()
-		if rate < wsMinRateMultiplier {
-			rate = wsMinRateMultiplier
-		}
-		details[i].Rate = rate
-
-		effRate := rate
-		if cfg.CacheDiscount > 0 && details[i].CacheHitN > 0 {
-			hit := clamp01(details[i].CacheHitRate)
-			n := float64(details[i].CacheHitN)
-			effHit := hit * n / (n + float64(cfg.CacheHitShrinkK)) // 样本量收缩，缓解自增强偏差
-			effRate = rate * (1 - cfg.CacheDiscount*effHit)
-			if effRate < wsMinRateMultiplier {
-				effRate = wsMinRateMultiplier // 独立下限，不依赖 rate 兜底
-			}
-		}
-		details[i].EffRate = effRate
-
-		if details[i].Score >= bestScore-cfg.BandEpsilon {
-			details[i].InBand = true
-			w := math.Pow(1/effRate, cfg.CostBeta)
-			if math.IsNaN(w) || math.IsInf(w, 0) || w <= 0 {
-				w = math.Pow(1/rate, cfg.CostBeta) // 防御性回退
-			}
-			details[i].Weight = w
-			if w > maxInBand {
-				maxInBand = w
-			}
-		}
-	}
-	if maxInBand <= 0 {
-		// 理论上不可达（bestScore 所在账号必然入带），防御性兜底为均匀随机。
-		return &candidates[mathrand.Intn(len(candidates))]
-	}
-	floorWeight := cfg.ExploreFloor * maxInBand
 	total := 0.0
-	for i := range details {
-		if !details[i].InBand {
-			details[i].Weight = floorWeight
-		}
-		total += details[i].Weight
+	for i := range candidates {
+		_, d := s.computeQualityScore(candidates[i].account.ID, model)
+		d.Rate = clampRate(candidates[i].account.BillingRateMultiplier())
+		d.EffRate = applyCacheDiscount(d.Rate, d.CacheHitRate, d.CacheHitN)
+		d.Weight = d.Quality / math.Pow(d.EffRate, cfg.CostAggressiveness)
+		details[i] = d
+		total += d.Weight
+	}
+
+	// 全 0 兜底：所有候选 quality=0（极端：全部账号错误率 100%）→ 均匀随机给一次机会。
+	if total <= 0 {
+		return &candidates[mathrand.Intn(len(candidates))]
 	}
 
 	r := mathrand.Float64() * total
@@ -266,14 +194,41 @@ func (s *GatewayService) selectByWeightedQuality(available []accountWithLoad, mo
 		}
 	}
 
-	s.logWeightedSelection(candidates, details, selectedIdx, bestScore, model, groupID, sessionHash)
+	s.logWeightedSelection(candidates, details, selectedIdx, model, groupID, sessionHash)
 	return &candidates[selectedIdx]
 }
 
-// logWeightedSelection 打加权选号决策日志，复用 scheduling debug 的触发规则：
+// clampRate 倍率下限保护，防止 0 倍率账号 effRate → 0 引发权重无穷大。
+func clampRate(r float64) float64 {
+	if r < wsMinRateMultiplier {
+		return wsMinRateMultiplier
+	}
+	return r
+}
+
+// applyCacheDiscount 把缓存命中率折进 effRate：
+//
+//	effRate = rate × (1 - 0.9 × shrunkHit)
+//	shrunkHit = hit × N/(N+20)   // 样本量收缩，防止少样本虚高
+//
+// 无样本时返回 rate（命中率信息缺失，不做折扣）。
+func applyCacheDiscount(rate, hit float64, n int) float64 {
+	if n <= 0 || hit < 0 {
+		return rate
+	}
+	h := clamp01(hit)
+	effHit := h * float64(n) / (float64(n) + wsCacheHitShrinkK)
+	eff := rate * (1 - wsCacheDiscount*effHit)
+	if eff < wsMinRateMultiplier {
+		return wsMinRateMultiplier
+	}
+	return eff
+}
+
+// logWeightedSelection 打加权选号决策日志，复用 scheduling debug 触发规则：
 // LogDecisions 全量 / LogGroups 白名单 / LogSampleRate 采样；
 // LogScoreDetails=true 时展开每候选明细。
-func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, details []qualityScoreDetail, selectedIdx int, bestScore float64, model string, groupID *int64, sessionHash string) {
+func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, details []qualityScoreDetail, selectedIdx int, model string, groupID *int64, sessionHash string) {
 	cfg := s.schedulingConfig().Debug
 	if !cfg.LogDecisions && !groupContainedInLogList(groupID, cfg.LogGroups) {
 		if cfg.LogSampleRate <= 0 || mathrand.Float64() > cfg.LogSampleRate {
@@ -283,10 +238,10 @@ func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, deta
 
 	sel := candidates[selectedIdx]
 	logger.LegacyPrintf("service.gateway",
-		"[WeightedSelect] group=%v session=%s model=%s candidates=%d best_score=%.3f selected=%d score=%.3f rate=%.2f eff_rate=%.2f weight=%.3f in_band=%v",
-		derefGroupID(groupID), shortSessionHash(sessionHash), model, len(candidates), bestScore,
-		sel.account.ID, details[selectedIdx].Score, details[selectedIdx].Rate,
-		details[selectedIdx].EffRate, details[selectedIdx].Weight, details[selectedIdx].InBand)
+		"[WeightedSelect] group=%v session=%s model=%s candidates=%d selected=%d quality=%.3f rate=%.2f eff_rate=%.2f weight=%.3f",
+		derefGroupID(groupID), shortSessionHash(sessionHash), model, len(candidates),
+		sel.account.ID, details[selectedIdx].Quality, details[selectedIdx].Rate,
+		details[selectedIdx].EffRate, details[selectedIdx].Weight)
 
 	if !cfg.LogScoreDetails {
 		return
@@ -294,8 +249,8 @@ func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, deta
 	var b strings.Builder
 	for i := range candidates {
 		d := details[i]
-		b.WriteString(fmt.Sprintf(" [%d score=%.3f ttft_eff=%.0fms otps=%.1f err=%.2f cache_hit=%.2f rate=%.2f eff_rate=%.2f w=%.3f band=%v]",
-			candidates[i].account.ID, d.Score, d.TTFTEffMs, d.OTPSAvg, d.ErrRate, d.CacheHitRate, d.Rate, d.EffRate, d.Weight, d.InBand))
+		b.WriteString(fmt.Sprintf(" [%d quality=%.3f ttft_p90=%.0fms otps=%.1f err=%.2f cache_hit=%.2f rate=%.2f eff_rate=%.2f w=%.3f]",
+			candidates[i].account.ID, d.Quality, d.TTFTP90Ms, d.OTPSAvg, d.ErrRate, d.CacheHitRate, d.Rate, d.EffRate, d.Weight))
 	}
 	logger.LegacyPrintf("service.gateway", "[WeightedSelectDetail]%s", b.String())
 }

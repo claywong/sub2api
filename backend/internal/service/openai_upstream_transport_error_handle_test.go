@@ -49,7 +49,7 @@ func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int
 	return nil, u.err
 }
 
-func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	u.calls++
 	return nil, u.err
 }
