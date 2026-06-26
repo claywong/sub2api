@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -16,18 +18,20 @@ func NewAdminAuthMiddleware(
 	authService *service.AuthService,
 	userService *service.UserService,
 	settingService *service.SettingService,
+	cfg *config.Config,
 ) AdminAuthMiddleware {
-	return AdminAuthMiddleware(adminAuth(authService, userService, settingService))
+	return AdminAuthMiddleware(adminAuth(authService, userService, settingService, cfg))
 }
 
 // adminAuth 管理员认证中间件实现
 // 支持两种认证方式（通过不同的 header 区分）：
-// 1. Admin API Key: x-api-key: <admin-api-key>
+// 1. Admin API Key: x-api-key: <admin-api-key>（支持 IP 白名单）
 // 2. JWT Token: Authorization: Bearer <jwt-token> (需要管理员角色)
 func adminAuth(
 	authService *service.AuthService,
 	userService *service.UserService,
 	settingService *service.SettingService,
+	cfg *config.Config,
 ) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// WebSocket upgrade requests cannot set Authorization headers in browsers.
@@ -47,7 +51,7 @@ func adminAuth(
 		// 检查 x-api-key header（Admin API Key 认证）
 		apiKey := c.GetHeader("x-api-key")
 		if apiKey != "" {
-			if !validateAdminAPIKey(c, apiKey, settingService, userService) {
+			if !validateAdminAPIKey(c, apiKey, settingService, userService, cfg) {
 				return
 			}
 			c.Next()
@@ -115,12 +119,13 @@ func extractJWTFromWebSocketSubprotocol(c *gin.Context) string {
 	return ""
 }
 
-// validateAdminAPIKey 验证管理员 API Key
+// validateAdminAPIKey 验证管理员 API Key（含 IP 白名单检查）
 func validateAdminAPIKey(
 	c *gin.Context,
 	key string,
 	settingService *service.SettingService,
 	userService *service.UserService,
+	cfg *config.Config,
 ) bool {
 	storedKey, err := settingService.GetAdminAPIKey(c.Request.Context())
 	if err != nil {
@@ -132,6 +137,24 @@ func validateAdminAPIKey(
 	if storedKey == "" || subtle.ConstantTimeCompare([]byte(key), []byte(storedKey)) != 1 {
 		AbortWithError(c, 401, "INVALID_ADMIN_KEY", "Invalid admin API key")
 		return false
+	}
+
+	// 检查 IP 白名单（未配置时跳过）
+	whitelist, err := settingService.GetAdminAPIKeyCompiledIPWhitelist(c.Request.Context())
+	if err != nil {
+		AbortWithError(c, 500, "INTERNAL_ERROR", "Internal server error")
+		return false
+	}
+	if whitelist != nil && whitelist.PatternCount > 0 {
+		clientIP := ip.GetTrustedClientIP(c)
+		if cfg != nil && cfg.TrustForwardedIPForAPIKeyACL() {
+			clientIP = ip.GetClientIP(c)
+		}
+		allowed, _ := ip.CheckIPRestrictionWithCompiledRules(clientIP, whitelist, nil)
+		if !allowed {
+			AbortWithError(c, 403, "ACCESS_DENIED", "Access denied")
+			return false
+		}
 	}
 
 	// 获取真实的管理员用户

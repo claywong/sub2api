@@ -10,6 +10,7 @@ docs/claude-relay-service/
 *.dll
 *.so
 *.dylib
+bin/
 backend/bin/
 backend/server
 backend/sub2api
@@ -131,6 +132,9 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/anthropic-account-scheduling.md
+!docs/anthropic-scheduling-health-aware.md
+!docs/ops-error-webhook.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

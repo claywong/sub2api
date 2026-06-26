@@ -528,6 +528,8 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
+  // 受保护模型的共享日/周额度配置（私有扩展，用户侧只读）
+  protected_model_quota?: { daily_limit_usd?: number | null; weekly_limit_usd?: number | null } | null
   created_at: string
   updated_at: string
 }
@@ -555,6 +557,12 @@ export interface AdminGroup extends Group {
 
   // 分组排序
   sort_order: number
+
+  // 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+  allow_balance_fallback?: boolean
+
+  // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议；支持 * 通配符）
+  protected_models?: string[]
 }
 
 export interface ModelsListConfig {
@@ -650,6 +658,11 @@ export interface CreateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  allow_balance_fallback?: boolean
+  // 会话级模型锁定保护列表（私有扩展）
+  protected_models?: string[]
+  // 受保护模型的共享日/周额度配置（私有扩展）；null 表示清空
+  protected_model_quota?: { daily_limit_usd?: number | null; weekly_limit_usd?: number | null } | null
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -685,6 +698,11 @@ export interface UpdateGroupRequest {
   rpm_limit?: number
   require_oauth_only?: boolean
   require_privacy_set?: boolean
+  allow_balance_fallback?: boolean
+  // 会话级模型锁定保护列表（私有扩展）；空数组表示清空，未传表示不改动
+  protected_models?: string[]
+  // 受保护模型的共享日/周额度配置（私有扩展）；null 表示清空，未传表示不改动
+  protected_model_quota?: { daily_limit_usd?: number | null; weekly_limit_usd?: number | null } | null
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -918,6 +936,25 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
+  account_health?: AccountHealthRuntime | null // Anthropic 账号健康滑动窗口快照
+  health_verdict?: 'StickyOnly' | 'Excluded' | null // 健康三态降级状态，OK 时不返回
+  health_verdict_reason?: string | null // 触发原因，如 err_rate=45.0%(≥30%)
+}
+
+export interface AccountHealthRuntime {
+  available: boolean
+  window_seconds: number
+  req_count: number
+  err_count: number
+  err_rate: number
+  slow_count: number
+  slow_rate: number
+  ttft_avg_ms: number
+  otps_avg: number
+  tcp_conn_avg_ms: number // TCP 连接平均时间（ms）
+  ttfb_avg_ms: number     // TTFB（首字节时间）平均（ms）
+  verdict: 'OK' | 'StickyOnly' | 'Excluded' | 'Unknown'
+  verdict_reason: string
 }
 
 // Account Usage types
@@ -1594,6 +1631,9 @@ export interface UserSubscription {
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
+  // 受保护模型共享额度的实时用量（私有扩展；未配置或无用量时为 0/undefined）
+  protected_model_daily_usage_usd?: number
+  protected_model_weekly_usage_usd?: number
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null

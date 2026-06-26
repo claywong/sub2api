@@ -1098,6 +1098,43 @@ export async function deleteAdminApiKey(): Promise<{ message: string }> {
   return data;
 }
 
+/**
+ * Get admin API key IP whitelist
+ */
+export async function getAdminApiKeyIpWhitelist(): Promise<{
+  ip_whitelist: string[];
+}> {
+  const { data } = await apiClient.get<{ ip_whitelist: string[] }>(
+    "/admin/settings/admin-api-key/ip-whitelist",
+  );
+  return data;
+}
+
+/**
+ * Update admin API key IP whitelist
+ */
+export async function updateAdminApiKeyIpWhitelist(
+  ipWhitelist: string[],
+): Promise<{ ip_whitelist: string[] }> {
+  const { data } = await apiClient.put<{ ip_whitelist: string[] }>(
+    "/admin/settings/admin-api-key/ip-whitelist",
+    { ip_whitelist: ipWhitelist },
+  );
+  return data;
+}
+
+/**
+ * Clear admin API key IP whitelist (allow all IPs)
+ */
+export async function deleteAdminApiKeyIpWhitelist(): Promise<{
+  message: string;
+}> {
+  const { data } = await apiClient.delete<{ message: string }>(
+    "/admin/settings/admin-api-key/ip-whitelist",
+  );
+  return data;
+}
+
 // ==================== Overload Cooldown Settings ====================
 
 /**
@@ -1371,6 +1408,9 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
+  getAdminApiKeyIpWhitelist,
+  updateAdminApiKeyIpWhitelist,
+  deleteAdminApiKeyIpWhitelist,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,

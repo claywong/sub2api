@@ -186,7 +186,17 @@ func (h *UsageHandler) List(c *gin.Context) {
 		ExactTotal:  exactTotal,
 	}
 
-	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
+	withContent := false
+	if v := strings.TrimSpace(c.Query("with_content")); v != "" {
+		parsed, err := strconv.ParseBool(v)
+		if err != nil {
+			response.BadRequest(c, "Invalid with_content value, use true or false")
+			return
+		}
+		withContent = parsed
+	}
+
+	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters, withContent)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

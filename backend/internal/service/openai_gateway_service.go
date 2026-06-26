@@ -26,6 +26,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -253,6 +254,9 @@ type OpenAIForwardResult struct {
 	ImageOutputSizes   []string
 	ImageSizeSource    string
 	ImageSizeBreakdown map[string]int
+	// CapturedResponseBody 仅当 gateway.request_log.enabled=true 时填充，
+	// 供调用方写入 request_logs 表。
+	CapturedResponseBody string
 
 	wsReplayInput       []json.RawMessage
 	wsReplayInputExists bool
@@ -357,6 +361,7 @@ type OpenAIGatewayService struct {
 	channelService        *ChannelService
 	balanceNotifyService  *BalanceNotifyService
 	settingService        *SettingService
+	requestLogRepo        RequestLogRepository
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 
 	openaiWSPoolOnce              sync.Once
@@ -403,6 +408,7 @@ func NewOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
+	requestLogRepo RequestLogRepository,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
@@ -436,6 +442,7 @@ func NewOpenAIGatewayService(
 		channelService:        channelService,
 		balanceNotifyService:  balanceNotifyService,
 		settingService:        settingService,
+		requestLogRepo:        requestLogRepo,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
@@ -449,6 +456,8 @@ func NewOpenAIGatewayService(
 	svc.logOpenAIWSModeBootstrap()
 	return svc
 }
+
+// ResolveRequestID / WriteRequestLog 已搬到 openai_gateway_service_requestlog.go（私有扩展）。
 
 // ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
 func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
@@ -3446,6 +3455,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	imageCount := 0
+	var capturedBody string
 	var imageOutputSizes []string
 	if reqStream {
 		result, err := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
@@ -3456,6 +3466,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		firstTokenMs = result.firstTokenMs
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
+		capturedBody = result.capturedBody
 		imageOutputSizes = result.imageOutputSizes
 	} else {
 		result, err := s.handleNonStreamingResponsePassthrough(ctx, resp, c, reqModel, upstreamPassthroughModel)
@@ -3465,6 +3476,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		usage = result.usage
 		responseID = strings.TrimSpace(result.responseID)
 		imageCount = result.imageCount
+		capturedBody = result.capturedBody
 		imageOutputSizes = result.imageOutputSizes
 	}
 	s.bindHTTPResponseAccount(ctx, c, account, responseID)
@@ -3478,17 +3490,18 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
-		RequestID:       resp.Header.Get("x-request-id"),
-		ResponseID:      responseID,
-		Usage:           *usage,
-		Model:           reqModel,
-		UpstreamModel:   upstreamPassthroughModel,
-		ServiceTier:     serviceTier,
-		ReasoningEffort: reasoningEffort,
-		Stream:          reqStream,
-		OpenAIWSMode:    false,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:            resp.Header.Get("x-request-id"),
+		ResponseID:          responseID,
+		Usage:               *usage,
+		Model:               reqModel,
+		UpstreamModel:       upstreamPassthroughModel,
+		ServiceTier:         serviceTier,
+		ReasoningEffort:     reasoningEffort,
+		Stream:              reqStream,
+		OpenAIWSMode:        false,
+		Duration:            time.Since(startTime),
+		FirstTokenMs:        firstTokenMs,
+		CapturedResponseBody: capturedBody,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -3811,6 +3824,7 @@ type openaiStreamingResultPassthrough struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	capturedBody     string
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -3819,6 +3833,7 @@ type openaiNonStreamingResultPassthrough struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	capturedBody     string
 }
 
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
@@ -3990,19 +4005,33 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	scanner.Buffer(scanBuf[:0], maxLineSize)
 	defer putSSEScannerBuf64K(scanBuf)
 
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	var respCollector *requestlog.ResponsesCollector
+	if captureEnabled {
+		respCollector = requestlog.NewResponsesCollector()
+	}
+
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
+		captured := ""
+		if respCollector != nil {
+			captured = respCollector.Finalize()
+		}
 		return &openaiStreamingResultPassthrough{
 			usage:            usage,
 			firstTokenMs:     firstTokenMs,
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			capturedBody:     captured,
 		}
 	}
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		if respCollector != nil {
+			respCollector.OnLine(line)
+		}
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -4180,12 +4209,18 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
 	}
 	c.Data(resp.StatusCode, contentType, body)
+
+	captured := ""
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		captured = requestlog.SimplifyResponsesNonStream(body)
+	}
 	return &openaiNonStreamingResultPassthrough{
 		OpenAIUsage:      usage,
 		usage:            usage,
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		capturedBody:     captured,
 	}, nil
 }
 

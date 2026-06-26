@@ -164,6 +164,23 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+		field.Bool("allow_balance_fallback").
+			Default(false).
+			Comment("订阅额度耗尽后是否允许自动回退到余额计费模式"),
+
+		// 会话级模型锁定保护列表（私有扩展，added by migration 904）
+		field.JSON("protected_models", []string{}).
+			Default([]string{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("会话级模型锁定保护列表，支持 * 通配符；空表示不启用"),
+
+		// 受保护模型的独立额度配置（私有扩展，added by migration 905）
+		field.JSON("protected_model_quotas", map[string]any{}).
+			Default(map[string]any{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}"),
 	}
 }
 

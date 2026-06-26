@@ -18,11 +18,13 @@ type ScheduledTestRunnerService struct {
 	scheduledSvc   *ScheduledTestService
 	accountTestSvc *AccountTestService
 	rateLimitSvc   *RateLimitService
+	healthCache    *AccountTestHealthCache
 	cfg            *config.Config
 
-	cron      *cron.Cron
-	startOnce sync.Once
-	stopOnce  sync.Once
+	cron        *cron.Cron
+	startOnce   sync.Once
+	stopOnce    sync.Once
+	retryStates *retryStateMap
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -32,13 +34,16 @@ func NewScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	healthCache *AccountTestHealthCache,
 ) *ScheduledTestRunnerService {
 	return &ScheduledTestRunnerService{
 		planRepo:       planRepo,
 		scheduledSvc:   scheduledSvc,
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
+		healthCache:    healthCache,
 		cfg:            cfg,
+		retryStates:    newRetryStateMap(),
 	}
 }
 
@@ -120,6 +125,16 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 }
 
 func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *ScheduledTestPlan) {
+	if s.shouldSkipUnschedulableAccount(ctx, plan, "ScheduledTestRunner") {
+		// 账号不可调度时仍需推进 next_run_at，否则每分钟都会重复捞到此 plan。
+		if plan.NextRunAt != nil {
+			if nextRun, err := computeNextRun(plan.CronExpression, *plan.NextRunAt); err == nil {
+				_ = s.planRepo.UpdateAfterRun(ctx, plan.ID, *plan.NextRunAt, nextRun)
+			}
+		}
+		return
+	}
+
 	result, err := s.accountTestSvc.RunTestBackground(ctx, plan.AccountID, plan.ModelID)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RunTestBackground error: %v", plan.ID, err)
@@ -130,12 +145,30 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
 	}
 
+	if result.Status != "success" {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[WARN] [ScheduledTestRunner] plan=%d account=%d account_name=%s test failed: %s",
+			plan.ID, plan.AccountID, plan.AccountName, result.ErrorMessage)
+	}
+
+	// 更新健康缓存
+	if s.healthCache != nil {
+		s.healthCache.UpdateFromTest(plan.AccountID, result)
+		s.launchRetryIfNeeded(plan, result)
+	}
+
 	// Auto-recover account if test succeeded and auto_recover is enabled.
 	if result.Status == "success" && plan.AutoRecover {
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
 	}
 
-	nextRun, err := computeNextRun(plan.CronExpression, time.Now())
+	// 以 plan.NextRunAt（计划时间）为基准计算下次，而非 time.Now()，
+	// 避免测试耗时导致调度时间持续漂移。
+	schedBase := time.Now()
+	if plan.NextRunAt != nil {
+		schedBase = *plan.NextRunAt
+	}
+	nextRun, err := computeNextRun(plan.CronExpression, schedBase)
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d computeNextRun error: %v", plan.ID, err)
 		return
@@ -144,6 +177,31 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) shouldSkipUnschedulableAccount(ctx context.Context, plan *ScheduledTestPlan, source string) bool {
+	if s == nil || plan == nil || s.accountTestSvc == nil || s.accountTestSvc.accountRepo == nil {
+		return false
+	}
+	account, err := s.accountTestSvc.accountRepo.GetByID(ctx, plan.AccountID)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[%s] plan=%d account=%d schedulable check failed: %v",
+			source, plan.ID, plan.AccountID, err)
+		return false
+	}
+	if account == nil {
+		return false
+	}
+	// 只跳过手动关闭调度的账号（Schedulable = false）
+	// 不跳过 error/限流/过载等状态，让它们能通过定时测试 + auto-recover 恢复
+	if !account.Schedulable {
+		logger.LegacyPrintf("service.scheduled_test_runner",
+			"[%s] plan=%d account=%d account_name=%s skipped: Schedulable=false (manually disabled)",
+			source, plan.ID, plan.AccountID, plan.AccountName)
+		return true
+	}
+	return false
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.
@@ -156,6 +214,10 @@ func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, acco
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover failed: %v", planID, err)
 		return
+	}
+	if s.healthCache != nil {
+		s.healthCache.Reset(accountID)
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover: account=%d cleared health verdict state", planID, accountID)
 	}
 	if recovery == nil {
 		return

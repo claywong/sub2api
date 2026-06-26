@@ -365,6 +365,103 @@ func TestHandleFailoverError_SameAccountRetry(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// HandleFailoverError — sameAccountRetryLimit 参数语义
+// 验证生产路径传入 account.GetPoolModeRetryCount() 后，重试上限按账号配置生效。
+// ---------------------------------------------------------------------------
+
+func TestHandleFailoverError_RetryLimitParameter(t *testing.T) {
+	t.Run("limit=0时不进行同账号重试_直接切换并触发TempUnschedule", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(502, true, false)
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, 0)
+		require.Equal(t, FailoverContinue, action)
+		require.Equal(t, 1, fs.SwitchCount)
+		require.Contains(t, fs.FailedAccountIDs, int64(100))
+		require.False(t, fs.IsSameAccountRetry)
+		require.Len(t, mock.calls, 1)
+	})
+
+	t.Run("limit=2时仅允许2次同账号重试", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(502, true, false)
+
+		for i := 1; i <= 2; i++ {
+			action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, 2)
+			require.Equal(t, FailoverContinue, action)
+			require.True(t, fs.IsSameAccountRetry, "第 %d 次应为同账号重试", i)
+			require.Equal(t, i, fs.SameAccountRetryCount[100])
+			require.Empty(t, mock.calls)
+		}
+
+		// 第 3 次：耗尽 → 切换 + TempUnschedule
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, 2)
+		require.Equal(t, FailoverContinue, action)
+		require.False(t, fs.IsSameAccountRetry)
+		require.Equal(t, 1, fs.SwitchCount)
+		require.Len(t, mock.calls, 1)
+	})
+
+	t.Run("不同账号可以使用不同的limit", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(5, false)
+		err := newTestFailoverErr(502, true, false)
+
+		// 账号 100 limit=1：1 次重试，第 2 次切换
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, 1)
+		require.Equal(t, FailoverContinue, action)
+		require.True(t, fs.IsSameAccountRetry)
+
+		action = fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, 1)
+		require.Equal(t, FailoverContinue, action)
+		require.False(t, fs.IsSameAccountRetry)
+		require.Equal(t, 1, fs.SwitchCount)
+
+		// 账号 200 limit=3：可重试 3 次
+		for i := 1; i <= 3; i++ {
+			action = fs.HandleFailoverError(context.Background(), mock, 200, "openai", err, 3)
+			require.Equal(t, FailoverContinue, action)
+			require.True(t, fs.IsSameAccountRetry, "账号 200 第 %d 次应为同账号重试", i)
+		}
+	})
+
+	t.Run("负数limit回退到defaultSameAccountRetries", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(502, true, false)
+
+		for i := 1; i <= defaultSameAccountRetries; i++ {
+			action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, -1)
+			require.Equal(t, FailoverContinue, action)
+			require.True(t, fs.IsSameAccountRetry, "第 %d 次应为同账号重试", i)
+		}
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err, -1)
+		require.Equal(t, FailoverContinue, action)
+		require.False(t, fs.IsSameAccountRetry)
+		require.Len(t, mock.calls, 1)
+	})
+
+	t.Run("不传limit时使用maxSameAccountRetries默认值", func(t *testing.T) {
+		// 兼容性保证：旧调用方未升级时，行为与历史一致。
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(502, true, false)
+
+		for i := 1; i <= maxSameAccountRetries; i++ {
+			action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+			require.Equal(t, FailoverContinue, action)
+			require.True(t, fs.IsSameAccountRetry)
+		}
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		require.Equal(t, FailoverContinue, action)
+		require.False(t, fs.IsSameAccountRetry)
+		require.Len(t, mock.calls, 1)
+	})
+}
+
+// ---------------------------------------------------------------------------
 // HandleFailoverError — TempUnschedule 调用验证
 // ---------------------------------------------------------------------------
 
@@ -650,6 +747,95 @@ func TestHandleFailoverError_EdgeCases(t *testing.T) {
 
 		require.Equal(t, FailoverContinue, action)
 		require.Less(t, elapsed, 200*time.Millisecond, "空平台不应触发 Antigravity 延迟")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// HandleFailoverError — IsSameAccountRetry 标记
+// ---------------------------------------------------------------------------
+
+func TestHandleFailoverError_IsSameAccountRetry(t *testing.T) {
+	t.Run("同账号重试中标记为true", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(400, true, false)
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+
+		require.Equal(t, FailoverContinue, action)
+		require.True(t, fs.IsSameAccountRetry, "同账号重试应置 IsSameAccountRetry=true")
+	})
+
+	t.Run("非重试错误切换账号时标记为false", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(500, false, false)
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+
+		require.Equal(t, FailoverContinue, action)
+		require.False(t, fs.IsSameAccountRetry, "账号切换应置 IsSameAccountRetry=false")
+	})
+
+	t.Run("同账号重试耗尽切换账号时标记复位为false", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(400, true, false)
+
+		// 耗尽重试次数
+		for i := 0; i < maxSameAccountRetries; i++ {
+			fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+			require.True(t, fs.IsSameAccountRetry)
+		}
+		// 第 maxSameAccountRetries+1 次：重试耗尽，切换账号
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+		require.Equal(t, FailoverContinue, action)
+		require.False(t, fs.IsSameAccountRetry, "重试耗尽切换账号后应复位为 false")
+	})
+
+	t.Run("FailoverExhausted时标记为false", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(0, false)
+		err := newTestFailoverErr(500, false, false)
+
+		action := fs.HandleFailoverError(context.Background(), mock, 100, "openai", err)
+
+		require.Equal(t, FailoverExhausted, action)
+		require.False(t, fs.IsSameAccountRetry)
+	})
+
+	t.Run("context取消时标记为true（已递增重试计数）", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(3, false)
+		err := newTestFailoverErr(400, true, false)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		action := fs.HandleFailoverError(ctx, mock, 100, "openai", err)
+
+		require.Equal(t, FailoverCanceled, action)
+		// FailoverCanceled 在 sleep 阶段触发，此前 IsSameAccountRetry 已被设为 true
+		require.True(t, fs.IsSameAccountRetry)
+	})
+
+	t.Run("标记随每次调用正确切换", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(5, false)
+		retryErr := newTestFailoverErr(400, true, false)
+		switchErr := newTestFailoverErr(500, false, false)
+
+		// 同账号重试 → true
+		fs.HandleFailoverError(context.Background(), mock, 100, "openai", retryErr)
+		require.True(t, fs.IsSameAccountRetry)
+
+		// 不可重试错误切换 → false
+		fs.HandleFailoverError(context.Background(), mock, 200, "openai", switchErr)
+		require.False(t, fs.IsSameAccountRetry)
+
+		// 再次同账号重试 → true
+		fs.HandleFailoverError(context.Background(), mock, 300, "openai", retryErr)
+		require.True(t, fs.IsSameAccountRetry)
 	})
 }
 

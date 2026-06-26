@@ -194,6 +194,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldModelsListConfig,
 				group.FieldRpmLimit,
+				group.FieldProtectedModels,
+				group.FieldProtectedModelQuotas,
+				group.FieldAllowBalanceFallback,
 			)
 		}).
 		Only(ctx)
@@ -814,6 +817,9 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelsListConfig:                g.ModelsListConfig,
 		RPMLimit:                        g.RpmLimit,
+		AllowBalanceFallback:            g.AllowBalanceFallback,
+		ProtectedModels:                 g.ProtectedModels,
+		ProtectedModelQuota:             fromRawQuota(g.ProtectedModelQuotas),
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

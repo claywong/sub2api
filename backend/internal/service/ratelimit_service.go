@@ -26,6 +26,7 @@ type RateLimitService struct {
 	geminiQuotaService    *GeminiQuotaService
 	tempUnschedCache      TempUnschedCache
 	timeoutCounterCache   TimeoutCounterCache
+	errorCounterCache     ErrorCounterCache
 	openAI403CounterCache OpenAI403CounterCache
 	settingService        *SettingService
 	tokenCacheInvalidator TokenCacheInvalidator
@@ -97,6 +98,8 @@ func (s *RateLimitService) SetTimeoutCounterCache(cache TimeoutCounterCache) {
 	s.timeoutCounterCache = cache
 }
 
+// SetErrorCounterCache 已搬到 ratelimit_service_upstream_error.go（私有扩展）。
+
 // SetOpenAI403CounterCache 设置 OpenAI 403 连续失败计数器（可选依赖）
 func (s *RateLimitService) SetOpenAI403CounterCache(cache OpenAI403CounterCache) {
 	s.openAI403CounterCache = cache
@@ -165,7 +168,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
+	// 但临时不可调度规则仍然生效（401除外，因为它有特殊的OAuth token刷新逻辑）
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		if statusCode != 401 && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+		}
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 	}
@@ -2156,3 +2163,7 @@ func (s *RateLimitService) triggerStreamTimeoutError(ctx context.Context, accoun
 	slog.Warn("stream_timeout_account_error", "account_id", account.ID, "model", model)
 	return true
 }
+
+// HandleUpstreamErrorThreshold / triggerUpstreamErrorTempUnsched /
+// triggerUpstreamErrorAccountError / SetTempUnschedulableForScheduledTest
+// 已搬到 ratelimit_service_upstream_error.go（私有扩展）。

@@ -15,8 +15,8 @@ import (
 )
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
-func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
-	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, cfg))
+func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, billingCacheService *service.BillingCacheService, cfg *config.Config) APIKeyAuthMiddleware {
+	return APIKeyAuthMiddleware(apiKeyAuthWithSubscription(apiKeyService, subscriptionService, billingCacheService, cfg))
 }
 
 // apiKeyAuthWithSubscription API Key认证中间件（支持订阅验证）
@@ -26,7 +26,7 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 //   - 计费执行（Billing Enforcement）：过期/配额/订阅/余额检查 —— skipBilling 时整块跳过
 //
 // /v1/usage 端点只需鉴权，不需要计费执行（允许过期/配额耗尽的 Key 查询自身用量）。
-func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
+func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, billingCacheService *service.BillingCacheService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
 
@@ -193,21 +193,47 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// 订阅模式：验证订阅限额
 			if subscription != nil {
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
-				if validateErr != nil {
-					code := "SUBSCRIPTION_INVALID"
-					status := 403
-					if errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
-						errors.Is(validateErr, service.ErrMonthlyLimitExceeded) {
-						code = "USAGE_LIMIT_EXCEEDED"
-						status = 429
+				// 私有扩展：DB 内存快照未超限时再问一次 Redis 缓存，与 handler 层 CheckBillingEligibility 数据源对齐，
+				// 避免出现"中间件放行 → handler 才发现超限 → 错过余额兜底"的窗口期。
+				// 仅把"额度超限"类错误注入 fallback 流程；服务不可用 / 熔断打开等瞬时错误交由 handler 层 CheckBillingEligibility
+				// 走它原有的 503 语义，避免被误报成 403 SUBSCRIPTION_INVALID。
+				// needsMaintenance=true 表示窗口刚过期、内存已清零但 Redis 缓存尚未被 DoWindowMaintenance 刷新，
+				// 此时 Redis 里的旧用量仍是超限值，跳过二次检查防止误判为超限触发余额兜底。
+				if validateErr == nil && !needsMaintenance && billingCacheService != nil {
+					if cacheErr := billingCacheService.CheckSubscriptionUsageLimit(c.Request.Context(), apiKey.User.ID, apiKey.Group, subscription); cacheErr != nil {
+						if errors.Is(cacheErr, service.ErrDailyLimitExceeded) ||
+							errors.Is(cacheErr, service.ErrWeeklyLimitExceeded) ||
+							errors.Is(cacheErr, service.ErrMonthlyLimitExceeded) {
+							validateErr = cacheErr
+						}
 					}
-					AbortWithError(c, status, code, validateErr.Error())
-					return
+				}
+				if validateErr != nil {
+					// 额度超限且分组开启了余额兜底：降级到余额模式
+					isLimitExceeded := errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+						errors.Is(validateErr, service.ErrMonthlyLimitExceeded)
+					if isLimitExceeded && apiKey.Group != nil && apiKey.Group.AllowBalanceFallback {
+						if apiKey.User.Balance <= 0 {
+							AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "订阅额度已用完，且账户余额不足")
+							return
+						}
+						// 清空 subscription，后续走余额计费路径
+						subscription = nil
+					} else {
+						code := "SUBSCRIPTION_INVALID"
+						status := 403
+						if isLimitExceeded {
+							code = "USAGE_LIMIT_EXCEEDED"
+							status = 429
+						}
+						AbortWithError(c, status, code, validateErr.Error())
+						return
+					}
 				}
 
-				// 窗口维护异步化（不阻塞请求）
-				if needsMaintenance {
+				// 窗口维护异步化（不阻塞请求）；仅当仍在订阅模式时执行
+				if subscription != nil && needsMaintenance {
 					maintenanceCopy := *subscription
 					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
 				}

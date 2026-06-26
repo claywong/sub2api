@@ -2320,7 +2320,13 @@ export default {
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
-        noLimit: '无限制'
+        noLimit: '无限制',
+        balanceFallback: {
+          title: '订阅超限后余额兜底',
+          description: '开启后，订阅额度用完时自动扣除账户余额，而不是直接拒绝请求',
+          enabled: '已开启余额兜底',
+          disabled: '未开启余额兜底'
+        }
       },
       imagePricing: {
         title: '图片生成计费',
@@ -2347,6 +2353,19 @@ export default {
         fallbackGroup: '降级分组',
         fallbackHint: '非 Claude Code 请求将使用此分组，留空则直接拒绝',
         noFallback: '不降级（直接拒绝）'
+      },
+      sessionModelLock: {
+        title: '会话级模型锁定',
+        tooltip:
+          '把"昂贵模型"加入保护列表后，同一个 Claude Code 会话（按 session_id）如果首次没使用该模型，后续就不允许中途切换到该模型，可防止"先用便宜模型 build 上下文、再升级到贵模型"的滥用。仅对 Anthropic /v1/messages 生效，TTL 24 小时。',
+        listLabel: '保护模型列表',
+        listPlaceholder: '输入模型名后按回车，例如 claude-opus-4.7 或 claude-opus-*',
+        listHint: '支持末尾通配符 *；留空则不启用本功能。',
+        quotaTitle: '共享额度',
+        quotaHint: '所有受保护模型共用同一日/周使用上限（USD），超出后返回 429。关闭则不限制。',
+        quotaDailyLabel: '日限额 (USD)',
+        quotaWeeklyLabel: '周限额 (USD)',
+        quotaPlaceholder: '不限制'
       },
       openaiMessages: {
         title: 'OpenAI Messages 调度配置',
@@ -3181,6 +3200,7 @@ export default {
       refreshCookie: '刷新 Cookie',
       testAccount: '测试账号',
       searchAccounts: '搜索账号...',
+      allModels: '全部模型',
       notes: '备注',
       notesPlaceholder: '请输入备注',
       notesHint: '备注可选',
@@ -3354,7 +3374,10 @@ export default {
         creditsExhausted: '积分已用尽',
         creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
         overloadedUntil: '负载过重，重置时间：{time}',
-        viewTempUnschedDetails: '查看临时不可调度详情'
+        viewTempUnschedDetails: '查看临时不可调度详情',
+        healthStickyOnly: '仅粘性会话',
+        healthExcluded: '已排除调度',
+        healthVerdictReason: '触发原因：{reason}'
       },
       tempUnschedulable: {
         title: '临时不可调度',
@@ -3677,6 +3700,12 @@ export default {
         webSearchDefault: '默认',
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
+        passthroughMode: '透传模式',
+        passthroughModeDesc:
+          'Anthropic `messages` / `count_tokens` 的请求侧协议模式。`compat` 保持现有兼容链路，`auth_only` 仅替换认证，`full` 尽量保留原始请求头与请求体并只注入上游认证。',
+        passthroughModeCompat: 'compat（兼容模式）',
+        passthroughModeAuthOnly: 'auth_only（仅替换认证）',
+        passthroughModeFull: 'full（完整透传）'
       },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
@@ -4921,6 +4950,8 @@ export default {
       avgTps: '平均 TPS',
       avgLatency: '平均请求时长',
       avgTtft: '平均首 Token 延迟',
+      avgTcpConn: '平均 TCP 连接时间',
+      avgTtfb: '平均首字节时间',
       exceptions: '异常数',
       requestErrors: '请求错误',
       errorCount: '错误数',
@@ -6432,7 +6463,21 @@ export default {
         keyCopied: '密钥已复制到剪贴板',
         keyWarning: '此密钥仅显示一次，请立即复制保存。',
         securityWarning: '警告：此密钥拥有完整的管理员权限，请妥善保管。',
-        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>'
+        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>',
+        ipWhitelist: {
+          title: 'IP 白名单',
+          description: '仅允许指定 IP 或 CIDR 段访问，留空表示不限制',
+          placeholder: '192.168.1.100\n10.0.0.0/8',
+          hint: '每行一个 IP 地址或 CIDR 网段。留空时任意 IP 均可访问。',
+          save: '保存白名单',
+          saving: '保存中...',
+          clear: '清空（不限制）',
+          saved: 'IP 白名单已保存',
+          cleared: 'IP 白名单已清空',
+          invalidFormat: 'IP 格式有误，请检查后重试',
+          currentList: '当前白名单',
+          empty: '（不限制，任意 IP 可访问）'
+        }
       },
       soraS3: {
         title: 'Sora 存储配置',
@@ -6561,7 +6606,7 @@ export default {
         tempUnschedMinutes: '暂停时长（分钟）',
         tempUnschedMinutesHint: '临时不可调度的持续时间（1-60分钟）',
         thresholdCount: '触发阈值（次数）',
-        thresholdCountHint: '累计超时多少次后触发处理（1-10次）',
+        thresholdCountHint: '累计超时多少次后触发处理（1-60次）',
         thresholdWindowMinutes: '阈值窗口（分钟）',
         thresholdWindowMinutesHint: '超时计数的时间窗口（1-60分钟）',
         saved: '流超时设置保存成功',
@@ -6981,7 +7026,8 @@ export default {
     resetIn: '{time} 后重置',
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
-    usageOf: '已用 {used} / {limit}'
+    usageOf: '已用 {used} / {limit}',
+    protectedModels: '受保护模型额度'
   },
 
   // Onboarding Tour

@@ -56,6 +56,17 @@ type Group struct {
 	// 分组排序
 	SortOrder int
 
+	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+	AllowBalanceFallback bool
+
+	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+	// 支持 * 通配符，例如 "claude-opus-*"；空列表表示不启用
+	ProtectedModels []string
+
+	// 受保护模型的共享日/周额度配置（私有扩展）
+	// 所有 ProtectedModels 共享同一个 daily/weekly 额度池；nil 表示不启用
+	ProtectedModelQuota *ProtectedModelQuota
+
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	RequireOAuthOnly            bool // 仅允许非 apikey 类型账号关联（OpenAI/Antigravity/Anthropic/Gemini）
@@ -150,6 +161,37 @@ func (g *Group) GetRoutingAccountIDs(requestedModel string) []int64 {
 	}
 
 	return nil
+}
+
+// ProtectedModelQuota 单个受保护模型的额度配置（私有扩展）。
+// nil 指针表示不限制该时间窗口的用量。
+type ProtectedModelQuota struct {
+	DailyLimitUSD  *float64 `json:"daily_limit_usd,omitempty"`
+	WeeklyLimitUSD *float64 `json:"weekly_limit_usd,omitempty"`
+}
+
+// HasDailyLimit 报告是否配置了日限额。
+func (q ProtectedModelQuota) HasDailyLimit() bool {
+	return q.DailyLimitUSD != nil && *q.DailyLimitUSD > 0
+}
+
+// HasWeeklyLimit 报告是否配置了周限额。
+func (q ProtectedModelQuota) HasWeeklyLimit() bool {
+	return q.WeeklyLimitUSD != nil && *q.WeeklyLimitUSD > 0
+}
+
+// IsProtectedModel 判断 model 是否匹配 g.ProtectedModels 中任一模式。
+// 用于把"是否走共享额度池"的判断收敛到 Group 上。
+func (g *Group) IsProtectedModel(model string) bool {
+	if g == nil || len(g.ProtectedModels) == 0 || model == "" {
+		return false
+	}
+	for _, p := range g.ProtectedModels {
+		if matchModelPattern(p, model) {
+			return true
+		}
+	}
+	return false
 }
 
 // matchModelPattern 检查模型是否匹配模式

@@ -1,0 +1,133 @@
+{
+  "project": "sub2api",
+  "branchName": "ralph/anthropic-scheduling-health-aware",
+  "description": "Anthropic 调度健康感知 - 三层健康感知机制：退火测试状态机（Layer A）、TempUnschedulable 硬隔离（Layer B）、TTFT + 慢请求率调度软排序（Layer C），供应商挂掉后约 50 秒内完成感知并隔离",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "实现 AccountTestHealthCache 内存缓存基础设施",
+      "description": "作为开发者，我需要一个进程内内存缓存来存储账号的健康状态（连续失败次数、退火参数、TTFT EWMA、慢请求统计），以便调度层可以感知供应商健康状况。",
+      "acceptanceCriteria": [
+        "新增文件 backend/internal/service/account_test_health_cache.go",
+        "AccountTestHealth 结构体包含字段：ConsecFails int、RetryInterval time.Duration、NextRetryAt time.Time、TTFTEwma float64（初始 math.NaN()）、SlowReqCount int、TotalReqCount int、WindowStart time.Time、TempUnschedDuration time.Duration、LastStatus string、LastTestedAt time.Time",
+        "AccountTestHealthCache 使用 sync.Map 存储，key 为 accountID int64",
+        "实现 Get(accountID int64) *AccountTestHealth 和 GetOrCreate(accountID int64) *AccountTestHealth 方法",
+        "实现 UpdateFromTest(accountID int64, result *ScheduledTestResult) 方法：成功时 ConsecFails=0 / RetryInterval 重置 / TTFTEwma 更新；失败时 ConsecFails++",
+        "实现 UpdateTTFT(accountID int64, ttftMs int) 方法：alpha=0.3 EWMA 更新，NaN 时直接赋值",
+        "实现 UpdateDuration(accountID int64, durationMs int) 方法：滑动窗口（10min）统计慢请求（阈值 60000ms）",
+        "实现 LatencyBucket(accountID int64) int 方法：NaN→1，<1000ms→0，1000-2999ms→1，≥3000ms→2",
+        "实现 SlowBucket(accountID int64) int 方法：样本<5或无数据→0，慢率<20%→0，20%-50%→1，≥50%→2",
+        "实现 PassesHardFilter(accountID int64) bool 方法：ConsecFails >= 2 返回 false",
+        "包级常量：HardFilterThreshold=2，TempUnschedThreshold=3，TempUnschedInitDuration=10min，TempUnschedMaxDuration=60min，RetryIntervalStep=30s，RetryIntervalMax=5min，TTFTEwmaAlpha=0.3，LatencyBucketFast=1000，LatencyBucketSlow=3000，SlowThreshold=60000，SlowWindowDuration=10min，SlowMinSampleCount=5，SlowBucketMid=0.20，SlowBucketHigh=0.50",
+        "go build ./... 通过，go vet 通过"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "ScheduledTestRunnerService 集成退火补测（Layer A）",
+      "description": "作为系统，我需要在定时测试失败后立即触发补测（不等待下一个 cron 周期），并在连续失败达到阈值时触发 TempUnschedulable，以便快速隔离不健康供应商。",
+      "acceptanceCriteria": [
+        "ScheduledTestRunnerService 结构体新增 healthCache *AccountTestHealthCache 字段",
+        "NewScheduledTestRunnerService 构造函数新增 healthCache *AccountTestHealthCache 参数",
+        "runOnePlan 执行测试后调用 s.healthCache.UpdateFromTest(plan.AccountID, result)",
+        "UpdateFromTest 失败且 ConsecFails==1 时：立即启动 goroutine 进行补测（RetryInterval=0）",
+        "UpdateFromTest 失败且 ConsecFails>=2 且 ConsecFails<TempUnschedThreshold 时：启动 goroutine 按当前 RetryInterval 延迟后补测，每次失败后 RetryInterval 翻倍，上限 5min",
+        "UpdateFromTest 失败且 ConsecFails==TempUnschedThreshold(=3) 时：调用 s.rateLimitSvc 或 accountRepo 的 SetTempUnschedulable(ctx, accountID, until, \"scheduled_test_consecutive_failures\")，until = now + TempUnschedDuration（首次 10min，每次翻倍，上限 60min）",
+        "补测 goroutine 使用独立 10s context：context.WithTimeout(context.Background(), 10*time.Second)",
+        "补测不修改 nextRun，不影响原 cron 节奏",
+        "ProvideScheduledTestRunnerService 在 service/wire.go 中更新签名，注入 *AccountTestHealthCache",
+        "go build ./... 通过，go vet 通过"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "依赖 US-001"
+    },
+    {
+      "id": "US-003",
+      "title": "Layer C 延时分桶加入 Layer 2 排序（GatewayService 注入缓存）",
+      "description": "作为系统，我需要在 Layer 2 选号时增加 LatencyBucket 和 SlowBucket 两个排序维度，使响应更快、超时率更低的账号被优先选中。",
+      "acceptanceCriteria": [
+        "GatewayService 结构体新增 healthCache *AccountTestHealthCache 字段",
+        "NewGatewayService 构造函数新增 healthCache *AccountTestHealthCache 参数",
+        "新增 filterByMinLatencyBucket(accounts []accountWithLoad, cache *AccountTestHealthCache) []accountWithLoad 函数：过滤出 LatencyBucket 最小的账号集合",
+        "新增 filterByMinSlowBucket(accounts []accountWithLoad, cache *AccountTestHealthCache) []accountWithLoad 函数：过滤出 SlowBucket 最小的账号集合",
+        "gateway_service.go Layer 2 排序流水线（candidates 变量处）更新为：filterByMinPriority → filterByMinLoadRate → filterByMinLatencyBucket（Anthropic only）→ filterByMinSlowBucket（Anthropic only）→ selectByLRU",
+        "无健康数据时（NaN/样本不足）账号不被惩罚，bucket 值与其他账号一致（0 或 1）",
+        "过滤后候选为空时不报错，继续兜底",
+        "ProvideGatewayService（或 NewGatewayService）在 service/wire.go 中更新签名",
+        "go build ./... 通过，go vet 通过"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "依赖 US-001"
+    },
+    {
+      "id": "US-004",
+      "title": "真实请求 TTFT 和 DurationMs 上报到健康缓存（Layer C 真实信号）",
+      "description": "作为系统，我需要在 Anthropic 真实请求成功后，将 FirstTokenMs 和 DurationMs 上报到 AccountTestHealthCache，使无定时测试计划的账号也能参与延时排序。",
+      "acceptanceCriteria": [
+        "GatewayService 新增方法 ReportAnthropicAccountTTFT(accountID int64, firstTokenMs *int)：当 firstTokenMs != nil 时调用 healthCache.UpdateTTFT(accountID, *firstTokenMs)",
+        "GatewayService 新增方法 ReportAnthropicAccountDuration(accountID int64, durationMs int)：调用 healthCache.UpdateDuration(accountID, durationMs)",
+        "gateway_handler.go 在 RPM 递增之后、submitUsageRecordTask 之前，Anthropic 平台请求成功时调用 ReportAnthropicAccountTTFT（仅 result.FirstTokenMs != nil 时）",
+        "gateway_handler.go 在同一位置调用 ReportAnthropicAccountDuration（仅 result.Duration > 0 时）",
+        "非 Anthropic 平台不触发上报",
+        "错误请求（testErr != nil 或 status=failed）不调用上报",
+        "go build ./... 通过，go vet 通过"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "依赖 US-003（GatewayService 已注入 healthCache）"
+    },
+    {
+      "id": "US-005",
+      "title": "wire_gen.go 更新：AccountTestHealthCache 单例注入",
+      "description": "作为开发者，我需要更新 cmd/server/wire_gen.go 以反映 AccountTestHealthCache 的注入，使两个服务共享同一个缓存实例。",
+      "acceptanceCriteria": [
+        "service/wire.go 新增 ProvideAccountTestHealthCache() *AccountTestHealthCache 构造函数（或直接 NewAccountTestHealthCache），加入 ProviderSet",
+        "cmd/server/wire_gen.go 中 AccountTestHealthCache 作为单例构造，同时注入 GatewayService 和 ScheduledTestRunnerService",
+        "go build ./... 通过，go vet 通过"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "依赖 US-002、US-003、US-004 完成后执行；若直接手动更新 wire_gen.go 亦可"
+    },
+    {
+      "id": "US-006",
+      "title": "新会话硬过滤：Layer 2 跳过连续失败账号（P3 可选）",
+      "description": "作为系统，我需要在触发 TempUnschedulable 之前，通过 Layer 2 硬过滤阻止新会话进入连续失败的账号，粘性用户不受影响。",
+      "acceptanceCriteria": [
+        "gateway_service.go Layer 2 构建 available 候选列表时，对 Anthropic 平台账号调用 s.healthCache.PassesHardFilter(acc.ID)，返回 false 的账号跳过",
+        "Layer 1.5 粘性会话路径不受此过滤影响",
+        "TempUnschedulable（Layer B）仍作为兜底正常工作",
+        "ConsecFails=0/1 的账号不受影响，正常参与调度",
+        "go build ./... 通过，go vet 通过"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "可选，建议 US-001~005 稳定后再开启；依赖 US-003（healthCache 已注入 GatewayService）"
+    },
+    {
+      "id": "US-007",
+      "title": "AccountTestHealthCache 单元测试",
+      "description": "作为开发者，我需要为新增的核心逻辑编写单元测试，确保退火状态机、EWMA 计算、分桶逻辑的正确性。",
+      "acceptanceCriteria": [
+        "新增测试文件 backend/internal/service/account_test_health_cache_test.go，头部声明 //go:build unit",
+        "测试 UpdateFromTest 成功路径：ConsecFails 归零，TTFTEwma 按 EWMA 公式更新",
+        "测试 UpdateFromTest 失败路径：ConsecFails 累加至 3，RetryInterval 翻倍，上限 5min",
+        "测试 UpdateTTFT EWMA 公式：首次直接赋值，后续 0.3*sample + 0.7*ewma",
+        "测试 LatencyBucket 分桶：NaN→1，<1000→0，1000-2999→1，≥3000→2",
+        "测试 UpdateDuration 窗口过期重置：超过 10min 后 SlowReqCount/TotalReqCount 清零",
+        "测试 SlowBucket 分桶：样本<5→0；慢率<20%→0；20%-49%→1；≥50%→2",
+        "测试 PassesHardFilter：ConsecFails=0/1→true，ConsecFails=2→false",
+        "测试 filterByMinLatencyBucket 和 filterByMinSlowBucket 过滤逻辑（风格参考 scheduler_layered_filter_test.go）",
+        "go test -tags unit ./internal/service/... 全部通过"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "可与各 US 同步编写；依赖 US-001 和 US-003"
+    }
+  ]
+}

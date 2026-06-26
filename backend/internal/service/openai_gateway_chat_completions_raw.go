@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -350,9 +351,18 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 	}
 
+	captureEnabled := s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled
+	var respCollector *requestlog.ChatCompletionsCollector
+	if captureEnabled {
+		respCollector = requestlog.NewChatCompletionsCollector()
+	}
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		refusalDetector.ObserveSSELine(line)
+		if respCollector != nil {
+			respCollector.OnLine(line)
+		}
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
 			if trimmedPayload != "[DONE]" {
@@ -409,17 +419,22 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 	}
 
+	captured := ""
+	if respCollector != nil {
+		captured = respCollector.Finalize()
+	}
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          true,
-		Duration:        time.Since(startTime),
-		FirstTokenMs:    firstTokenMs,
+		RequestID:            requestID,
+		Usage:                usage,
+		Model:                originalModel,
+		BillingModel:         billingModel,
+		UpstreamModel:        upstreamModel,
+		ReasoningEffort:      reasoningEffort,
+		ServiceTier:          serviceTier,
+		Stream:               true,
+		Duration:             time.Since(startTime),
+		FirstTokenMs:         firstTokenMs,
+		CapturedResponseBody: captured,
 	}, nil
 }
 
@@ -506,16 +521,22 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	c.Writer.WriteHeader(http.StatusOK)
 	_, _ = c.Writer.Write(respBody)
 
+	var capturedResp string
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		capturedResp = requestlog.SimplifyChatCompletionsNonStream(respBody)
+	}
+
 	return &OpenAIForwardResult{
-		RequestID:       requestID,
-		Usage:           usage,
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		ReasoningEffort: reasoningEffort,
-		ServiceTier:     serviceTier,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		RequestID:            requestID,
+		Usage:                usage,
+		Model:                originalModel,
+		BillingModel:         billingModel,
+		UpstreamModel:        upstreamModel,
+		ReasoningEffort:      reasoningEffort,
+		ServiceTier:          serviceTier,
+		Stream:               false,
+		Duration:             time.Since(startTime),
+		CapturedResponseBody: capturedResp,
 	}, nil
 }
 

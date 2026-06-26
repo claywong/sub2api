@@ -33,13 +33,32 @@ type SubscriptionProgressInfo struct {
 // SubscriptionHandler handles user subscription operations
 type SubscriptionHandler struct {
 	subscriptionService *service.SubscriptionService
+	modelQuotaCache     service.ModelQuotaCache // 私有扩展：用于读取受保护模型共享额度的实时用量
 }
 
 // NewSubscriptionHandler creates a new user subscription handler
-func NewSubscriptionHandler(subscriptionService *service.SubscriptionService) *SubscriptionHandler {
+func NewSubscriptionHandler(
+	subscriptionService *service.SubscriptionService,
+	modelQuotaCache service.ModelQuotaCache,
+) *SubscriptionHandler {
 	return &SubscriptionHandler{
 		subscriptionService: subscriptionService,
+		modelQuotaCache:     modelQuotaCache,
 	}
+}
+
+// fillProtectedModelUsage 在订阅 DTO 上填充受保护模型共享额度的实时用量。
+// 仅当 group 配置了 ProtectedModelQuota 且 cache 可用时拉取；任意错误均视为 0（fail-open）。
+func (h *SubscriptionHandler) fillProtectedModelUsage(c *gin.Context, sub *service.UserSubscription, out *dto.UserSubscription) {
+	if h.modelQuotaCache == nil || sub == nil || sub.Group == nil || sub.Group.ProtectedModelQuota == nil || out == nil {
+		return
+	}
+	usage, err := h.modelQuotaCache.GetModelQuotaUsage(c.Request.Context(), sub.UserID, sub.GroupID)
+	if err != nil {
+		return
+	}
+	out.ProtectedModelDailyUsageUSD = usage.DailyUsage
+	out.ProtectedModelWeeklyUsageUSD = usage.WeeklyUsage
 }
 
 // List handles listing current user's subscriptions
@@ -59,7 +78,10 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 
 	out := make([]dto.UserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		sub := &subscriptions[i]
+		item := dto.UserSubscriptionFromService(sub)
+		h.fillProtectedModelUsage(c, sub, item)
+		out = append(out, *item)
 	}
 	response.Success(c, out)
 }
@@ -81,7 +103,10 @@ func (h *SubscriptionHandler) GetActive(c *gin.Context) {
 
 	out := make([]dto.UserSubscription, 0, len(subscriptions))
 	for i := range subscriptions {
-		out = append(out, *dto.UserSubscriptionFromService(&subscriptions[i]))
+		sub := &subscriptions[i]
+		item := dto.UserSubscriptionFromService(sub)
+		h.fillProtectedModelUsage(c, sub, item)
+		out = append(out, *item)
 	}
 	response.Success(c, out)
 }
@@ -110,8 +135,10 @@ func (h *SubscriptionHandler) GetProgress(c *gin.Context) {
 			// Skip subscriptions with errors
 			continue
 		}
+		item := dto.UserSubscriptionFromService(sub)
+		h.fillProtectedModelUsage(c, sub, item)
 		result = append(result, SubscriptionProgressInfo{
-			Subscription: dto.UserSubscriptionFromService(sub),
+			Subscription: item,
 			Progress:     progress,
 		})
 	}

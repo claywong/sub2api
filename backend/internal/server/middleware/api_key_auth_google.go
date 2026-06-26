@@ -90,21 +90,33 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				return
 			}
 
-			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
-			if err != nil {
-				status := 403
-				if errors.Is(err, service.ErrDailyLimitExceeded) ||
-					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-					errors.Is(err, service.ErrMonthlyLimitExceeded) {
-					status = 429
+			needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+			if validateErr != nil {
+				isLimitExceeded := errors.Is(validateErr, service.ErrDailyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(validateErr, service.ErrMonthlyLimitExceeded)
+				if isLimitExceeded && apiKey.Group != nil && apiKey.Group.AllowBalanceFallback {
+					if apiKey.User.Balance <= 0 {
+						abortWithGoogleError(c, 403, "订阅额度已用完，且账户余额不足")
+						return
+					}
+					// 清空 subscription，后续走余额计费路径
+					subscription = nil
+				} else {
+					status := 403
+					if isLimitExceeded {
+						status = 429
+					}
+					abortWithGoogleError(c, status, validateErr.Error())
+					return
 				}
-				abortWithGoogleError(c, status, err.Error())
-				return
 			}
 
-			c.Set(string(ContextKeySubscription), subscription)
+			if subscription != nil {
+				c.Set(string(ContextKeySubscription), subscription)
+			}
 
-			if needsMaintenance {
+			if subscription != nil && needsMaintenance {
 				maintenanceCopy := *subscription
 				subscriptionService.DoWindowMaintenance(&maintenanceCopy)
 			}

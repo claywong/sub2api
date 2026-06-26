@@ -37,6 +37,7 @@ type AdminHandlers struct {
 	ContentModeration      *admin.ContentModerationHandler
 	Payment                *admin.PaymentHandler
 	Affiliate              *admin.AffiliateHandler
+	Scheduler              *admin.SchedulerAdminHandler
 	Compliance             *admin.ComplianceHandler
 }
 

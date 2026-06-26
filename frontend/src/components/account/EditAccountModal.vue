@@ -1509,31 +1509,19 @@
 
       <!-- Anthropic API Key 自动透传开关 -->
       <div
-        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
+        v-if="isAnthropicPassthroughModeVisible"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
           <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.apiKeyPassthrough') }}</label>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.passthroughMode') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.anthropic.apiKeyPassthroughDesc') }}
+              {{ t('admin.accounts.anthropic.passthroughModeDesc') }}
             </p>
           </div>
-          <button
-            type="button"
-            @click="anthropicPassthroughEnabled = !anthropicPassthroughEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              anthropicPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                anthropicPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
+          <div class="w-52">
+            <Select v-model="anthropicPassthroughMode" :options="anthropicPassthroughModeOptions" />
+          </div>
         </div>
       </div>
 
@@ -1607,6 +1595,46 @@
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
+
+        <!-- Cache TTL Override -->
+        <div v-if="account?.type === 'apikey'" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.cacheTTLOverride.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.cacheTTLOverride.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="cacheTTLOverrideEnabled = !cacheTTLOverrideEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                cacheTTLOverrideEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  cacheTTLOverrideEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+          <div v-if="cacheTTLOverrideEnabled" class="mt-3">
+            <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
+            <select
+              v-model="cacheTTLOverrideTarget"
+              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-white"
+            >
+              <option value="5m">5m</option>
+              <option value="1h">1h</option>
+            </select>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.quotaControl.cacheTTLOverride.targetHint') }}
+            </p>
+          </div>
+        </div>
       </div>
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
       <div
@@ -2397,6 +2425,7 @@ import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
+  AccountType,
   Proxy,
   AdminGroup,
   CheckMixedChannelResponse,
@@ -2417,6 +2446,15 @@ import {
   applyAntigravityProjectID,
   applyInterceptWarmup
 } from '@/components/account/credentialsBuilder'
+import {
+  ANTHROPIC_PASSTHROUGH_MODE_AUTH_ONLY,
+  ANTHROPIC_PASSTHROUGH_MODE_COMPAT,
+  ANTHROPIC_PASSTHROUGH_MODE_FULL,
+  resolveAnthropicPassthroughModeFromExtra,
+  writeAnthropicPassthroughModeToExtra,
+  type AnthropicPassthroughAccountType,
+  type AnthropicPassthroughMode
+} from '@/utils/anthropicPassthroughMode'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -2606,7 +2644,7 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexImageGenerationBridgeMode = 'inherit' | 'enabled' | 'disabled'
 const codexImageGenerationBridgeMode = ref<CodexImageGenerationBridgeMode>('inherit')
-const anthropicPassthroughEnabled = ref(false)
+const anthropicPassthroughMode = ref<AnthropicPassthroughMode>(ANTHROPIC_PASSTHROUGH_MODE_COMPAT)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
 const {
@@ -2825,6 +2863,27 @@ const openAICompactStatusKey = computed(() => {
   return 'admin.accounts.openai.compactAuto'
 })
 
+const currentAnthropicPassthroughType = computed<AnthropicPassthroughAccountType | null>(() => {
+  const type = props.account?.type
+  if (type === 'oauth' || type === 'setup-token' || type === 'apikey') {
+    return type
+  }
+  return null
+})
+const isAnthropicPassthroughModeVisible = computed(() =>
+  props.account?.platform === 'anthropic' && currentAnthropicPassthroughType.value !== null
+)
+const anthropicPassthroughModeOptions = computed(() => {
+  const options = [
+    { value: ANTHROPIC_PASSTHROUGH_MODE_COMPAT, label: t('admin.accounts.anthropic.passthroughModeCompat') }
+  ]
+  if (currentAnthropicPassthroughType.value === 'apikey') {
+    options.push({ value: ANTHROPIC_PASSTHROUGH_MODE_AUTH_ONLY, label: t('admin.accounts.anthropic.passthroughModeAuthOnly') })
+  }
+  options.push({ value: ANTHROPIC_PASSTHROUGH_MODE_FULL, label: t('admin.accounts.anthropic.passthroughModeFull') })
+  return options
+})
+
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
 const tempUnschedPresets = computed(() => [
@@ -2988,7 +3047,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexImageGenerationBridgeMode.value = 'inherit'
-  anthropicPassthroughEnabled.value = false
+  anthropicPassthroughMode.value = ANTHROPIC_PASSTHROUGH_MODE_COMPAT
   webSearchEmulationMode.value = 'default'
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
@@ -3033,8 +3092,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
   }
-  if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
-    anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+  if (
+    newAccount.platform === 'anthropic' &&
+    (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')
+  ) {
+    anthropicPassthroughMode.value = resolveAnthropicPassthroughModeFromExtra(extra, newAccount.type)
     // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
     const wsVal = extra?.web_search_emulation
     if (wsVal === 'enabled' || wsVal === 'disabled') {
@@ -3217,6 +3279,19 @@ async function loadTLSProfiles() {
   } catch {
     tlsFingerprintProfiles.value = []
   }
+}
+
+const buildAnthropicExtra = (
+  base?: Record<string, unknown>,
+  type: AccountType | null = props.account?.type ?? null
+): Record<string, unknown> | undefined => {
+  const extra = writeAnthropicPassthroughModeToExtra(base, type, anthropicPassthroughMode.value)
+  if (webSearchEmulationMode.value === 'default') {
+    delete extra.web_search_emulation
+  } else {
+    extra.web_search_emulation = webSearchEmulationMode.value
+  }
+  return Object.keys(extra).length > 0 ? extra : undefined
 }
 
 watch(
@@ -3485,6 +3560,12 @@ function loadQuotaControlSettings(account: Account) {
     return
   }
 
+  // Cache TTL override applies to all Anthropic account types (including apikey)
+  if (account.cache_ttl_override_enabled === true) {
+    cacheTTLOverrideEnabled.value = true
+    cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
+  }
+
   // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
   if (account.type !== 'oauth' && account.type !== 'setup-token') {
     return
@@ -3523,12 +3604,6 @@ function loadQuotaControlSettings(account: Account) {
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
     sessionIdMaskingEnabled.value = true
-  }
-
-  // Load cache TTL override setting
-  if (account.cache_ttl_override_enabled === true) {
-    cacheTTLOverrideEnabled.value = true
-    cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
   }
 
   // Load custom base URL setting
@@ -4079,24 +4154,24 @@ const handleSubmit = async () => {
         delete newExtra.custom_base_url
       }
 
-      updatePayload.extra = newExtra
+      updatePayload.extra = buildAnthropicExtra(newExtra, props.account.type)
     }
 
     // For Anthropic API Key accounts, handle passthrough mode + web search emulation in extra
     if (props.account.platform === 'anthropic' && props.account.type === 'apikey') {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (anthropicPassthroughEnabled.value) {
-        newExtra.anthropic_passthrough = true
+
+      // Cache TTL override setting
+      if (cacheTTLOverrideEnabled.value) {
+        newExtra.cache_ttl_override_enabled = true
+        newExtra.cache_ttl_override_target = cacheTTLOverrideTarget.value
       } else {
-        delete newExtra.anthropic_passthrough
+        delete newExtra.cache_ttl_override_enabled
+        delete newExtra.cache_ttl_override_target
       }
-      if (webSearchEmulationMode.value === 'default') {
-        delete newExtra.web_search_emulation
-      } else {
-        newExtra.web_search_emulation = webSearchEmulationMode.value
-      }
-      updatePayload.extra = newExtra
+
+      updatePayload.extra = buildAnthropicExtra(newExtra, props.account.type)
     }
 
     // For OpenAI OAuth/API Key accounts, handle passthrough mode in extra
@@ -4182,8 +4257,11 @@ const handleSubmit = async () => {
 
     // For apikey/bedrock accounts, handle quota_limit in extra
     if (props.account.type === 'apikey' || props.account.type === 'bedrock') {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
-        (props.account.extra as Record<string, unknown>) || {}
+      // 用 'extra' in updatePayload 判断是否已被前面的块显式设置（即使值为 undefined），
+      // 避免 buildAnthropicExtra 返回 undefined 时回退到 props.account.extra 带回旧字段
+      const currentExtra = ('extra' in updatePayload
+        ? (updatePayload.extra as Record<string, unknown>)
+        : (props.account.extra as Record<string, unknown>)) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {

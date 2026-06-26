@@ -71,6 +71,9 @@ func RegisterAdminRoutes(
 		// 运维监控（Ops）
 		registerOpsRoutes(admin, h)
 
+		// 调度器观测（weighted 算法 metrics + 健康快照）
+		registerSchedulerRoutes(admin, h)
+
 		// 系统管理
 		registerSystemRoutes(admin, h)
 
@@ -135,6 +138,14 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+	}
+}
+
+func registerSchedulerRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	scheduler := admin.Group("/scheduler")
+	{
+		scheduler.GET("/snapshot", h.Admin.Scheduler.GetSnapshot)
+		scheduler.GET("/quality", h.Admin.Scheduler.GetQuality)
 	}
 }
 
@@ -295,6 +306,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	accounts := admin.Group("/accounts")
 	{
 		accounts.GET("", h.Admin.Account.List)
+		accounts.GET("/model-names", h.Admin.Account.ListModelNames)
 		accounts.GET("/:id", h.Admin.Account.GetByID)
 		accounts.POST("", h.Admin.Account.Create)
 		accounts.POST("/check-mixed-channel", h.Admin.Account.CheckMixedChannel)
@@ -317,6 +329,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/today-stats/batch", h.Admin.Account.GetBatchTodayStats)
 		accounts.POST("/:id/clear-rate-limit", h.Admin.Account.ClearRateLimit)
 		accounts.POST("/:id/reset-quota", h.Admin.Account.ResetQuota)
+		accounts.GET("/:id/health-stats", h.Admin.Account.GetHealthStats)
 		accounts.GET("/:id/temp-unschedulable", h.Admin.Account.GetTempUnschedulable)
 		accounts.DELETE("/:id/temp-unschedulable", h.Admin.Account.ClearTempUnschedulable)
 		accounts.POST("/:id/schedulable", h.Admin.Account.SetSchedulable)
@@ -467,6 +480,10 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
 		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
 		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
+		// Admin API Key IP 白名单
+		adminSettings.GET("/admin-api-key/ip-whitelist", h.Admin.Setting.GetAdminAPIKeyIPWhitelist)
+		adminSettings.PUT("/admin-api-key/ip-whitelist", h.Admin.Setting.UpdateAdminAPIKeyIPWhitelist)
+		adminSettings.DELETE("/admin-api-key/ip-whitelist", h.Admin.Setting.DeleteAdminAPIKeyIPWhitelist)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)

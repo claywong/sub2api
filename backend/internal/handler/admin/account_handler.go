@@ -58,6 +58,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	healthCache             *service.AccountTestHealthCache
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -75,6 +76,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	healthCache *service.AccountTestHealthCache,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -90,6 +92,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		healthCache:             healthCache,
 	}
 }
 
@@ -171,9 +174,30 @@ type AccountWithConcurrency struct {
 	*dto.Account
 	CurrentConcurrency int `json:"current_concurrency"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
-	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
-	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
-	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+	CurrentWindowCost   *float64              `json:"current_window_cost,omitempty"`   // 当前窗口费用
+	ActiveSessions      *int                  `json:"active_sessions,omitempty"`       // 当前活跃会话数
+	CurrentRPM          *int                  `json:"current_rpm,omitempty"`           // 当前分钟 RPM 计数
+	HealthVerdict       *string               `json:"health_verdict,omitempty"`        // 健康三态：StickyOnly / Excluded（OK 时不返回）
+	HealthVerdictReason *string               `json:"health_verdict_reason,omitempty"` // 触发原因，如 err_rate=45.0%(≥30%)
+	AccountHealth       *AccountHealthRuntime `json:"account_health,omitempty"`        // Anthropic 账号健康滑动窗口快照
+}
+
+type AccountHealthRuntime struct {
+	Available           bool    `json:"available"`
+	WindowSeconds       int64   `json:"window_seconds"`
+	ReqCount            int     `json:"req_count"`
+	ErrCount            int     `json:"err_count"`
+	ErrRate             float64 `json:"err_rate"`
+	SlowCount           int     `json:"slow_count"`
+	SlowRate            float64 `json:"slow_rate"`
+	TTFTAvgMs           float64 `json:"ttft_avg_ms"`
+	OTPSAvg             float64 `json:"otps_avg"`
+	TCPConnAvgMs        float64 `json:"tcp_conn_avg_ms"`       // TCP 连接平均时间（ms）
+	TTFBAvgMs           float64 `json:"ttfb_avg_ms"`           // TTFB（首字节时间）平均（ms）
+	CacheHitRateAvg     float64 `json:"cache_hit_rate_avg"`    // 缓存命中率均值（0~1）
+	CacheHitSampleCount int     `json:"cache_hit_sample_count"` // 有缓存命中率样本的次数
+	Verdict             string  `json:"verdict"`
+	VerdictReason       string  `json:"verdict_reason"`
 }
 
 const accountListGroupUngroupedQueryValue = "ungrouped"
@@ -219,7 +243,42 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 	}
 
+	h.attachAccountHealthRuntime(&item, account)
+
 	return item
+}
+
+func (h *AccountHandler) attachAccountHealthRuntime(item *AccountWithConcurrency, account *service.Account) {
+	if h == nil || item == nil || account == nil || h.healthCache == nil || account.Platform != service.PlatformAnthropic {
+		return
+	}
+
+	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(account.ID)
+	item.AccountHealth = &AccountHealthRuntime{
+		Available:           true,
+		WindowSeconds:       service.DefaultHealthWindowSeconds,
+		ReqCount:            snap.ReqCount,
+		ErrCount:            snap.ErrCount,
+		ErrRate:             snap.ErrRate(),
+		SlowCount:           snap.SlowCount,
+		SlowRate:            snap.SlowRate(),
+		TTFTAvgMs:           snap.TTFTAvg(),
+		OTPSAvg:             snap.OTPSAvg(),
+		TCPConnAvgMs:        snap.TCPConnAvg(),
+		TTFBAvgMs:           snap.TTFBAvg(),
+		CacheHitRateAvg:     snap.CacheHitRateAvg(),
+		CacheHitSampleCount: snap.CacheHitSampleCount,
+		Verdict:             verdict.String(),
+		VerdictReason:       reason,
+	}
+
+	if verdict != service.HealthOK {
+		s := verdict.String()
+		item.HealthVerdict = &s
+		if reason != "" {
+			item.HealthVerdictReason = &reason
+		}
+	}
 }
 
 // List handles listing all accounts with pagination
@@ -231,12 +290,16 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
+	modelName := strings.TrimSpace(c.Query("model_name"))
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
 		search = search[:100]
+	}
+	if len(modelName) > 200 {
+		modelName = modelName[:200]
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 
@@ -258,7 +321,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, modelName, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -377,10 +440,12 @@ func (h *AccountHandler) List(c *gin.Context) {
 			}
 		}
 
+		h.attachAccountHealthRuntime(&item, acc)
+
 		result[i] = item
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, lite)
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, modelName, lite)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -397,7 +462,7 @@ func buildAccountsListETag(
 	items []AccountWithConcurrency,
 	total int64,
 	page, pageSize int,
-	platform, accountType, status, search string,
+	platform, accountType, status, search, modelName string,
 	lite bool,
 ) string {
 	payload := struct {
@@ -408,6 +473,7 @@ func buildAccountsListETag(
 		AccountType string                   `json:"type"`
 		Status      string                   `json:"status"`
 		Search      string                   `json:"search"`
+		ModelName   string                   `json:"model_name"`
 		Lite        bool                     `json:"lite"`
 		Items       []AccountWithConcurrency `json:"items"`
 	}{
@@ -418,6 +484,7 @@ func buildAccountsListETag(
 		AccountType: accountType,
 		Status:      status,
 		Search:      search,
+		ModelName:   modelName,
 		Lite:        lite,
 		Items:       items,
 	}
@@ -762,6 +829,11 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 	}); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// 同时清除内存健康缓存，使 HealthExcluded/StickyOnly 立即解除
+	if h.healthCache != nil {
+		h.healthCache.Reset(accountID)
 	}
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
@@ -1966,6 +2038,20 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+// ListModelNames handles listing distinct model names from all accounts' model_mapping
+// GET /api/v1/admin/accounts/model-names
+func (h *AccountHandler) ListModelNames(c *gin.Context) {
+	names, err := h.adminService.ListAccountModelNames(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	response.Success(c, names)
+}
+
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -2310,7 +2396,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "", "name", "asc")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -2426,4 +2512,39 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
+}
+
+// GetHealthStats returns the sliding-window health metrics for a single account.
+// GET /api/v1/admin/accounts/:id/health-stats
+func (h *AccountHandler) GetHealthStats(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+
+	if h.healthCache == nil {
+		response.Success(c, gin.H{"available": false})
+		return
+	}
+
+	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(accountID)
+
+	response.Success(c, gin.H{
+		"available":             true,
+		"window_seconds":        service.DefaultHealthWindowSeconds,
+		"req_count":             snap.ReqCount,
+		"err_count":             snap.ErrCount,
+		"err_rate":              snap.ErrRate(),
+		"slow_count":            snap.SlowCount,
+		"slow_rate":             snap.SlowRate(),
+		"ttft_avg_ms":           snap.TTFTAvg(),
+		"otps_avg":              snap.OTPSAvg(),
+		"tcp_conn_avg_ms":       snap.TCPConnAvg(),
+		"ttfb_avg_ms":           snap.TTFBAvg(),
+		"cache_hit_rate_avg":    snap.CacheHitRateAvg(),
+		"cache_hit_sample_count": snap.CacheHitSampleCount,
+		"verdict":               verdict.String(),
+		"verdict_reason":        reason,
+	})
 }

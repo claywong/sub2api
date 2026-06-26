@@ -154,6 +154,8 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		ActiveAccountCount:          g.ActiveAccountCount,
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
 		SortOrder:                   g.SortOrder,
+		AllowBalanceFallback:        g.AllowBalanceFallback,
+		ProtectedModels:             g.ProtectedModels,
 	}
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))
@@ -193,6 +195,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		RPMLimit:                        g.RPMLimit,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
+		ProtectedModelQuota:             g.ProtectedModelQuota,
 	}
 }
 
@@ -648,7 +651,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 	if l == nil {
 		return nil
 	}
-	return &AdminUsageLog{
+	out := &AdminUsageLog{
 		UsageLog:              usageLogFromServiceUser(l),
 		UpstreamModel:         l.UpstreamModel,
 		ChannelID:             l.ChannelID,
@@ -659,6 +662,16 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		IPAddress:             l.IPAddress,
 		Account:               AccountSummaryFromService(l.Account),
 	}
+	if l.SessionID != "" {
+		out.SessionID = &l.SessionID
+	}
+	if l.RequestBody != "" {
+		out.RequestBody = &l.RequestBody
+	}
+	if l.ResponseBody != "" {
+		out.ResponseBody = &l.ResponseBody
+	}
+	return out
 }
 
 func UsageCleanupTaskFromService(task *service.UsageCleanupTask) *UsageCleanupTask {

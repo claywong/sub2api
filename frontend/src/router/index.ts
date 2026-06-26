@@ -690,7 +690,18 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+// 这些路径对外关闭，访问直接重定向到 /login
+const BLOCKED_PATHS = [
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+  '/email-verify',
+  '/key-usage',
+  '/legal',
+  '/setup',
+]
+
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/payment/result', '/payment/airwallex']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
@@ -700,7 +711,7 @@ const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/wechat/callback',
   '/auth/wechat/payment/callback',
 ]
-const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
+const BACKEND_MODE_PENDING_AUTH_PATHS: string[] = []
 
 function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: boolean): boolean {
   if (BACKEND_MODE_ALLOWED_PATHS.some((allowedPath) => path === allowedPath || path.startsWith(allowedPath))) {
@@ -721,6 +732,12 @@ function isBackendModePublicRouteAllowed(path: string, hasPendingAuthSession: bo
 router.beforeEach(async (to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
+
+  // 黑名单路径：直接重定向到登录页，组件代码保留但 URL 不对外开放
+  if (BLOCKED_PATHS.some((p) => to.path === p || to.path.startsWith(p + '/'))) {
+    next('/login')
+    return
+  }
 
   const authStore = useAuthStore()
 

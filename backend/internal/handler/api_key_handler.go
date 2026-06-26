@@ -292,6 +292,25 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 	response.Success(c, out)
 }
 
+// GetKeyRate 根据 key 字符串返回该 key 的有效倍率（公开接口）。
+// GET /api/v1/key-rate?key=xxx
+// key 不存在时返回 1.0，不泄露 key 是否有效。
+func (h *APIKeyHandler) GetKeyRate(c *gin.Context) {
+	key := strings.TrimSpace(c.Query("key"))
+	if key == "" {
+		response.BadRequest(c, "key is required")
+		return
+	}
+
+	multiplier, err := h.apiKeyService.GetKeyRateMultiplier(c.Request.Context(), key)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"multiplier": multiplier})
+}
+
 // GetUserGroupRates 获取当前用户的专属分组倍率配置
 // GET /api/v1/groups/rates
 func (h *APIKeyHandler) GetUserGroupRates(c *gin.Context) {

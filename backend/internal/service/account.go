@@ -944,12 +944,22 @@ var defaultPoolModeRetryableStatusCodes = []int{401, 403, 429}
 
 // isPoolModeRetryableStatus 池模式下应触发同账号重试的状态码（默认列表）。
 func isPoolModeRetryableStatus(statusCode int) bool {
-	for _, c := range defaultPoolModeRetryableStatusCodes {
-		if c == statusCode {
-			return true
-		}
+	switch statusCode {
+	case 401, 403, 429, 500, 502, 520:
+		return true
+	default:
+		return false
 	}
-	return false
+}
+
+// isUpstreamErrorThresholdStatus 需要走阈值计数的上游错误状态码（500/502/520）
+func isUpstreamErrorThresholdStatus(statusCode int) bool {
+	switch statusCode {
+	case 500, 502, 520:
+		return true
+	default:
+		return false
+	}
 }
 
 // GetPoolModeRetryStatusCodes 返回账号自定义的池模式同账号重试状态码列表。
@@ -1574,15 +1584,80 @@ func (a *Account) IsOpenAIOAuthPassthroughEnabled() bool {
 	return a != nil && a.IsOpenAIOAuth() && a.IsOpenAIPassthroughEnabled()
 }
 
+const (
+	AnthropicPassthroughModeCompat   = "compat"
+	AnthropicPassthroughModeAuthOnly = "auth_only"
+	AnthropicPassthroughModeFull     = "full"
+)
+
+func normalizeAnthropicPassthroughMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case AnthropicPassthroughModeCompat:
+		return AnthropicPassthroughModeCompat
+	case AnthropicPassthroughModeAuthOnly:
+		return AnthropicPassthroughModeAuthOnly
+	case AnthropicPassthroughModeFull:
+		return AnthropicPassthroughModeFull
+	default:
+		return ""
+	}
+}
+
+// ResolveAnthropicPassthroughMode 返回 Anthropic 账号当前生效的透传模式。
+//
+// 新字段：accounts.extra.anthropic_passthrough_mode。
+// 兼容字段：accounts.extra.anthropic_passthrough（仅 Anthropic API Key，解释为 auth_only）。
+// 默认值：compat。
+func (a *Account) ResolveAnthropicPassthroughMode() string {
+	if a == nil || !a.IsAnthropic() {
+		return AnthropicPassthroughModeCompat
+	}
+
+	if a.Extra != nil {
+		if rawMode, ok := a.Extra["anthropic_passthrough_mode"].(string); ok {
+			if normalized := normalizeAnthropicPassthroughMode(rawMode); normalized != "" {
+				switch a.Type {
+				case AccountTypeAPIKey:
+					return normalized
+				case AccountTypeOAuth, AccountTypeSetupToken:
+					if normalized == AnthropicPassthroughModeCompat || normalized == AnthropicPassthroughModeFull {
+						return normalized
+					}
+				}
+			}
+		}
+
+		if a.Type == AccountTypeAPIKey {
+			if enabled, ok := a.Extra["anthropic_passthrough"].(bool); ok && enabled {
+				return AnthropicPassthroughModeAuthOnly
+			}
+		}
+	}
+
+	return AnthropicPassthroughModeCompat
+}
+
 // IsAnthropicAPIKeyPassthroughEnabled 返回 Anthropic API Key 账号是否启用"自动透传（仅替换认证）"。
-// 字段：accounts.extra.anthropic_passthrough。
-// 字段缺失或类型不正确时，按 false（关闭）处理。
+// 该方法兼容旧布尔字段，但新的首选字段为 anthropic_passthrough_mode=auth_only。
 func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
-	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
+	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey {
 		return false
 	}
-	enabled, ok := a.Extra["anthropic_passthrough"].(bool)
-	return ok && enabled
+	return a.ResolveAnthropicPassthroughMode() == AnthropicPassthroughModeAuthOnly
+}
+
+// IsAnthropicFullPassthroughEnabled 返回 Anthropic 账号是否启用"完整透传"模式。
+// 支持的账号类型：oauth / setup-token / apikey。
+func (a *Account) IsAnthropicFullPassthroughEnabled() bool {
+	if a == nil || !a.IsAnthropic() {
+		return false
+	}
+	switch a.Type {
+	case AccountTypeOAuth, AccountTypeSetupToken, AccountTypeAPIKey:
+		return a.ResolveAnthropicPassthroughMode() == AnthropicPassthroughModeFull
+	default:
+		return false
+	}
 }
 
 // WebSearch 模拟三态常量
@@ -1664,7 +1739,6 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 // 仅适用于 Anthropic OAuth/SetupToken 类型账号
 // 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	// 仅支持 Anthropic OAuth/SetupToken 账号
 	if !a.IsAnthropicOAuthOrSetupToken() {
 		return false
 	}
@@ -1766,10 +1840,10 @@ func (a *Account) GetCustomBaseURL() string {
 }
 
 // IsCacheTTLOverrideEnabled 检查是否启用缓存 TTL 强制替换
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
+// 适用于所有 Anthropic 平台账号（含 API Key）
 // 启用后将所有 cache creation tokens 归入指定的 TTL 类型（5m 或 1h）
 func (a *Account) IsCacheTTLOverrideEnabled() bool {
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if a.Platform != PlatformAnthropic {
 		return false
 	}
 	if a.Extra == nil {

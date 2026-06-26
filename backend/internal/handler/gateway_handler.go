@@ -55,6 +55,8 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	sessionModelLockService   *service.SessionModelLockService   // 私有扩展：会话级模型锁定
+	modelQuotaService         *service.ModelQuotaCacheService    // 私有扩展：受保护模型独立额度
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -73,6 +75,8 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	sessionModelLockService *service.SessionModelLockService, // 私有扩展
+	modelQuotaService *service.ModelQuotaCacheService,        // 私有扩展
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -110,6 +114,8 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		sessionModelLockService:   sessionModelLockService,
+		modelQuotaService:         modelQuotaService,
 	}
 }
 
@@ -238,6 +244,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
+
+	// 私有扩展：会话级模型锁定（Anthropic /v1/messages）
+	if !h.applySessionModelLockOrFail(c, reqLog, apiKey.Group, parsedReq) {
+		return
+	}
+	// 私有扩展：受保护模型日/周额度检查
+	if apiKey.Group != nil && apiKey.User != nil && apiKey.GroupID != nil {
+		if !h.applyModelQuotaOrFail(c, reqLog, apiKey.Group, parsedReq.Model, apiKey.User.ID, *apiKey.GroupID) {
+			return
+		}
+	}
 
 	// 计算粘性会话hash
 	parsedReq.SessionContext = &service.SessionContext{
@@ -448,7 +465,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, service.PlatformGemini, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
 					switch action {
 					case FailoverContinue:
 						continue
@@ -536,6 +553,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					ForceCacheBilling:  forceCacheBilling,
 					APIKeyService:      h.apiKeyService,
 					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					PostBillingHook:    h.makeModelQuotaHook(apiKey.Group), // 私有扩展
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -865,10 +883,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
+						// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+						h.reportAnthropicForwardResult(account, reqModel, err, result)
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
-					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr, account.GetPoolModeRetryCount())
+					// 同账号重试：本次失败是中间重试，不计入健康窗口，避免虚高 errCount。
+					// 最终失败（重试耗尽切换账号或 Exhausted）时 IsSameAccountRetry=false，正常上报。
+					if !fs.IsSameAccountRetry {
+						h.reportAnthropicForwardResult(account, reqModel, err, result)
+					}
 					switch action {
 					case FailoverContinue:
 						continue
@@ -879,6 +904,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
+				// 非 failoverErr 的普通错误（网络层、未知错误等），直接上报。
+				h.reportAnthropicForwardResult(account, reqModel, err, result)
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -905,6 +932,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
 				return
 			}
+
+			// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+			// 成功路径无条件上报（含经历同账号重试后最终成功的情况）。
+			h.reportAnthropicForwardResult(account, reqModel, nil, result)
 
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
@@ -946,6 +977,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				result.ReasoningEffort = service.DefaultEffortForThinkingEnabled(protocolModel)
 			}
 
+			// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
+			result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
+
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			// ForceCacheBilling 提前拍成标量，避免 worker 闭包保活 failover 状态里的响应体。
 			forceCacheBilling := fs.ForceCacheBilling
@@ -977,6 +1011,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					).Error("gateway.record_usage_failed", zap.Error(err))
 				}
 			})
+			if result != nil && result.CapturedResponseBody != "" {
+				clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, currentAPIKey.User.ID, string(body), result.CapturedResponseBody)
+			}
 			return
 		}
 		if !retryWithFallback {
@@ -1792,6 +1830,13 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
+	// 设置请求所属分组 ID 后再做会话级模型锁定（私有扩展）
+	parsedReq.GroupID = apiKey.GroupID
+	if !h.applySessionModelLockOrFail(c, reqLog, apiKey.Group, parsedReq) {
+		return
+	}
+	// 私有扩展：受保护模型日/周额度检查（count_tokens 不计费，跳过）
+
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{
 		ClientIP:  ip.GetClientIP(c),
@@ -1815,7 +1860,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
-		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name), zap.Error(err))
 		// 错误响应已在 ForwardCountTokens 中处理
 		return
 	}
@@ -2115,6 +2160,8 @@ func (h *GatewayHandler) metadataBridgeEnabled() bool {
 	}
 	return h.cfg.Gateway.OpenAIWS.MetadataBridgeEnabled
 }
+
+// reportAnthropicForwardResult 已搬到 gateway_handler_health_report.go（私有扩展）。
 
 func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger) {
 	if reqLog == nil {

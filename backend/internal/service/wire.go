@@ -279,12 +279,14 @@ func ProvideRateLimitService(
 	geminiQuotaService *GeminiQuotaService,
 	tempUnschedCache TempUnschedCache,
 	timeoutCounterCache TimeoutCounterCache,
+	errorCounterCache ErrorCounterCache,
 	openAI403CounterCache OpenAI403CounterCache,
 	settingService *SettingService,
 	tokenCacheInvalidator TokenCacheInvalidator,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
+	svc.SetErrorCounterCache(errorCounterCache)
 	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
@@ -331,6 +333,17 @@ func ProvideOpsAlertEvaluatorService(
 	svc := NewOpsAlertEvaluatorService(opsService, opsRepo, emailService, redisClient, cfg, proxyRepo)
 	svc.Start()
 	return svc
+}
+
+// ProvideOpsErrorWebhookDispatcher creates, starts, and injects the webhook dispatcher.
+// Returns nil when ops.webhook.url is not configured (dispatcher disabled).
+func ProvideOpsErrorWebhookDispatcher(cfg *config.Config, opsService *OpsService) *OpsErrorWebhookDispatcher {
+	d := NewOpsErrorWebhookDispatcher(cfg.Ops.Webhook)
+	d.Start()
+	if opsService != nil {
+		opsService.SetWebhookDispatcher(d)
+	}
+	return d
 }
 
 // ProvideOpsCleanupService creates and starts OpsCleanupService (cron scheduled).
@@ -409,6 +422,15 @@ func ProvideScheduledTestService(
 	return NewScheduledTestService(planRepo, resultRepo)
 }
 
+// ProvideAccountTestHealthCache creates an AccountTestHealthCache singleton.
+func ProvideAccountTestHealthCache(cfg *config.Config) *AccountTestHealthCache {
+	var healthCfg *config.AccountHealthConfig
+	if cfg != nil {
+		healthCfg = &cfg.Gateway.Scheduling.AccountHealth
+	}
+	return NewAccountTestHealthCache(healthCfg)
+}
+
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
 func ProvideScheduledTestRunnerService(
 	planRepo ScheduledTestPlanRepository,
@@ -416,8 +438,9 @@ func ProvideScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	healthCache *AccountTestHealthCache,
 ) *ScheduledTestRunnerService {
-	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
+	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg, healthCache)
 	svc.Start()
 	return svc
 }
@@ -560,6 +583,8 @@ var ProviderSet = wire.NewSet(
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
+	NewSessionModelLockService,  // 私有扩展：会话级模型锁定
+	NewModelQuotaCacheService,   // 私有扩展：受保护模型独立额度服务
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
@@ -591,6 +616,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBackupService,
 	ProvideOpsSystemLogSink,
 	ProvideOpsService,
+	ProvideOpsErrorWebhookDispatcher,
 	ProvideOpsMetricsCollector,
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,
@@ -629,6 +655,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
+	ProvideAccountTestHealthCache,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,

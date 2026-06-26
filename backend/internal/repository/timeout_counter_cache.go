@@ -11,19 +11,6 @@ import (
 
 const timeoutCounterPrefix = "timeout_count:account:"
 
-// timeoutCounterIncrScript 使用 Lua 脚本原子性地增加计数并返回当前值
-// 如果 key 不存在，则创建并设置过期时间
-var timeoutCounterIncrScript = redis.NewScript(`
-	local key = KEYS[1]
-	local ttl = tonumber(ARGV[1])
-
-	local count = redis.call('INCR', key)
-	if count == 1 then
-		redis.call('EXPIRE', key, ttl)
-	end
-
-	return count
-`)
 
 type timeoutCounterCache struct {
 	rdb *redis.Client
@@ -44,7 +31,7 @@ func (c *timeoutCounterCache) IncrementTimeoutCount(ctx context.Context, account
 		ttlSeconds = 60 // 最小1分钟
 	}
 
-	result, err := timeoutCounterIncrScript.Run(ctx, c.rdb, []string{key}, ttlSeconds).Int64()
+	result, err := counterIncrScript.Run(ctx, c.rdb, []string{key}, ttlSeconds).Int64()
 	if err != nil {
 		return 0, fmt.Errorf("increment timeout count: %w", err)
 	}

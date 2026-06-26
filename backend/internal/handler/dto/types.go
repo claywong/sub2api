@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 type User struct {
@@ -120,6 +121,9 @@ type Group struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制），设置后覆盖用户级 rpm_limit。
 	RPMLimit int `json:"rpm_limit"`
 
+	// 受保护模型的共享日/周额度配置（私有扩展，用户侧只读）
+	ProtectedModelQuota *service.ProtectedModelQuota `json:"protected_model_quota,omitempty"`
+
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -150,6 +154,12 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+
+	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+	AllowBalanceFallback bool `json:"allow_balance_fallback"`
+
+	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+	ProtectedModels []string `json:"protected_models"`
 }
 
 type Account struct {
@@ -520,6 +530,11 @@ type AdminUsageLog struct {
 
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
+
+	// 以下字段仅在请求方传递 with_content=true 且有记录时填充。
+	SessionID    *string `json:"session_id,omitempty"`
+	RequestBody  *string `json:"request_body,omitempty"`
+	ResponseBody *string `json:"response_body,omitempty"`
 }
 
 type UsageCleanupFilters struct {
@@ -580,6 +595,10 @@ type UserSubscription struct {
 	DailyUsageUSD   float64 `json:"daily_usage_usd"`
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
+
+	// 受保护模型共享额度的实时用量（从 Redis 缓存读取；未配置或无用量时为 0）
+	ProtectedModelDailyUsageUSD  float64 `json:"protected_model_daily_usage_usd,omitempty"`
+	ProtectedModelWeeklyUsageUSD float64 `json:"protected_model_weekly_usage_usd,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

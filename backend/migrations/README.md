@@ -12,6 +12,37 @@ Format: `NNN_description.sql`
 
 Example: `017_add_gemini_tier_id.sql`
 
+### 私有迁移号段（9XX）— 本仓库 fork 约定
+
+> 本仓库是 upstream sub2api 的私有 fork。为避免与 upstream 后续新增的迁移
+> 撞编号，**所有本仓库私有的迁移必须从 `900` 开始**，按 `900`/`901`/`902`/...
+> 顺序递增。
+
+号段划分：
+
+- `0XX–8XX`：保留给 upstream sub2api 使用，**不要在此号段新增私有迁移**；
+- `9XX`：本仓库私有迁移专用（如 `900_add_first_token_ms_to_scheduled_test_results.sql`）。
+
+幂等要求（私有迁移**必须**满足）：
+
+- `CREATE TABLE IF NOT EXISTS ...`
+- `CREATE INDEX IF NOT EXISTS ...`
+- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`
+- `INSERT ... ON CONFLICT DO NOTHING` / `INSERT IGNORE`
+
+这样的设计目的：
+
+1. 避免和 upstream 同号撞车（`134_*` 已经发生过：upstream 有 2 个 134、我们也有一个 134）；
+2. 当从旧版本（私有迁移在 1XX–3XX）升级到新版本（重命名到 9XX）时，因为
+   SQL 是幂等的，runner 重新执行也是 no-op；只会在 `schema_migrations`
+   表里多留几条历史记录（旧文件名）作为孤儿，无需清理。
+
+历史变迁：
+
+- 早期私有迁移曾位于 `134_add_first_token_ms_to_scheduled_test_results.sql`、
+  `136_ops_alert_notify_feishu.sql`、`137_request_logs.sql`，已统一迁移到
+  `900`/`901`/`902`。
+
 ### `_notx.sql` 命名与执行语义（并发索引专用）
 
 当迁移包含 `CREATE INDEX CONCURRENTLY` 或 `DROP INDEX CONCURRENTLY` 时，必须使用 `_notx.sql` 后缀，例如：

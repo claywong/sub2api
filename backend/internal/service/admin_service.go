@@ -77,7 +77,8 @@ type AdminService interface {
 	ReplaceUserGroup(ctx context.Context, userID, oldGroupID, newGroupID int64) (*ReplaceUserGroupResult, error)
 
 	// Account management
-	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode, modelName string, sortBy, sortOrder string) ([]Account, int64, error)
+	ListAccountModelNames(ctx context.Context) ([]string, error)
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
@@ -231,6 +232,12 @@ type CreateGroupInput struct {
 	ModelsListConfig            GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制）
 	RPMLimit int
+	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
+	AllowBalanceFallback bool
+	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+	ProtectedModels []string
+	// 受保护模型的共享日/周额度配置（私有扩展）
+	ProtectedModelQuota *ProtectedModelQuota
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -272,6 +279,12 @@ type UpdateGroupInput struct {
 	ModelsListConfig            *GroupModelsListConfig
 	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
 	RPMLimit *int
+	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动。
+	AllowBalanceFallback *bool
+	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空切片表示清空。
+	ProtectedModels *[]string
+	// 受保护模型的共享日/周额度配置（私有扩展）；nil 表示未提供不改动。
+	ProtectedModelQuota **ProtectedModelQuota
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -1909,6 +1922,9 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
+		AllowBalanceFallback:            input.AllowBalanceFallback,
+		ProtectedModels:                 input.ProtectedModels,
+		ProtectedModelQuota:             input.ProtectedModelQuota,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -2160,6 +2176,15 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
+	}
+	if input.AllowBalanceFallback != nil {
+		group.AllowBalanceFallback = *input.AllowBalanceFallback
+	}
+	if input.ProtectedModels != nil {
+		group.ProtectedModels = *input.ProtectedModels
+	}
+	if input.ProtectedModelQuota != nil {
+		group.ProtectedModelQuota = *input.ProtectedModelQuota
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 
@@ -2546,9 +2571,13 @@ func (s *adminServiceImpl) ReplaceUserGroup(ctx context.Context, userID, oldGrou
 }
 
 // Account management implementations
-func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ListAccountModelNames(ctx context.Context) ([]string, error) {
+	return s.accountRepo.ListDistinctModelNames(ctx)
+}
+
+func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode, modelName string, sortBy, sortOrder string) ([]Account, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
-	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
+	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode, modelName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -2986,6 +3015,7 @@ func (s *adminServiceImpl) resolveBulkUpdateTargetIDs(ctx context.Context, filte
 			filters.Search,
 			groupID,
 			filters.PrivacyMode,
+			"",
 			"",
 			"",
 		)

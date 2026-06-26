@@ -98,13 +98,13 @@
                   type="email"
                   class="input"
                   :placeholder="t('profile.authBindings.emailPlaceholder')"
-                  :disabled="isSendingEmailCode || isBindingEmail"
+                  disabled
                 />
                 <button
                   data-testid="profile-binding-email-send-code"
                   type="button"
                   class="btn btn-secondary btn-sm"
-                  :disabled="isSendingEmailCode || isBindingEmail"
+                  disabled
                   @click="sendEmailCode"
                 >
                   {{
@@ -121,7 +121,7 @@
                   maxlength="6"
                   class="input"
                   :placeholder="t('profile.authBindings.codePlaceholder')"
-                  :disabled="isBindingEmail"
+                  disabled
                 />
                 <input
                   v-model="emailBindingForm.password"
@@ -129,13 +129,13 @@
                   type="password"
                   class="input"
                   :placeholder="emailPasswordPlaceholder"
-                  :disabled="isBindingEmail"
+                  disabled
                 />
                 <button
                   data-testid="profile-binding-email-submit"
                   type="button"
                   class="btn btn-primary btn-sm sm:col-span-2"
-                  :disabled="isBindingEmail"
+                  disabled
                   @click="bindEmail"
                 >
                   {{

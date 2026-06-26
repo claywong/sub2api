@@ -693,6 +693,9 @@ type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
+	// Anthropic 上游专属响应头超时（秒），0 表示沿用 response_header_timeout
+	// 用于在 Anthropic 不稳定时快速失败，不影响 OpenAI 等其他平台
+	AnthropicResponseHeaderTimeout int `mapstructure:"anthropic_response_header_timeout"`
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
 	OpenAIResponseHeaderTimeout int `mapstructure:"openai_response_header_timeout"`
@@ -794,6 +797,9 @@ type GatewayConfig struct {
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
 	UsageRecord GatewayUsageRecordConfig `mapstructure:"usage_record"`
+
+	// RequestLog: 请求内容记录配置（默认关闭）
+	RequestLog RequestLogConfig `mapstructure:"request_log"`
 
 	// UserGroupRateCacheTTLSeconds: 用户分组倍率热路径缓存 TTL（秒）
 	UserGroupRateCacheTTLSeconds int `mapstructure:"user_group_rate_cache_ttl_seconds"`
@@ -1049,6 +1055,14 @@ type TLSProfileConfig struct {
 	Extensions []uint16 `mapstructure:"extensions"`
 }
 
+// RequestLogConfig 请求内容记录配置
+type RequestLogConfig struct {
+	// Enabled: 是否开启请求内容记录（默认 false）
+	Enabled bool `mapstructure:"enabled"`
+	// MaxBodyBytes: 单个 request_body / response_body 的截断阈值（字节），0 表示不截断
+	MaxBodyBytes int `mapstructure:"max_body_bytes"`
+}
+
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
 	// 粘性会话排队配置
@@ -1100,6 +1114,86 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期配置
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
+
+	// Anthropic 账号健康感知调度参数
+	AccountHealth AccountHealthConfig `mapstructure:"account_health"`
+
+	// Health HealthVerdict 三态阈值。
+	Health SchedulingHealthConfig `mapstructure:"health"`
+	// Debug 调度调试观测开关。
+	Debug SchedulingDebugConfig `mapstructure:"debug"`
+
+	// WeightedSelection Layer 2 质量加权选号（私有扩展），默认关闭。
+	WeightedSelection WeightedSelectionConfig `mapstructure:"weighted_selection"`
+}
+
+// WeightedSelectionConfig Layer 2 质量加权选号配置（私有扩展，不属于 upstream sub2api）。
+// 同 Priority 内按连续质量分划分"体验相近带"，带内按账号倍率倒数加权随机选号。
+// 所有数值 0 表示使用内置默认值；Enabled=false（零值）时走原分桶漏斗。
+type WeightedSelectionConfig struct {
+	// 总开关，默认 false（走原 Priority → 分桶 → LoadRate → LRU 漏斗）
+	Enabled bool `mapstructure:"enabled"`
+	// 质量打分滑动窗口长度（分钟），默认 60；HealthVerdict 的 10min 窗口不受影响
+	QualityWindowMinutes int `mapstructure:"quality_window_minutes"`
+	// 体验相近带宽度 ε：score >= bestScore - ε 的账号入带，默认 0.10
+	BandEpsilon float64 `mapstructure:"band_epsilon"`
+	// 带内成本权重陡峭度 β：weight = (1/倍率)^β，默认 1.0
+	CostBeta float64 `mapstructure:"cost_beta"`
+	// 带外/探索保底权重占带内最大权重的比例，默认 0.05
+	ExploreFloor float64 `mapstructure:"explore_floor"`
+	// TTFT 满分阈值（ms），默认 1000
+	TTFTFullScoreMs int `mapstructure:"ttft_full_score_ms"`
+	// TTFT 零分阈值（ms），默认 10000
+	TTFTZeroScoreMs int `mapstructure:"ttft_zero_score_ms"`
+	// OTPS 满分阈值（tokens/s），默认 80
+	OTPSFullScore float64 `mapstructure:"otps_full_score"`
+	// 质量分权重（三者内部归一化），默认 0.40 / 0.35 / 0.25
+	WTTFT float64 `mapstructure:"w_ttft"`
+	WOTPS float64 `mapstructure:"w_otps"`
+	WErr  float64 `mapstructure:"w_err"`
+	// CacheDiscount 缓存命中的成本折扣强度，clamp 到 [0, 0.9]，默认 0（=关闭，兼作开关）。
+	// >0 时把缓存命中率作为"带内有效成本"因子：带内权重 = (1/effRate)^β，
+	// effRate = 倍率 × (1 - cache_discount × 收缩后命中率)。命中 token 走 cache-read 价
+	// （约 0.1× input），命中率越高有效成本越低；缓存命中率不进质量分（不影响"体验相近带"划分），
+	// 仅在带内裁决"谁更省钱多拿"。设为 0 即逐位回到原行为。
+	CacheDiscount float64 `mapstructure:"cache_discount"`
+	// CacheHitShrinkK 命中率样本量收缩系数 K：effHit = hit × N/(N+K)，默认 20。
+	// 防止两三条粘性样本就把命中率"封神"，缓解缓存命中率的自增强偏差。
+	CacheHitShrinkK int `mapstructure:"cache_hit_shrink_k"`
+}
+
+// SchedulingHealthConfig HealthVerdict 三态判定阈值。
+type SchedulingHealthConfig struct {
+	WindowMinutes              int     `mapstructure:"window_minutes"`                // 滑动窗口长度（分钟），默认 10
+	MinSamples                 int     `mapstructure:"min_samples"`                   // 触发判定的最小样本数，默认 5
+	ErrCountSoft               int     `mapstructure:"err_count_soft"`                // 错误数软阈值 → StickyOnly，默认 5
+	ErrCountHard               int     `mapstructure:"err_count_hard"`                // 错误数硬阈值 → Excluded，默认 10
+	ErrRateSoft                float64 `mapstructure:"err_rate_soft"`                 // 错误率软阈值，默认 0.3
+	ErrRateHard                float64 `mapstructure:"err_rate_hard"`                 // 错误率硬阈值，默认 0.5
+	TTFTStickyOnlyMs           int     `mapstructure:"ttft_sticky_only_ms"`           // TTFT 进入 StickyOnly 的阈值，默认 10000
+	TTFTExcludedMs             int     `mapstructure:"ttft_excluded_ms"`              // TTFT 进入 Excluded 的阈值，0 表示禁用
+	OTPSStickyOnlyMin          float64 `mapstructure:"otps_sticky_only_min"`          // OTPS 进入 StickyOnly 的下限，默认 10
+	OTPSExcludedMin            float64 `mapstructure:"otps_excluded_min"`             // OTPS 进入 Excluded 的下限，0 表示禁用
+	ExcludedTempUnschedMinutes int     `mapstructure:"excluded_temp_unsched_minutes"` // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
+}
+
+// SchedulingDebugConfig 调度调试观测开关。
+type SchedulingDebugConfig struct {
+	LogDecisions    bool    `mapstructure:"log_decisions"`     // 是否打详细决策日志
+	LogGroups       []int64 `mapstructure:"log_groups"`        // 仅这些 group 强制 100% 详细日志
+	LogSampleRate   float64 `mapstructure:"log_sample_rate"`   // 全局采样率（0~1），默认 0.05
+	LogScoreDetails bool    `mapstructure:"log_score_details"` // 是否展开每候选因子明细
+	CompareMode     bool    `mapstructure:"compare_mode"`      // 比对模式：同跑 legacy + weighted
+}
+
+// AccountHealthConfig Anthropic 账号健康感知调度阈值，0 表示使用内置默认值。
+//
+// 滑动窗口与三态判定的阈值见 GatewaySchedulingConfig.Health（SchedulingHealthConfig）。
+type AccountHealthConfig struct {
+	// 是否启用账号健康感知调度（HealthVerdict 三态），默认 false。
+	Enabled bool `mapstructure:"enabled"`
+	// 慢请求判定阈值（ms），默认 20000；用于 HealthSnapshot.SlowRate 统计
+	SlowThresholdMs int `mapstructure:"slow_threshold_ms"`
 }
 
 func (s *ServerConfig) Address() string {
@@ -1209,6 +1303,43 @@ type OpsConfig struct {
 
 	// Pre-aggregation configuration.
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+
+	// Webhook pushes raw error events to an external HTTP endpoint.
+	Webhook OpsWebhookConfig `mapstructure:"webhook"`
+}
+
+// OpsWebhookConfig configures the ops error webhook dispatcher.
+// Set url to enable; all other fields are optional.
+//
+// Example config.yaml:
+//
+//	ops:
+//	  webhook:
+//	    url: "https://your-server.com/ops/errors"
+//	    secret: "optional_hmac_secret"
+type OpsWebhookConfig struct {
+	// URL is the destination endpoint. Empty string disables the dispatcher.
+	URL string `mapstructure:"url"`
+
+	// Secret is used to sign each request with HMAC-SHA256.
+	// Receivers should verify the X-Sub2Api-Signature header.
+	Secret string `mapstructure:"secret"`
+
+	// TimeoutSeconds is the per-request HTTP timeout (default 5).
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+
+	// MaxRetries is the number of additional attempts on 5xx / network error (default 2).
+	MaxRetries int `mapstructure:"max_retries"`
+
+	// BufferSize is the internal channel capacity (default 2048).
+	// Events are dropped (not blocking) when the buffer is full.
+	BufferSize int `mapstructure:"buffer_size"`
+
+	// BatchSize is the max number of errors sent per HTTP request (default 50).
+	BatchSize int `mapstructure:"batch_size"`
+
+	// FlushIntervalMs is how often the buffer is flushed even when not full (default 500ms).
+	FlushIntervalMs int `mapstructure:"flush_interval_ms"`
 }
 
 type OpsCleanupConfig struct {
@@ -1737,6 +1868,14 @@ func setDefaults() {
 	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
 	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
+	// Webhook dispatcher defaults (disabled by default; set ops.webhook.url to enable).
+	viper.SetDefault("ops.webhook.url", "")
+	viper.SetDefault("ops.webhook.secret", "")
+	viper.SetDefault("ops.webhook.timeout_seconds", 5)
+	viper.SetDefault("ops.webhook.max_retries", 2)
+	viper.SetDefault("ops.webhook.buffer_size", 2048)
+	viper.SetDefault("ops.webhook.batch_size", 50)
+	viper.SetDefault("ops.webhook.flush_interval_ms", 500)
 
 	// JWT
 	viper.SetDefault("jwt.secret", "")
@@ -1823,7 +1962,8 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
 	// Gateway
-	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.response_header_timeout", 600)         // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.anthropic_response_header_timeout", 0) // 0表示沿用 response_header_timeout
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)

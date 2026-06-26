@@ -1335,12 +1335,13 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 		billingCacheSvc,
 		nil,
 		&service.DeferredService{},
+		nil, // openAITokenProvider
+		nil, // grokTokenProvider
 		nil,
 		nil,
 		nil,
 		nil,
-		nil,
-		nil,
+		nil, // requestLogRepo
 		nil,
 	)
 
@@ -1528,6 +1529,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		channelSvc,
 		nil,
 		nil,
+		nil, // requestLogRepo
 		nil, // userPlatformQuotaRepo
 	)
 

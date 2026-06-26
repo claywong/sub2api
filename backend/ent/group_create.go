@@ -495,6 +495,32 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (_c *GroupCreate) SetAllowBalanceFallback(v bool) *GroupCreate {
+	_c.mutation.SetAllowBalanceFallback(v)
+	return _c
+}
+
+// SetNillableAllowBalanceFallback sets the "allow_balance_fallback" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowBalanceFallback(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowBalanceFallback(*v)
+	}
+	return _c
+}
+
+// SetProtectedModels sets the "protected_models" field.
+func (_c *GroupCreate) SetProtectedModels(v []string) *GroupCreate {
+	_c.mutation.SetProtectedModels(v)
+	return _c
+}
+
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (_c *GroupCreate) SetProtectedModelQuotas(v map[string]interface{}) *GroupCreate {
+	_c.mutation.SetProtectedModelQuotas(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -720,6 +746,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
 	}
+	if _, ok := _c.mutation.AllowBalanceFallback(); !ok {
+		v := group.DefaultAllowBalanceFallback
+		_c.mutation.SetAllowBalanceFallback(v)
+	}
+	if _, ok := _c.mutation.ProtectedModels(); !ok {
+		v := group.DefaultProtectedModels
+		_c.mutation.SetProtectedModels(v)
+	}
+	if _, ok := _c.mutation.ProtectedModelQuotas(); !ok {
+		v := group.DefaultProtectedModelQuotas
+		_c.mutation.SetProtectedModelQuotas(v)
+	}
 	return nil
 }
 
@@ -821,6 +859,15 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
+	}
+	if _, ok := _c.mutation.AllowBalanceFallback(); !ok {
+		return &ValidationError{Name: "allow_balance_fallback", err: errors.New(`ent: missing required field "Group.allow_balance_fallback"`)}
+	}
+	if _, ok := _c.mutation.ProtectedModels(); !ok {
+		return &ValidationError{Name: "protected_models", err: errors.New(`ent: missing required field "Group.protected_models"`)}
+	}
+	if _, ok := _c.mutation.ProtectedModelQuotas(); !ok {
+		return &ValidationError{Name: "protected_model_quotas", err: errors.New(`ent: missing required field "Group.protected_model_quotas"`)}
 	}
 	return nil
 }
@@ -988,6 +1035,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.AllowBalanceFallback(); ok {
+		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
+		_node.AllowBalanceFallback = value
+	}
+	if value, ok := _c.mutation.ProtectedModels(); ok {
+		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
+		_node.ProtectedModels = value
+	}
+	if value, ok := _c.mutation.ProtectedModelQuotas(); ok {
+		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
+		_node.ProtectedModelQuotas = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1697,6 +1756,42 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (u *GroupUpsert) SetAllowBalanceFallback(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowBalanceFallback, v)
+	return u
+}
+
+// UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowBalanceFallback() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowBalanceFallback)
+	return u
+}
+
+// SetProtectedModels sets the "protected_models" field.
+func (u *GroupUpsert) SetProtectedModels(v []string) *GroupUpsert {
+	u.Set(group.FieldProtectedModels, v)
+	return u
+}
+
+// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProtectedModels() *GroupUpsert {
+	u.SetExcluded(group.FieldProtectedModels)
+	return u
+}
+
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (u *GroupUpsert) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsert {
+	u.Set(group.FieldProtectedModelQuotas, v)
+	return u
+}
+
+// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateProtectedModelQuotas() *GroupUpsert {
+	u.SetExcluded(group.FieldProtectedModelQuotas)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2383,6 +2478,48 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (u *GroupUpsertOne) SetAllowBalanceFallback(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBalanceFallback(v)
+	})
+}
+
+// UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowBalanceFallback() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBalanceFallback()
+	})
+}
+
+// SetProtectedModels sets the "protected_models" field.
+func (u *GroupUpsertOne) SetProtectedModels(v []string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModels(v)
+	})
+}
+
+// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProtectedModels() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModels()
+	})
+}
+
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (u *GroupUpsertOne) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModelQuotas(v)
+	})
+}
+
+// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateProtectedModelQuotas() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModelQuotas()
 	})
 }
 
@@ -3238,6 +3375,48 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetAllowBalanceFallback sets the "allow_balance_fallback" field.
+func (u *GroupUpsertBulk) SetAllowBalanceFallback(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowBalanceFallback(v)
+	})
+}
+
+// UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowBalanceFallback() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowBalanceFallback()
+	})
+}
+
+// SetProtectedModels sets the "protected_models" field.
+func (u *GroupUpsertBulk) SetProtectedModels(v []string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModels(v)
+	})
+}
+
+// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProtectedModels() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModels()
+	})
+}
+
+// SetProtectedModelQuotas sets the "protected_model_quotas" field.
+func (u *GroupUpsertBulk) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetProtectedModelQuotas(v)
+	})
+}
+
+// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateProtectedModelQuotas() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateProtectedModelQuotas()
 	})
 }
 

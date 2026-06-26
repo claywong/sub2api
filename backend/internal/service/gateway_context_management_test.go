@@ -397,7 +397,7 @@ func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_StripsContextManageme
 
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[]},"messages":[]}`)
 	svc := &GatewayService{cfg: &config.Config{}}
-	req, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
+	req, _, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)
@@ -569,7 +569,7 @@ func TestBuildCountTokensRequestAnthropicAPIKeyPassthrough_PreservesContextManag
 
 	body := []byte(`{"model":"claude-haiku-4-5","context_management":{"edits":[{"type":"clear_thinking_20251015"}]},"messages":[]}`)
 	svc := &GatewayService{cfg: &config.Config{}}
-	req, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
+	req, _, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		context.Background(), c, newAnthropicAPIKeyPassthroughAccountForBetaTest(), body, "token",
 	)
 	require.NoError(t, err)

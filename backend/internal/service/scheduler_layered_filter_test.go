@@ -46,6 +46,16 @@ func TestFilterByMinPriority(t *testing.T) {
 		require.Equal(t, int64(2), result[0].account.ID)
 		require.Equal(t, int64(4), result[1].account.ID)
 	})
+
+	t.Run("strict equality - different priority not included", func(t *testing.T) {
+		accounts := []accountWithLoad{
+			{account: &Account{ID: 1, Priority: 10}, loadInfo: &AccountLoadInfo{}},
+			{account: &Account{ID: 2, Priority: 11}, loadInfo: &AccountLoadInfo{}},
+		}
+		result := filterByMinPriority(accounts)
+		require.Len(t, result, 1)
+		require.Equal(t, int64(1), result[0].account.ID)
+	})
 }
 
 func TestFilterByMinLoadRate(t *testing.T) {

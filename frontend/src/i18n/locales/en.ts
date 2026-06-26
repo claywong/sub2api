@@ -2238,7 +2238,13 @@ export default {
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
-        noLimit: 'No limit'
+        noLimit: 'No limit',
+        balanceFallback: {
+          title: 'Balance Fallback on Quota Exceeded',
+          description: 'When enabled, requests will deduct from account balance instead of being rejected after the subscription quota is exhausted',
+          enabled: 'Balance fallback enabled',
+          disabled: 'Balance fallback disabled'
+        }
       },
       imagePricing: {
         title: 'Image Generation Pricing',
@@ -2264,6 +2270,19 @@ export default {
         fallbackGroup: 'Fallback Group',
         fallbackHint: 'Non-Claude Code requests will use this group. Leave empty to reject directly.',
         noFallback: 'No Fallback (Reject)'
+      },
+      sessionModelLock: {
+        title: 'Session Model Lock',
+        tooltip:
+          'Models in this list cannot be switched to mid-conversation unless the session starts with them. Same Claude Code session_id is tracked for 24h. Prevents "build context cheap, upgrade to expensive" abuse. Applies to Anthropic /v1/messages only.',
+        listLabel: 'Protected Models',
+        listPlaceholder: 'Type a model name and press Enter, e.g. claude-opus-4.7 or claude-opus-*',
+        listHint: 'Trailing wildcard * supported. Leave empty to disable.',
+        quotaTitle: 'Shared Quota',
+        quotaHint: 'All protected models share one daily/weekly spend limit (USD). Exceeding returns 429. Turn off for no limit.',
+        quotaDailyLabel: 'Daily Limit (USD)',
+        quotaWeeklyLabel: 'Weekly Limit (USD)',
+        quotaPlaceholder: 'No limit'
       },
       openaiMessages: {
         title: 'OpenAI Messages Dispatch',
@@ -3104,6 +3123,7 @@ export default {
       editAccount: 'Edit Account',
       deleteAccount: 'Delete Account',
       searchAccounts: 'Search accounts...',
+      allModels: 'All Models',
       notes: 'Notes',
       notesPlaceholder: 'Enter notes',
       notesHint: 'Notes are optional',
@@ -3164,7 +3184,10 @@ export default {
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
         overloadedUntil: 'Overloaded until {time}',
-        viewTempUnschedDetails: 'View temp unschedulable details'
+        viewTempUnschedDetails: 'View temp unschedulable details',
+        healthStickyOnly: 'Sticky only',
+        healthExcluded: 'Excluded',
+        healthVerdictReason: 'Reason: {reason}'
       },
       columns: {
         name: 'Name',
@@ -3509,6 +3532,12 @@ export default {
         webSearchDefault: 'Default',
         webSearchEnabled: 'Enabled',
         webSearchDisabled: 'Disabled',
+        passthroughMode: 'Passthrough mode',
+        passthroughModeDesc:
+          'Request-side protocol mode for Anthropic `messages` / `count_tokens`. `compat` keeps the existing compatibility path, `auth_only` only replaces upstream auth, and `full` preserves the original request headers/body as much as possible while injecting only upstream auth.',
+        passthroughModeCompat: 'compat (compatibility)',
+        passthroughModeAuthOnly: 'auth_only (auth replacement only)',
+        passthroughModeFull: 'full (full passthrough)'
       },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
@@ -4767,6 +4796,8 @@ export default {
       avgTps: 'Avg TPS',
       avgLatency: 'Avg Request Duration',
       avgTtft: 'Avg TTFT',
+      avgTcpConn: 'Avg TCP Connection Time',
+      avgTtfb: 'Avg TTFB',
       exceptions: 'Exceptions',
       requestErrors: 'Request Errors',
       errorCount: 'Error Count',
@@ -6277,7 +6308,21 @@ export default {
         keyCopied: 'Key copied to clipboard',
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
-        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
+        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>',
+        ipWhitelist: {
+          title: 'IP Whitelist',
+          description: 'Only allow specified IPs or CIDR ranges. Leave empty to allow all IPs.',
+          placeholder: '192.168.1.100\n10.0.0.0/8',
+          hint: 'One IP address or CIDR range per line. Leave empty to allow any IP.',
+          save: 'Save Whitelist',
+          saving: 'Saving...',
+          clear: 'Clear (Allow All)',
+          saved: 'IP whitelist saved',
+          cleared: 'IP whitelist cleared',
+          invalidFormat: 'Invalid IP format, please check and retry',
+          currentList: 'Current Whitelist',
+          empty: '(Unrestricted — any IP is allowed)'
+        }
       },
       soraS3: {
         title: 'Sora Storage',
@@ -6406,7 +6451,7 @@ export default {
         tempUnschedMinutes: 'Pause Duration (minutes)',
         tempUnschedMinutesHint: 'Duration of temporary unschedulable state (1-60 minutes)',
         thresholdCount: 'Trigger Threshold (count)',
-        thresholdCountHint: 'Number of timeouts before triggering action (1-10)',
+        thresholdCountHint: 'Number of timeouts before triggering action (1-60)',
         thresholdWindowMinutes: 'Threshold Window (minutes)',
         thresholdWindowMinutesHint: 'Time window for counting timeouts (1-60 minutes)',
         saved: 'Stream timeout settings saved',
@@ -6828,7 +6873,8 @@ export default {
     resetIn: 'Resets in {time}',
     quotaEndsIn: 'Quota ends in {time}',
     windowNotActive: 'Awaiting first use',
-    usageOf: '{used} of {limit}'
+    usageOf: '{used} of {limit}',
+    protectedModels: 'Protected Model Quotas'
   },
 
   // Onboarding Tour

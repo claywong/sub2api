@@ -93,6 +93,15 @@ type APIKeyAuthGroupSnapshot struct {
 
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
+
+	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
+	AllowBalanceFallback bool `json:"allow_balance_fallback"`
+
+	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
+	ProtectedModels []string `json:"protected_models,omitempty"`
+
+	// 受保护模型的共享日/周额度配置（私有扩展）
+	ProtectedModelQuota *ProtectedModelQuota `json:"protected_model_quota,omitempty"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存
