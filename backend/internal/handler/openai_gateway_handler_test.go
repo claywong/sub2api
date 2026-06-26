@@ -1524,6 +1524,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		&service.DeferredService{},
 		nil,
 		nil,
+		nil,
 		channelSvc,
 		nil,
 		nil,

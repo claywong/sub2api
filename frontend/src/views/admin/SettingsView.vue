@@ -3335,7 +3335,7 @@
                       </tr>
                     </thead>
                     <tbody class="space-y-2">
-                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="p" class="align-top">
+                      <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)" :key="p" class="align-top">
                         <td class="pr-4 py-1">
                           <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                         </td>
@@ -3670,7 +3670,7 @@
                             </tr>
                           </thead>
                           <tbody>
-                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
+                            <tr v-for="p in (['anthropic', 'openai', 'gemini', 'antigravity', 'grok'] as const)" :key="`${authSource.source}-pq-${p}`" class="align-top">
                               <td class="pr-4 py-1">
                                 <span class="font-mono text-xs text-gray-700 dark:text-gray-300">{{ p }}</span>
                               </td>
@@ -9864,7 +9864,15 @@ async function loadProviders() {
   providersLoading.value = true;
   try {
     const res = await adminAPI.payment.getProviders();
-    providers.value = res.data || [];
+    // Normalize supported_types: backend returns null when the list is empty
+    // (Go nil slice → JSON null). Without this, ProviderCard's isSelected()
+    // throws TypeError on null.includes(), causing the card to vanish.
+    providers.value = (res.data || []).map((p) => ({
+      ...p,
+      supported_types: Array.isArray(p.supported_types)
+        ? p.supported_types
+        : [],
+    }));
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
   } finally {
@@ -9958,9 +9966,12 @@ async function handleToggleField(
 }
 
 async function handleToggleType(provider: ProviderInstance, type: string) {
-  const updated = provider.supported_types.includes(type)
-    ? provider.supported_types.filter((t) => t !== type)
-    : [...provider.supported_types, type];
+  const currentTypes = Array.isArray(provider.supported_types)
+    ? provider.supported_types
+    : [];
+  const updated = currentTypes.includes(type)
+    ? currentTypes.filter((t) => t !== type)
+    : [...currentTypes, type];
   const conflict = findProviderEnablementConflict({
     id: provider.id,
     provider_key: provider.provider_key,
