@@ -214,3 +214,120 @@ func TestQualityCache_ConfigureWindowMinutes(t *testing.T) {
 	c.ConfigureWindowMinutes(0) // 非法值不变
 	assert.Equal(t, int64(60), c.bucketSec())
 }
+
+// ─── 缓存命中率作为带内成本因子（私有扩展）──────────────────────────────────
+
+// recordCacheQuality 写入 n 条带缓存命中的样本。
+// 命中率 = cacheRead/(cacheRead+cacheCreate+input)；TTFT 2s、OTPS 80 固定，
+// 保证账号落在同一"体验相近带"，仅命中率/倍率不同，便于隔离成本因子的影响。
+func recordCacheQuality(s *GatewayService, id int64, model string, cacheRead, cacheCreate, input, n int) {
+	for i := 0; i < n; i++ {
+		s.modelQualityCache.Record(id, model, CallSample{
+			Success: true, TTFTMs: 2000, DurationMs: 3000, OutputTokens: 81,
+			CacheReadTokens: cacheRead, CacheCreationTokens: cacheCreate, InputTokens: input,
+		})
+	}
+}
+
+func countWeightedPicks(s *GatewayService, available []accountWithLoad, iters int) map[int64]int {
+	counts := map[int64]int{}
+	for i := 0; i < iters; i++ {
+		got := s.selectByWeightedQuality(available, "m", nil, "")
+		if got != nil {
+			counts[got.account.ID]++
+		}
+	}
+	return counts
+}
+
+func TestWeightedSelectionConfig_CacheDefaults(t *testing.T) {
+	s := newWeightedTestService(true)
+	c := s.weightedSelectionConfig()
+	assert.InDelta(t, 0.0, c.CacheDiscount, 1e-9, "缓存折扣默认 0 即关闭")
+	assert.Equal(t, 20, c.CacheHitShrinkK)
+	// discount 越界封顶到 0.9
+	s.cfg.Gateway.Scheduling.WeightedSelection.CacheDiscount = 0.99
+	assert.InDelta(t, 0.9, s.weightedSelectionConfig().CacheDiscount, 1e-9, "discount 应封顶到 0.9")
+}
+
+// 关闭时(discount=0)：高命中率账号不应获得任何成本优势（与原行为等价）。
+func TestSelectByWeightedQuality_CacheDiscountZero_NoEffect(t *testing.T) {
+	s := newWeightedTestService(true) // CacheDiscount 默认 0
+	recordCacheQuality(s, 1, "m", 90, 0, 10, 60) // hit 0.9
+	recordCacheQuality(s, 2, "m", 0, 0, 100, 60) // hit 0.0
+	available := []accountWithLoad{makeWeightedAccount(1, 0, 1.0), makeWeightedAccount(2, 0, 1.0)}
+	counts := countWeightedPicks(s, available, 2000)
+	assert.Greater(t, counts[1], 800, "关闭时分布应接近均匀: %v", counts)
+	assert.Greater(t, counts[2], 800, "关闭时分布应接近均匀: %v", counts)
+}
+
+// 开启时：体验相近、同倍率，命中率高的账号有效成本更低 → 多拿。
+func TestSelectByWeightedQuality_CacheHitCheaperWins(t *testing.T) {
+	s := newWeightedTestService(true)
+	s.cfg.Gateway.Scheduling.WeightedSelection.CacheDiscount = 0.5
+	recordCacheQuality(s, 1, "m", 90, 0, 10, 60) // hit 0.9
+	recordCacheQuality(s, 2, "m", 0, 0, 100, 60) // hit 0.0
+	available := []accountWithLoad{makeWeightedAccount(1, 0, 1.0), makeWeightedAccount(2, 0, 1.0)}
+	counts := countWeightedPicks(s, available, 2000)
+	assert.Greater(t, counts[1], counts[2], "高命中率账号应多拿: %v", counts)
+	assert.Greater(t, counts[2], 200, "低命中率账号在带内仍应有可观份额: %v", counts)
+}
+
+// 开启但无缓存样本：effRate=rate，退化为原行为（约 50/50）。
+func TestSelectByWeightedQuality_CacheColdStartDegradesToRate(t *testing.T) {
+	s := newWeightedTestService(true)
+	s.cfg.Gateway.Scheduling.WeightedSelection.CacheDiscount = 0.5
+	// 只写 TTFT/OTPS，不带 cache token → CacheHitN=0
+	recordQuality(s, 1, "m", 2000, 81, 3000, 10)
+	recordQuality(s, 2, "m", 2000, 81, 3000, 10)
+	available := []accountWithLoad{makeWeightedAccount(1, 0, 1.0), makeWeightedAccount(2, 0, 1.0)}
+	counts := countWeightedPicks(s, available, 2000)
+	assert.Greater(t, counts[1], 800, "无缓存样本应退化为均匀: %v", counts)
+	assert.Greater(t, counts[2], 800, "无缓存样本应退化为均匀: %v", counts)
+}
+
+// 样本量收缩：同命中率下，样本多的账号有效折扣更强 → 份额更高。
+func TestSelectByWeightedQuality_CacheSampleShrinkage(t *testing.T) {
+	share := func(nSamples int) int {
+		s := newWeightedTestService(true)
+		s.cfg.Gateway.Scheduling.WeightedSelection.CacheDiscount = 0.5
+		recordCacheQuality(s, 1, "m", 90, 0, 10, nSamples) // hit 0.9, N=nSamples
+		recordCacheQuality(s, 2, "m", 0, 0, 100, 60)       // 基准 hit 0
+		available := []accountWithLoad{makeWeightedAccount(1, 0, 1.0), makeWeightedAccount(2, 0, 1.0)}
+		return countWeightedPicks(s, available, 2000)[1]
+	}
+	few := share(2)
+	many := share(200)
+	assert.Greater(t, many, few, "样本多的高命中账号折扣更强、份额更高: few=%d many=%d", few, many)
+}
+
+// effRate 下限保护：极端参数（小倍率+满命中+高折扣）不产生 NaN/Inf，对手仍有份额。
+func TestSelectByWeightedQuality_CacheEffRateFloorNoExplode(t *testing.T) {
+	s := newWeightedTestService(true)
+	s.cfg.Gateway.Scheduling.WeightedSelection.CacheDiscount = 0.9
+	recordCacheQuality(s, 1, "m", 100, 0, 0, 300) // hit 1.0, N=300 → effRate 触下限 0.05
+	recordCacheQuality(s, 2, "m", 0, 0, 100, 300) // hit 0
+	available := []accountWithLoad{makeWeightedAccount(1, 0, 0.1), makeWeightedAccount(2, 0, 1.0)}
+	counts := countWeightedPicks(s, available, 2000)
+	assert.Equal(t, 2000, counts[1]+counts[2], "无丢失/无 panic: %v", counts)
+	assert.Greater(t, counts[1], counts[2], "极低有效成本账号应多拿: %v", counts)
+	assert.Greater(t, counts[2], 0, "对手账号仍应保留份额（无除零爆权重）: %v", counts)
+}
+
+// 缓存命中率不影响"体验相近带"划分：体验差但命中率高的账号仍只拿带外 floor。
+func TestSelectByWeightedQuality_CacheDoesNotAffectBand(t *testing.T) {
+	s := newWeightedTestService(true)
+	s.cfg.Gateway.Scheduling.WeightedSelection.CacheDiscount = 0.5
+	// acc1：体验好(TTFT 1s, OTPS 100)、命中率 0
+	for i := 0; i < 60; i++ {
+		s.modelQualityCache.Record(1, "m", CallSample{Success: true, TTFTMs: 1000, DurationMs: 2000, OutputTokens: 101, InputTokens: 100})
+	}
+	// acc2：体验差(TTFT 9s, OTPS 20)、命中率 0.9（高）
+	for i := 0; i < 60; i++ {
+		s.modelQualityCache.Record(2, "m", CallSample{Success: true, TTFTMs: 9000, DurationMs: 10000, OutputTokens: 21, CacheReadTokens: 90, InputTokens: 10})
+	}
+	available := []accountWithLoad{makeWeightedAccount(1, 0, 1.0), makeWeightedAccount(2, 0, 1.0)}
+	counts := countWeightedPicks(s, available, 2000)
+	assert.Greater(t, counts[1], 1700, "体验好的账号仍应拿绝大多数: %v", counts)
+	assert.Less(t, counts[2], 300, "体验差账号即便高命中率也只拿 floor: %v", counts)
+}

@@ -1151,30 +1151,39 @@ type WeightedSelectionConfig struct {
 	WTTFT float64 `mapstructure:"w_ttft"`
 	WOTPS float64 `mapstructure:"w_otps"`
 	WErr  float64 `mapstructure:"w_err"`
+	// CacheDiscount 缓存命中的成本折扣强度，clamp 到 [0, 0.9]，默认 0（=关闭，兼作开关）。
+	// >0 时把缓存命中率作为"带内有效成本"因子：带内权重 = (1/effRate)^β，
+	// effRate = 倍率 × (1 - cache_discount × 收缩后命中率)。命中 token 走 cache-read 价
+	// （约 0.1× input），命中率越高有效成本越低；缓存命中率不进质量分（不影响"体验相近带"划分），
+	// 仅在带内裁决"谁更省钱多拿"。设为 0 即逐位回到原行为。
+	CacheDiscount float64 `mapstructure:"cache_discount"`
+	// CacheHitShrinkK 命中率样本量收缩系数 K：effHit = hit × N/(N+K)，默认 20。
+	// 防止两三条粘性样本就把命中率"封神"，缓解缓存命中率的自增强偏差。
+	CacheHitShrinkK int `mapstructure:"cache_hit_shrink_k"`
 }
 
 // SchedulingHealthConfig HealthVerdict 三态判定阈值。
 type SchedulingHealthConfig struct {
-	WindowMinutes               int     `mapstructure:"window_minutes"`                  // 滑动窗口长度（分钟），默认 10
-	MinSamples                  int     `mapstructure:"min_samples"`                     // 触发判定的最小样本数，默认 5
-	ErrCountSoft                int     `mapstructure:"err_count_soft"`                  // 错误数软阈值 → StickyOnly，默认 5
-	ErrCountHard                int     `mapstructure:"err_count_hard"`                  // 错误数硬阈值 → Excluded，默认 10
-	ErrRateSoft                 float64 `mapstructure:"err_rate_soft"`                   // 错误率软阈值，默认 0.3
-	ErrRateHard                 float64 `mapstructure:"err_rate_hard"`                   // 错误率硬阈值，默认 0.5
-	TTFTStickyOnlyMs            int     `mapstructure:"ttft_sticky_only_ms"`             // TTFT 进入 StickyOnly 的阈值，默认 10000
-	TTFTExcludedMs              int     `mapstructure:"ttft_excluded_ms"`                // TTFT 进入 Excluded 的阈值，0 表示禁用
-	OTPSStickyOnlyMin           float64 `mapstructure:"otps_sticky_only_min"`            // OTPS 进入 StickyOnly 的下限，默认 10
-	OTPSExcludedMin             float64 `mapstructure:"otps_excluded_min"`               // OTPS 进入 Excluded 的下限，0 表示禁用
-	ExcludedTempUnschedMinutes  int     `mapstructure:"excluded_temp_unsched_minutes"`   // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
+	WindowMinutes              int     `mapstructure:"window_minutes"`                // 滑动窗口长度（分钟），默认 10
+	MinSamples                 int     `mapstructure:"min_samples"`                   // 触发判定的最小样本数，默认 5
+	ErrCountSoft               int     `mapstructure:"err_count_soft"`                // 错误数软阈值 → StickyOnly，默认 5
+	ErrCountHard               int     `mapstructure:"err_count_hard"`                // 错误数硬阈值 → Excluded，默认 10
+	ErrRateSoft                float64 `mapstructure:"err_rate_soft"`                 // 错误率软阈值，默认 0.3
+	ErrRateHard                float64 `mapstructure:"err_rate_hard"`                 // 错误率硬阈值，默认 0.5
+	TTFTStickyOnlyMs           int     `mapstructure:"ttft_sticky_only_ms"`           // TTFT 进入 StickyOnly 的阈值，默认 10000
+	TTFTExcludedMs             int     `mapstructure:"ttft_excluded_ms"`              // TTFT 进入 Excluded 的阈值，0 表示禁用
+	OTPSStickyOnlyMin          float64 `mapstructure:"otps_sticky_only_min"`          // OTPS 进入 StickyOnly 的下限，默认 10
+	OTPSExcludedMin            float64 `mapstructure:"otps_excluded_min"`             // OTPS 进入 Excluded 的下限，0 表示禁用
+	ExcludedTempUnschedMinutes int     `mapstructure:"excluded_temp_unsched_minutes"` // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
 }
 
 // SchedulingDebugConfig 调度调试观测开关。
 type SchedulingDebugConfig struct {
-	LogDecisions     bool    `mapstructure:"log_decisions"`      // 是否打详细决策日志
-	LogGroups        []int64 `mapstructure:"log_groups"`         // 仅这些 group 强制 100% 详细日志
-	LogSampleRate    float64 `mapstructure:"log_sample_rate"`    // 全局采样率（0~1），默认 0.05
-	LogScoreDetails  bool    `mapstructure:"log_score_details"`  // 是否展开每候选因子明细
-	CompareMode      bool    `mapstructure:"compare_mode"`       // 比对模式：同跑 legacy + weighted
+	LogDecisions    bool    `mapstructure:"log_decisions"`     // 是否打详细决策日志
+	LogGroups       []int64 `mapstructure:"log_groups"`        // 仅这些 group 强制 100% 详细日志
+	LogSampleRate   float64 `mapstructure:"log_sample_rate"`   // 全局采样率（0~1），默认 0.05
+	LogScoreDetails bool    `mapstructure:"log_score_details"` // 是否展开每候选因子明细
+	CompareMode     bool    `mapstructure:"compare_mode"`      // 比对模式：同跑 legacy + weighted
 }
 
 // AccountHealthConfig Anthropic 账号健康感知调度阈值，0 表示使用内置默认值。
@@ -1953,7 +1962,7 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
 	// Gateway
-	viper.SetDefault("gateway.response_header_timeout", 600)             // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.response_header_timeout", 600)         // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.anthropic_response_header_timeout", 0) // 0表示沿用 response_header_timeout
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
