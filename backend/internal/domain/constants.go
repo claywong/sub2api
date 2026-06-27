@@ -10,6 +10,10 @@ const (
 	StatusExpired  = "expired"
 )
 
+// TempUnschedulableReason 前缀：手动设置的冷却窗口，定时测试 auto-recover 不会清除，
+// 仅在 TempUnschedulableUntil 到期后由调度器自动放出。
+const ManualCooldownReasonPrefix = "manual-cooldown:"
+
 // Role constants
 const (
 	RoleAdmin = "admin"

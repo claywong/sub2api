@@ -307,3 +307,80 @@ func TestRateLimitService_RecoverAccountState_InvalidatesOAuthTokenOnErrorRecove
 	require.Len(t, invalidator.accounts, 1)
 	require.Equal(t, int64(21), invalidator.accounts[0].ID)
 }
+
+// 手动冷却窗口（manual-cooldown:）应被定时测试 auto-recover 完整保留。
+func TestRateLimitService_RecoverAccountAfterSuccessfulTest_PreservesManualCooldown(t *testing.T) {
+	until := time.Now().Add(30 * time.Minute)
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:                      55,
+			Status:                  StatusActive,
+			TempUnschedulableUntil:  &until,
+			TempUnschedulableReason: ManualCooldownReasonPrefix + "scan-rule-foo",
+		},
+	}
+	cache := &tempUnschedCacheRecorder{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
+
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 55)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.False(t, result.ClearedError)
+	require.False(t, result.ClearedRateLimit)
+
+	require.Equal(t, 1, repo.getByIDCalls)
+	require.Equal(t, 0, repo.clearRateLimitCalls)
+	require.Equal(t, 0, repo.clearTempUnschedCalls)
+	require.Empty(t, cache.deletedIDs)
+}
+
+// 手动冷却 + 限流共存时，限流应被清，但手动冷却保留。
+func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ManualCooldownSurvivesAlongsideRateLimit(t *testing.T) {
+	now := time.Now()
+	until := now.Add(30 * time.Minute)
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:                      56,
+			Status:                  StatusActive,
+			RateLimitedAt:           &now,
+			TempUnschedulableUntil:  &until,
+			TempUnschedulableReason: ManualCooldownReasonPrefix + "scan-rule-bar",
+		},
+	}
+	cache := &tempUnschedCacheRecorder{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
+
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 56)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.ClearedRateLimit)
+
+	require.Equal(t, 1, repo.clearRateLimitCalls)
+	require.Equal(t, 1, repo.clearAntigravityCalls)
+	require.Equal(t, 1, repo.clearModelRateLimitCalls)
+	require.Equal(t, 0, repo.clearTempUnschedCalls, "manual cooldown must survive ClearRateLimit")
+	require.Empty(t, cache.deletedIDs, "manual cooldown cache must survive ClearRateLimit")
+}
+
+// 手动冷却到期后，TempUnschedulable 仍可由后续 ClearRateLimit 正常清理。
+func TestRateLimitService_RecoverAccountAfterSuccessfulTest_ExpiredManualCooldownIsCleared(t *testing.T) {
+	now := time.Now()
+	expired := now.Add(-1 * time.Minute)
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:                      57,
+			Status:                  StatusActive,
+			RateLimitedAt:           &now,
+			TempUnschedulableUntil:  &expired,
+			TempUnschedulableReason: ManualCooldownReasonPrefix + "scan-rule-baz",
+		},
+	}
+	cache := &tempUnschedCacheRecorder{}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
+
+	result, err := svc.RecoverAccountAfterSuccessfulTest(context.Background(), 57)
+	require.NoError(t, err)
+	require.True(t, result.ClearedRateLimit)
+	require.Equal(t, 1, repo.clearTempUnschedCalls, "expired manual cooldown should be cleared normally")
+	require.Equal(t, []int64{57}, cache.deletedIDs)
+}
