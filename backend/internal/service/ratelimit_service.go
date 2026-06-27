@@ -1667,6 +1667,34 @@ func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context
 	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
 }
 
+// SetManualCooldown 将账号标记为手动冷却（manual-cooldown: 前缀），写 DB + 写缓存。
+// 标记后调度器在到期前会跳过该账号，定时测试 auto-recover 也不会清除（见 isManualCooldownActive）。
+// duration <= 0 视为无效操作直接返回 nil。reason 为人类可读文本，前缀由本函数自动加。
+func (s *RateLimitService) SetManualCooldown(ctx context.Context, account *Account, duration time.Duration, reason string) error {
+	if s == nil || account == nil || duration <= 0 {
+		return nil
+	}
+	now := time.Now()
+	until := now.Add(duration)
+	fullReason := ManualCooldownReasonPrefix + reason
+
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, fullReason); err != nil {
+		return err
+	}
+	if s.tempUnschedCache != nil {
+		state := &TempUnschedState{
+			UntilUnix:       until.Unix(),
+			TriggeredAtUnix: now.Unix(),
+			ErrorMessage:    fullReason,
+		}
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			slog.Warn("manual_cooldown_cache_set_failed", "account_id", account.ID, "error", err)
+		}
+	}
+	s.notifyAccountSchedulingBlocked(account, until, "manual_cooldown")
+	return nil
+}
+
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
 		return err

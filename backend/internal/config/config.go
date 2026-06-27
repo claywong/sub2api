@@ -88,6 +88,7 @@ type Config struct {
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
+	MetricCooldown          MetricCooldownConfig          `mapstructure:"metric_cooldown"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
@@ -529,6 +530,30 @@ type TokenRefreshConfig struct {
 	MaxRetries int `mapstructure:"max_retries"`
 	// 重试退避基础时间（秒）
 	RetryBackoffSeconds int `mapstructure:"retry_backoff_seconds"`
+}
+
+// MetricCooldownConfig 周期性指标冷却扫描配置。
+// 全局默认；单 account 可通过 account.extra["metric_cooldown_override"] 覆盖。
+type MetricCooldownConfig struct {
+	Enabled        bool                `mapstructure:"enabled"`
+	Cron           string              `mapstructure:"cron"`             // 例 "*/5 * * * *"
+	WindowMinutes  int                 `mapstructure:"window_minutes"`   // 评估窗口
+	MinSampleCount int                 `mapstructure:"min_sample_count"` // 样本数下限,低于则跳过
+	CooldownHours  float64             `mapstructure:"cooldown_hours"`   // 命中后冷却时长
+	Rules          MetricCooldownRules `mapstructure:"rules"`
+}
+
+type MetricCooldownRules struct {
+	TTFTMs       MetricCooldownRule `mapstructure:"ttft_ms"`
+	OTPS         MetricCooldownRule `mapstructure:"otps"`
+	CacheHitRate MetricCooldownRule `mapstructure:"cache_hit_rate"`
+	CostPerReq   MetricCooldownRule `mapstructure:"cost_per_req"`
+}
+
+type MetricCooldownRule struct {
+	Enabled   bool    `mapstructure:"enabled"`
+	Op        string  `mapstructure:"op"` // ">" 或 "<"
+	Threshold float64 `mapstructure:"threshold"`
 }
 
 type PricingConfig struct {
@@ -2104,6 +2129,25 @@ func setDefaults() {
 	// Subscription Maintenance (bounded queue + worker pool)
 	viper.SetDefault("subscription_maintenance.worker_count", 2)
 	viper.SetDefault("subscription_maintenance.queue_size", 1024)
+
+	// MetricCooldown 周期性指标冷却扫描
+	viper.SetDefault("metric_cooldown.enabled", false)
+	viper.SetDefault("metric_cooldown.cron", "*/5 * * * *")
+	viper.SetDefault("metric_cooldown.window_minutes", 30)
+	viper.SetDefault("metric_cooldown.min_sample_count", 20)
+	viper.SetDefault("metric_cooldown.cooldown_hours", 8)
+	viper.SetDefault("metric_cooldown.rules.ttft_ms.enabled", true)
+	viper.SetDefault("metric_cooldown.rules.ttft_ms.op", ">")
+	viper.SetDefault("metric_cooldown.rules.ttft_ms.threshold", 5000)
+	viper.SetDefault("metric_cooldown.rules.otps.enabled", true)
+	viper.SetDefault("metric_cooldown.rules.otps.op", "<")
+	viper.SetDefault("metric_cooldown.rules.otps.threshold", 10)
+	viper.SetDefault("metric_cooldown.rules.cache_hit_rate.enabled", true)
+	viper.SetDefault("metric_cooldown.rules.cache_hit_rate.op", "<")
+	viper.SetDefault("metric_cooldown.rules.cache_hit_rate.threshold", 30)
+	viper.SetDefault("metric_cooldown.rules.cost_per_req.enabled", true)
+	viper.SetDefault("metric_cooldown.rules.cost_per_req.op", ">")
+	viper.SetDefault("metric_cooldown.rules.cost_per_req.threshold", 0.05)
 
 }
 

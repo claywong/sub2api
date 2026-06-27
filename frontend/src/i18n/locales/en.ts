@@ -3603,6 +3603,20 @@ export default {
 	  autoPause5hDisabled: 'Disable 5h auto-pause',
 	  autoPause7dDisabled: 'Disable 7d auto-pause',
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+      metricCooldown: {
+        title: 'Metric Cooldown (override global default)',
+        hint: 'The backend periodically scans this account\'s 4 metrics within the window. Any rule hit marks the account as manual-cooldown, auto-released by the scheduler on expiry; scheduled-test auto-recover will not clear it. Empty fields inherit the global default.',
+        accountDisabled: 'Disable metric cooldown for this account',
+        accountDisabledHint: 'When enabled, the scanner skips this account entirely; other override fields are ignored.',
+        windowMinutes: 'Window (minutes)',
+        minSampleCount: 'Min sample count',
+        cooldownHours: 'Cooldown (hours)',
+        ruleTTFTMs: 'TTFT threshold > (ms)',
+        ruleOTPS: 'OTPS threshold < (tokens/s)',
+        ruleCacheHitRate: 'Cache hit rate threshold < (%)',
+        ruleCostPerReq: 'Cost/req threshold > (USD)',
+        inheritGlobalHint: 'Empty = inherit global',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
