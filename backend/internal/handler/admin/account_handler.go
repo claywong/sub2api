@@ -243,6 +243,17 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 				item.CurrentRPM = &rpm
 			}
 		}
+	} else if account.SupportsSessionLimit() {
+		// 私有扩展：Anthropic API Key 账号的活跃会话数展示（窗口费用 / RPM 仍仅 OAuth/SetupToken）
+		if h.sessionLimitCache != nil && account.GetMaxSessions() > 0 {
+			idleTimeout := time.Duration(account.GetSessionIdleTimeoutMinutes()) * time.Minute
+			idleTimeouts := map[int64]time.Duration{account.ID: idleTimeout}
+			if sessions, err := h.sessionLimitCache.GetActiveSessionCountBatch(ctx, []int64{account.ID}, idleTimeouts); err == nil {
+				if count, ok := sessions[account.ID]; ok {
+					item.ActiveSessions = &count
+				}
+			}
+		}
 	}
 
 	h.attachAccountHealthRuntime(&item, account)
@@ -365,6 +376,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 			if acc.GetBaseRPM() > 0 {
 				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
 			}
+		} else if acc.SupportsSessionLimit() && acc.GetMaxSessions() > 0 {
+			// 私有扩展：Anthropic API Key 账号也参与活跃会话数统计（窗口费用 / RPM 仍仅 OAuth/SetupToken）
+			sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
+			sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 		}
 	}
 
