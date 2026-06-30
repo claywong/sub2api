@@ -1154,22 +1154,32 @@ type GatewaySchedulingConfig struct {
 	WeightedSelection WeightedSelectionConfig `mapstructure:"weighted_selection"`
 }
 
-// WeightedSelectionConfig Layer 2 性价比加权选号配置（私有扩展，不属于 upstream sub2api）。
+// WeightedSelectionConfig Layer 2 性价比选号配置（私有扩展，不属于 upstream sub2api）。
 //
-// 公式：weight = quality / effRate^CostAggressiveness
+// 选号流程：Priority 最优组 → 计算 score → 容差带内按负载选最空
 //
-//	quality = (1 - errRate) × ttftFactor × otpsFactor          // 0~1
+//	score   = quality / effRate^CostAggressiveness
+//	quality = 0.6 × ttftScore + 0.4 × otpsScore                // 0~1，体验加权和
 //	effRate = rate × (1 - 0.9 × shrunkHit)                     // 期望单 token 成本
 //
-// 无样本各项取 1（不奖不罚）。Enabled=false（零值）时走原分桶漏斗。
+// 成功率（successRate）不进 quality：账号可靠性由 HealthVerdict 门禁（10min 窗口）
+// 前置硬过滤，评分只负责"活着的账号之间按性价比优选"。
+// 无样本时 ttftScore/otpsScore 取 1（乐观，鼓励冷启动探索）；
+// 缓存命中率不进 quality（避免自增强污染），只折进 effRate；
+// 冷启动账号无缓存样本时，用候选集平均缓存率乐观估计，避免"无缓存显贵"被饿死。
+// Enabled=false（零值）时走原分桶漏斗。
 type WeightedSelectionConfig struct {
 	// 总开关，默认 false（走原 Priority → 分桶 → LoadRate → LRU 漏斗）
 	Enabled bool `mapstructure:"enabled"`
 	// 质量打分滑动窗口长度（分钟），默认 60；HealthVerdict 的 10min 窗口不受影响
 	QualityWindowMinutes int `mapstructure:"quality_window_minutes"`
-	// CostAggressiveness 成本敏感度 β：weight = quality / effRate^β，默认 1.0
+	// CostAggressiveness 成本敏感度 β：score = quality / effRate^β，默认 1.0
 	// β>1 更偏好便宜账号；β<1 更平均；β=0 完全不看成本。
 	CostAggressiveness float64 `mapstructure:"cost_aggressiveness"`
+	// CostTolerance 成本容差带宽（0~1）：在 score ≥ maxScore×(1-CostTolerance) 的账号中
+	// 按当前负载选最空的，实现"性价比相近则负载均衡 + 冷启动预热"。默认 0.15。
+	// 越大越偏负载均衡；想纯选最高分配极小值（如 0.001）。
+	CostTolerance float64 `mapstructure:"cost_tolerance"`
 }
 
 // SchedulingHealthConfig HealthVerdict 三态判定阈值。
