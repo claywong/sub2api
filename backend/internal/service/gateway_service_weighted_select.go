@@ -1,16 +1,24 @@
 // gateway_service_weighted_select.go
 // =============================================================================
-// 私有扩展（不属于 upstream sub2api）：Layer 2 性价比加权选号。
+// 私有扩展（不属于 upstream sub2api）：Layer 2 性价比选号。
 //
-// 核心公式（一行）：
+// 核心公式：
 //
-//	weight = quality / effRate^β
+//	score   = quality / effRate^β
+//	quality = 0.6 × ttftScore + 0.4 × otpsScore               // 0~1，体验加权和
+//	effRate = rate × (1 - 0.9 × shrunkHit)                    // 期望单 token 成本
 //
-//	quality = (1 - errRate) × ttftFactor × otpsFactor       // 0~1
-//	effRate = rate × (1 - 0.9 × shrunkHit)                  // 期望单 token 成本
+//	ttftScore = clamp01(1 - p90 / 15000)                       // 无样本取 1
+//	otpsScore = clamp01((otps - 20) / (50 - 20))               // 20→0 分，50→满分；无样本取 1
 //
-// 无样本时 ttftFactor/otpsFactor/successRate 各自取 1（不奖不罚，鼓励冷启动探索）。
-// 缓存命中率不进 quality（避免自增强污染），只折进 effRate。
+// 设计要点：
+//   - 成功率不进 quality：账号可靠性由 HealthVerdict 门禁（10min 窗口）前置硬过滤，
+//     评分只负责"活着的账号之间按性价比优选"，职责不重叠。
+//   - 缓存命中率不进 quality（避免自增强污染），只折进 effRate。
+//   - 冷启动账号无缓存样本时，用候选集平均缓存率乐观估计 effRate，
+//     避免"无缓存显贵"导致新账号一直选不上 → 一直没缓存的死循环。
+//   - 选号不再加权随机，而是确定性："score 最高带（容差 CostTolerance）内选当前最空的账号"，
+//     既可解释，又自带负载均衡与冷启动预热（冷账号 load 最低，优先被选）。
 //
 // 新增方法：
 //   - weightedSelectionConfig() / isWeightedSelectionEnabled()
@@ -36,26 +44,37 @@ import (
 
 // 写死的内部常量：调参意义不大，藏在代码里减少配置噪音。
 const (
-	wsTTFTZeroMs        = 15000.0 // TTFT P90 ≥ 15s → ttftFactor = 0
-	wsOTPSFullScore     = 80.0    // OTPS ≥ 80 tokens/s → otpsFactor = 1
+	wsTTFTZeroMs        = 15000.0 // TTFT P90 ≥ 15s → ttftScore = 0
+	wsOTPSZeroScore     = 20.0    // OTPS ≤ 20 tokens/s → otpsScore = 0
+	wsOTPSFullScore     = 50.0    // OTPS ≥ 50 tokens/s → otpsScore = 1
+	wsQualityTTFTWeight = 0.6     // quality 中 TTFT 占比（用户对首字节更敏感）
+	wsQualityOTPSWeight = 0.4     // quality 中 OTPS 占比
 	wsCacheDiscount     = 0.9     // 缓存命中折扣强度（对应 Anthropic cache_read ≈ 0.1× 价格）
 	wsCacheHitShrinkK   = 20.0    // 命中率样本量收缩系数：effHit = hit × N/(N+K)
+	wsColdStartCacheN   = 20      // 冷启动乐观估计的等效样本量（配合 ShrinkK 给半折，温和乐观）
 	wsMinRateMultiplier = 0.05    // 倍率下限，防止 0 倍率账号 effRate → 0
+	wsCostToleranceDef  = 0.15    // 成本容差带默认宽度
 )
 
-// weightedSelectionConfig 返回填充默认值后的加权选号配置。
-// 极简方案：实际只用到 QualityWindowMinutes 和 CostAggressiveness。
+// weightedSelectionConfig 返回填充默认值后的选号配置。
 func (s *GatewayService) weightedSelectionConfig() weightedSelectionRuntimeConfig {
 	c := s.schedulingConfig().WeightedSelection
 	rt := weightedSelectionRuntimeConfig{
 		QualityWindowMinutes: c.QualityWindowMinutes,
 		CostAggressiveness:   c.CostAggressiveness,
+		CostTolerance:        c.CostTolerance,
 	}
 	if rt.QualityWindowMinutes <= 0 {
 		rt.QualityWindowMinutes = defaultQualityWindowMinutes
 	}
 	if rt.CostAggressiveness <= 0 {
 		rt.CostAggressiveness = 1.0
+	}
+	if rt.CostTolerance <= 0 {
+		rt.CostTolerance = wsCostToleranceDef
+	}
+	if rt.CostTolerance > 1 {
+		rt.CostTolerance = 1
 	}
 	return rt
 }
@@ -64,6 +83,7 @@ func (s *GatewayService) weightedSelectionConfig() weightedSelectionRuntimeConfi
 type weightedSelectionRuntimeConfig struct {
 	QualityWindowMinutes int
 	CostAggressiveness   float64
+	CostTolerance        float64
 }
 
 // isWeightedSelectionEnabled 返回是否启用加权选号，默认 false。
@@ -84,29 +104,31 @@ func (s *GatewayService) isWeightedSelectionEnabled() bool {
 // qualityScoreDetail 单账号打分明细，供调试日志使用。
 type qualityScoreDetail struct {
 	Quality      float64 // 综合质量分（0~1）
+	TTFTScore    float64 // TTFT 子分（0~1）
+	OTPSScore    float64 // OTPS 子分（0~1）
 	TTFTP90Ms    float64 // 0 表示无样本
 	OTPSAvg      float64 // 0 表示无样本
-	ErrRate      float64 // -1 表示无样本
 	CacheHitRate float64 // -1 表示无样本
 	CacheHitN    int     // 缓存命中率样本数
 	Rate         float64 // 账号倍率（clamp 后）
 	EffRate      float64 // 有效成本倍率（含缓存折扣）
-	Weight       float64 // 最终抽签权重
+	Score        float64 // 最终性价比分 = quality / effRate^β
+	Load         int     // 当前负载率（0~100+）
 }
 
 // computeQualityScore 计算账号在指定模型上的综合质量分（0~1）：
 //
-//	quality = (1 - errRate) × ttftFactor × otpsFactor
-//	ttftFactor = clamp01(1 - p90 / 15000)    // 无样本取 1
-//	otpsFactor = clamp01(otpsAvg / 80)       // 无样本取 1
-//	successRate = 1 - errRate                // 无样本取 1
+//	quality   = 0.6 × ttftScore + 0.4 × otpsScore
+//	ttftScore = clamp01(1 - p90 / 15000)     // 无样本取 1
+//	otpsScore = clamp01((otps - 20) / 30)    // 无样本取 1
 //
-// 无样本各项取 1（不奖不罚），让冷启动账号有充分探索机会。
-// 错误率来自账号级健康窗口（10min），TTFT/OTPS 来自 account+model 质量窗口（默认 60min）。
+// 无样本各项取 1（乐观），让冷启动账号有充分探索机会。
+// 成功率不在此计算——账号可靠性由 HealthVerdict 门禁前置过滤，评分不再重复判定。
+// TTFT/OTPS 来自 account+model 质量窗口（默认 60min）。
 func (s *GatewayService) computeQualityScore(accountID int64, model string) (float64, qualityScoreDetail) {
-	d := qualityScoreDetail{ErrRate: -1, CacheHitRate: -1}
+	d := qualityScoreDetail{CacheHitRate: -1}
 
-	ttftFactor, otpsFactor, successRate := 1.0, 1.0, 1.0
+	ttftScore, otpsScore := 1.0, 1.0
 
 	if s.modelQualityCache != nil {
 		snap, p90 := s.modelQualityCache.SnapshotWithP90(accountID, model)
@@ -116,11 +138,11 @@ func (s *GatewayService) computeQualityScore(accountID int64, model string) (flo
 				ttftRef = snap.TTFTAvg() // P90 不可得时退化用 avg
 			}
 			d.TTFTP90Ms = ttftRef
-			ttftFactor = clamp01(1 - ttftRef/wsTTFTZeroMs)
+			ttftScore = clamp01(1 - ttftRef/wsTTFTZeroMs)
 		}
 		if snap.HasOTPS() {
 			d.OTPSAvg = snap.OTPSAvg()
-			otpsFactor = clamp01(snap.OTPSAvg() / wsOTPSFullScore)
+			otpsScore = clamp01((snap.OTPSAvg() - wsOTPSZeroScore) / (wsOTPSFullScore - wsOTPSZeroScore))
 		}
 		if snap.HasCacheHit() {
 			d.CacheHitRate = snap.CacheHitRateAvg()
@@ -128,15 +150,9 @@ func (s *GatewayService) computeQualityScore(accountID int64, model string) (flo
 		}
 	}
 
-	if s.healthCache != nil {
-		hs := s.healthCache.Snapshot(accountID)
-		if hs.ReqCount > 0 {
-			d.ErrRate = hs.ErrRate()
-			successRate = clamp01(1 - hs.ErrRate())
-		}
-	}
-
-	d.Quality = successRate * ttftFactor * otpsFactor
+	d.TTFTScore = ttftScore
+	d.OTPSScore = otpsScore
+	d.Quality = wsQualityTTFTWeight*ttftScore + wsQualityOTPSWeight*otpsScore
 	return d.Quality, d
 }
 
@@ -147,12 +163,12 @@ func (s *GatewayService) QualityScoreForAccount(accountID int64, model string) f
 	return q
 }
 
-// selectByWeightedQuality 在已通过全部过滤、LoadRate<100 的候选中按性价比加权随机选号。
+// selectByWeightedQuality 在已通过全部过滤、LoadRate<100 的候选中按性价比确定性选号。
 //
 // 流程：
 //  1. filterByMinPriority：Priority 人工意图最高，严格取最小值组；
-//  2. 每个候选计算 weight = quality / effRate^β；
-//  3. 按 weight 加权随机抽一个。
+//  2. 每个候选计算 score = quality / effRate^β（冷账号缓存用候选集平均乐观估计）；
+//  3. 取 score 最高带（score ≥ maxScore×(1-CostTolerance)）内当前负载最低的账号。
 //
 // 返回 nil 表示候选为空（调用方按原逻辑 break）。
 func (s *GatewayService) selectByWeightedQuality(available []accountWithLoad, model string, groupID *int64, sessionHash string) *accountWithLoad {
@@ -169,28 +185,54 @@ func (s *GatewayService) selectByWeightedQuality(available []accountWithLoad, mo
 
 	cfg := s.weightedSelectionConfig()
 	details := make([]qualityScoreDetail, len(candidates))
-	total := 0.0
+
+	// 第一遍：算 quality + 倍率，并收集有样本账号的缓存率用于冷启动乐观估计。
+	sumHit, cntHit := 0.0, 0
 	for i := range candidates {
 		_, d := s.computeQualityScore(candidates[i].account.ID, model)
 		d.Rate = clampRate(candidates[i].account.BillingRateMultiplier())
-		d.EffRate = applyCacheDiscount(d.Rate, d.CacheHitRate, d.CacheHitN)
-		d.Weight = d.Quality / math.Pow(d.EffRate, cfg.CostAggressiveness)
 		details[i] = d
-		total += d.Weight
+		if d.CacheHitN > 0 && d.CacheHitRate >= 0 {
+			sumHit += d.CacheHitRate
+			cntHit++
+		}
+	}
+	avgHit := -1.0
+	if cntHit > 0 {
+		avgHit = sumHit / float64(cntHit)
 	}
 
-	// 全 0 兜底：所有候选 quality=0（极端：全部账号错误率 100%）→ 均匀随机给一次机会。
-	if total <= 0 {
-		return &candidates[mathrand.Intn(len(candidates))]
-	}
-
-	r := mathrand.Float64() * total
-	selectedIdx := len(candidates) - 1
+	// 第二遍：算 effRate（冷账号乐观）+ score，记录最高分。
+	maxScore := 0.0
 	for i := range details {
-		r -= details[i].Weight
-		if r < 0 {
+		hit, n := details[i].CacheHitRate, details[i].CacheHitN
+		if (n <= 0 || hit < 0) && avgHit >= 0 {
+			// 冷启动乐观估计：用候选集平均缓存率，避免"无缓存显贵"饿死新账号。
+			hit, n = avgHit, wsColdStartCacheN
+		}
+		details[i].EffRate = applyCacheDiscount(details[i].Rate, hit, n)
+		details[i].Score = details[i].Quality / math.Pow(details[i].EffRate, cfg.CostAggressiveness)
+		if details[i].Score > maxScore {
+			maxScore = details[i].Score
+		}
+	}
+
+	// 第三遍：score 容差带内按负载选最空（冷账号 load=0 天然优先，自带预热）。
+	// maxScore=0（极端：全候选 quality=0）时 threshold=0，全部入带，退化为纯选最空。
+	threshold := maxScore * (1 - cfg.CostTolerance)
+	selectedIdx, bestLoad := 0, int(^uint(0)>>1)
+	for i := range details {
+		load := 0
+		if candidates[i].loadInfo != nil {
+			load = candidates[i].loadInfo.LoadRate
+		}
+		details[i].Load = load
+		if details[i].Score < threshold {
+			continue
+		}
+		if load < bestLoad {
+			bestLoad = load
 			selectedIdx = i
-			break
 		}
 	}
 
@@ -198,7 +240,7 @@ func (s *GatewayService) selectByWeightedQuality(available []accountWithLoad, mo
 	return &candidates[selectedIdx]
 }
 
-// clampRate 倍率下限保护，防止 0 倍率账号 effRate → 0 引发权重无穷大。
+// clampRate 倍率下限保护，防止 0 倍率账号 effRate → 0 引发 score 无穷大。
 func clampRate(r float64) float64 {
 	if r < wsMinRateMultiplier {
 		return wsMinRateMultiplier
@@ -225,7 +267,7 @@ func applyCacheDiscount(rate, hit float64, n int) float64 {
 	return eff
 }
 
-// logWeightedSelection 打加权选号决策日志，复用 scheduling debug 触发规则：
+// logWeightedSelection 打选号决策日志，复用 scheduling debug 触发规则：
 // LogDecisions 全量 / LogGroups 白名单 / LogSampleRate 采样；
 // LogScoreDetails=true 时展开每候选明细。
 func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, details []qualityScoreDetail, selectedIdx int, model string, groupID *int64, sessionHash string) {
@@ -237,11 +279,11 @@ func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, deta
 	}
 
 	sel := candidates[selectedIdx]
+	d := details[selectedIdx]
 	logger.LegacyPrintf("service.gateway",
-		"[WeightedSelect] group=%v session=%s model=%s candidates=%d selected=%d quality=%.3f rate=%.2f eff_rate=%.2f weight=%.3f",
+		"[WeightedSelect] group=%v session=%s model=%s candidates=%d selected=%d quality=%.3f rate=%.2f eff_rate=%.2f score=%.3f load=%d",
 		derefGroupID(groupID), shortSessionHash(sessionHash), model, len(candidates),
-		sel.account.ID, details[selectedIdx].Quality, details[selectedIdx].Rate,
-		details[selectedIdx].EffRate, details[selectedIdx].Weight)
+		sel.account.ID, d.Quality, d.Rate, d.EffRate, d.Score, d.Load)
 
 	if !cfg.LogScoreDetails {
 		return
@@ -249,8 +291,8 @@ func (s *GatewayService) logWeightedSelection(candidates []accountWithLoad, deta
 	var b strings.Builder
 	for i := range candidates {
 		d := details[i]
-		b.WriteString(fmt.Sprintf(" [%d quality=%.3f ttft_p90=%.0fms otps=%.1f err=%.2f cache_hit=%.2f rate=%.2f eff_rate=%.2f w=%.3f]",
-			candidates[i].account.ID, d.Quality, d.TTFTP90Ms, d.OTPSAvg, d.ErrRate, d.CacheHitRate, d.Rate, d.EffRate, d.Weight))
+		b.WriteString(fmt.Sprintf(" [%d quality=%.3f ttft_p90=%.0fms otps=%.1f cache_hit=%.2f rate=%.2f eff_rate=%.2f score=%.3f load=%d]",
+			candidates[i].account.ID, d.Quality, d.TTFTP90Ms, d.OTPSAvg, d.CacheHitRate, d.Rate, d.EffRate, d.Score, d.Load))
 	}
 	logger.LegacyPrintf("service.gateway", "[WeightedSelectDetail]%s", b.String())
 }
