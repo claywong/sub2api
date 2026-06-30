@@ -4318,23 +4318,6 @@ const handleSubmit = async () => {
 			delete newExtra.auto_pause_7d_disabled
 		}
 
-		// metric_cooldown_override:开关 OFF 则完全删除（沿用全局）；ON 则写 enabled:true + 阈值
-		if (metricCooldownEnabled.value) {
-			const mcRules: Record<string, Record<string, unknown>> = {}
-			const buildThr = (key: string, threshold: number | null) => {
-				if (threshold != null && threshold >= 0) mcRules[key] = { threshold }
-			}
-			buildThr('ttft_ms', metricCooldownTTFTThreshold.value)
-			buildThr('otps', metricCooldownOTPSThreshold.value)
-			buildThr('cache_hit_rate', metricCooldownCacheThreshold.value)
-			buildThr('cost_per_req', metricCooldownCostThreshold.value)
-			const mcOverride: Record<string, unknown> = { enabled: true }
-			if (Object.keys(mcRules).length > 0) mcOverride.rules = mcRules
-			newExtra.metric_cooldown_override = mcOverride
-		} else {
-			delete newExtra.metric_cooldown_override
-		}
-
 		delete newExtra.codex_image_generation_bridge_enabled
       if (codexImageGenerationBridgeMode.value === 'inherit') {
         delete newExtra.codex_image_generation_bridge
@@ -4418,6 +4401,28 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
+    }
+
+    // metric_cooldown_override 适用于所有平台/类型，必须在 platform-specific 块之后无条件处理
+    {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ?? (props.account.extra as Record<string, unknown>) ?? {}
+      const finalExtra: Record<string, unknown> = { ...currentExtra }
+      if (metricCooldownEnabled.value) {
+        const mcRules: Record<string, Record<string, unknown>> = {}
+        const buildThr = (key: string, threshold: number | null) => {
+          if (threshold != null && threshold >= 0) mcRules[key] = { threshold }
+        }
+        buildThr('ttft_ms', metricCooldownTTFTThreshold.value)
+        buildThr('otps', metricCooldownOTPSThreshold.value)
+        buildThr('cache_hit_rate', metricCooldownCacheThreshold.value)
+        buildThr('cost_per_req', metricCooldownCostThreshold.value)
+        const mcOverride: Record<string, unknown> = { enabled: true }
+        if (Object.keys(mcRules).length > 0) mcOverride.rules = mcRules
+        finalExtra.metric_cooldown_override = mcOverride
+      } else {
+        delete finalExtra.metric_cooldown_override
+      }
+      updatePayload.extra = finalExtra
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
