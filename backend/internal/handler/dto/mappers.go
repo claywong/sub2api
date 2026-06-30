@@ -295,6 +295,18 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	// 私有扩展：会话数量控制对 Anthropic API Key 账号也生效（upstream 仅 OAuth/SetupToken）
+	// 组合 !IsAnthropicOAuthOrSetupToken() && SupportsSessionLimit() 精确命中 API Key，
+	// 避免把窗口费用 / RPM / TLS 等 OAuth-only 字段一并暴露给 API Key。
+	if !a.IsAnthropicOAuthOrSetupToken() && a.SupportsSessionLimit() {
+		if maxSessions := a.GetMaxSessions(); maxSessions > 0 {
+			out.MaxSessions = &maxSessions
+		}
+		if idleTimeout := a.GetSessionIdleTimeoutMinutes(); idleTimeout > 0 {
+			out.SessionIdleTimeoutMin = &idleTimeout
+		}
+	}
+
 	// 提取账号配额限制（apikey / bedrock 类型有效）
 	if a.IsAPIKeyOrBedrock() {
 		if limit := a.GetQuotaLimit(); limit > 0 {

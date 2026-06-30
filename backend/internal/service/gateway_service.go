@@ -1722,7 +1722,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				return nil, err
 			}
 
-			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			// 粘性命中：豁免并发上限（计数但不限流）；非粘性仍按账号真实 Concurrency 限流
+			slotMax := account.Concurrency
+			if stickyAccountID > 0 && stickyAccountID == account.ID {
+				slotMax = stickySlotConcurrency(slotMax)
+			}
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, slotMax)
 			if err == nil && result.Acquired {
 				// 获取槽位后检查会话限制（使用 sessionHash 作为会话标识符）
 				if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -1897,7 +1902,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
-							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
+							// 粘性命中：豁免并发上限（计数但不限流），见 stickySlotConcurrency
+							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickySlotConcurrency(stickyAccount.Concurrency))
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
 								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
@@ -2097,7 +2103,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				)
 
 				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && healthOK && schedulable {
-					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+					result, err := s.tryAcquireAccountSlot(ctx, accountID, stickySlotConcurrency(account.Concurrency))
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
 						if !s.checkAndRegisterSession(ctx, account, sessionHash) {
@@ -2946,8 +2952,9 @@ func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int6
 // sessionID: 会话标识符（使用粘性会话的 hash）
 // 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
 func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionID string) bool {
-	// 只检查 Anthropic OAuth/SetupToken 账号
-	if !account.IsAnthropicOAuthOrSetupToken() {
+	// 只检查支持会话限制的账号（Anthropic OAuth/SetupToken/API Key）
+	// SupportsSessionLimit 为私有扩展，比 upstream 的 IsAnthropicOAuthOrSetupToken 多放开 API Key
+	if !account.SupportsSessionLimit() {
 		return true
 	}
 
