@@ -3768,6 +3768,15 @@ export default {
 	  autoPause5hDisabled: '禁用 5h 自动暂停',
 	  autoPause7dDisabled: '禁用 7d 自动暂停',
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
+      metricCooldown: {
+        title: '指标冷却',
+        hint: '开启后按全局 cron 周期扫描该账号近 N 分钟的 4 个指标，任一命中阈值即冷却该账号。阈值留空继承全局默认。',
+        ruleTTFTMs: 'TTFT 阈值 > （毫秒）',
+        ruleOTPS: 'OTPS 阈值 < （tokens/秒）',
+        ruleCacheHitRate: '缓存命中率阈值 < （%）',
+        ruleCostPerReq: '均次成本阈值 > （USD）',
+        inheritGlobalHint: '留空使用全局默认',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',

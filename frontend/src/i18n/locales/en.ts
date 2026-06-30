@@ -3605,6 +3605,15 @@ export default {
 	  autoPause5hDisabled: 'Disable 5h auto-pause',
 	  autoPause7dDisabled: 'Disable 7d auto-pause',
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+      metricCooldown: {
+        title: 'Metric Cooldown',
+        hint: 'When enabled, the scheduler periodically evaluates the last N minutes of this account against 4 metrics. Hitting any threshold cools the account down. Empty thresholds inherit the global default.',
+        ruleTTFTMs: 'TTFT threshold > (ms)',
+        ruleOTPS: 'OTPS threshold < (tokens/s)',
+        ruleCacheHitRate: 'Cache hit rate threshold < (%)',
+        ruleCostPerReq: 'Cost/req threshold > (USD)',
+        inheritGlobalHint: 'Empty = inherit global',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',

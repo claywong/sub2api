@@ -1572,6 +1572,13 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 
 // ClearRateLimit 清除账号的限流状态
 func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) error {
+	acc, _ := s.accountRepo.GetByID(ctx, accountID)
+	return s.clearRateLimitWithAccount(ctx, accountID, acc)
+}
+
+// clearRateLimitWithAccount 是 ClearRateLimit 的内部实现，允许调用方复用已读取的 account
+// 以避免重复 GetByID（手动冷却保护需要 account 信息）。
+func (s *RateLimitService) clearRateLimitWithAccount(ctx context.Context, accountID int64, acc *Account) error {
 	if err := s.accountRepo.ClearRateLimit(ctx, accountID); err != nil {
 		return err
 	}
@@ -1582,17 +1589,31 @@ func (s *RateLimitService) ClearRateLimit(ctx context.Context, accountID int64) 
 		return err
 	}
 	// 清除限流时一并清理临时不可调度状态，避免周限/窗口重置后仍被本地临时状态阻断。
-	if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
-		return err
-	}
-	if s.tempUnschedCache != nil {
-		if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
-			slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
+	// 但手动冷却窗口（manual-cooldown:）必须保留，由调度器按到期时间自动放出。
+	if !isManualCooldownActive(acc) {
+		if err := s.accountRepo.ClearTempUnschedulable(ctx, accountID); err != nil {
+			return err
+		}
+		if s.tempUnschedCache != nil {
+			if err := s.tempUnschedCache.DeleteTempUnsched(ctx, accountID); err != nil {
+				slog.Warn("temp_unsched_cache_delete_failed", "account_id", accountID, "error", err)
+			}
 		}
 	}
 	s.ResetOpenAI403Counter(ctx, accountID)
 	s.notifyAccountSchedulingBlockCleared(accountID)
 	return nil
+}
+
+// isManualCooldownActive 判断账号当前是否处于手动设置的冷却窗口内。
+func isManualCooldownActive(account *Account) bool {
+	if account == nil || account.TempUnschedulableUntil == nil {
+		return false
+	}
+	if !time.Now().Before(*account.TempUnschedulableUntil) {
+		return false
+	}
+	return strings.HasPrefix(account.TempUnschedulableReason, ManualCooldownReasonPrefix)
 }
 
 func (s *RateLimitService) ResetOpenAI403Counter(ctx context.Context, accountID int64) {
@@ -1625,7 +1646,7 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 	}
 
 	if hasRecoverableRuntimeState(account) {
-		if err := s.ClearRateLimit(ctx, accountID); err != nil {
+		if err := s.clearRateLimitWithAccount(ctx, accountID, account); err != nil {
 			return nil, err
 		}
 		result.ClearedRateLimit = true
@@ -1644,6 +1665,34 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 // 按需恢复 error / rate-limit / overload / temp-unsched / model-rate-limit 等运行时状态。
 func (s *RateLimitService) RecoverAccountAfterSuccessfulTest(ctx context.Context, accountID int64) (*SuccessfulTestRecoveryResult, error) {
 	return s.RecoverAccountState(ctx, accountID, AccountRecoveryOptions{})
+}
+
+// SetManualCooldown 将账号标记为手动冷却（manual-cooldown: 前缀），写 DB + 写缓存。
+// 标记后调度器在到期前会跳过该账号，定时测试 auto-recover 也不会清除（见 isManualCooldownActive）。
+// duration <= 0 视为无效操作直接返回 nil。reason 为人类可读文本，前缀由本函数自动加。
+func (s *RateLimitService) SetManualCooldown(ctx context.Context, account *Account, duration time.Duration, reason string) error {
+	if s == nil || account == nil || duration <= 0 {
+		return nil
+	}
+	now := time.Now()
+	until := now.Add(duration)
+	fullReason := ManualCooldownReasonPrefix + reason
+
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, fullReason); err != nil {
+		return err
+	}
+	if s.tempUnschedCache != nil {
+		state := &TempUnschedState{
+			UntilUnix:       until.Unix(),
+			TriggeredAtUnix: now.Unix(),
+			ErrorMessage:    fullReason,
+		}
+		if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+			slog.Warn("manual_cooldown_cache_set_failed", "account_id", account.ID, "error", err)
+		}
+	}
+	s.notifyAccountSchedulingBlocked(account, until, "manual_cooldown")
+	return nil
 }
 
 func (s *RateLimitService) ClearTempUnschedulable(ctx context.Context, accountID int64) error {
@@ -1667,7 +1716,11 @@ func hasRecoverableRuntimeState(account *Account) bool {
 	if account == nil {
 		return false
 	}
-	if account.RateLimitedAt != nil || account.RateLimitResetAt != nil || account.OverloadUntil != nil || account.TempUnschedulableUntil != nil {
+	if account.RateLimitedAt != nil || account.RateLimitResetAt != nil || account.OverloadUntil != nil {
+		return true
+	}
+	// 手动冷却（manual-cooldown:）不算可恢复运行时状态——交给到期自动放出，避免被定时测试 auto-recover 清掉。
+	if account.TempUnschedulableUntil != nil && !isManualCooldownActive(account) {
 		return true
 	}
 	if len(account.Extra) == 0 {

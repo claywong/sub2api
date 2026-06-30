@@ -1908,6 +1908,80 @@
         </div>
       </div>
 
+      <!-- 指标冷却覆盖 (manual-cooldown) -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex-1">
+            <h3 class="input-label mb-0 text-sm font-semibold">{{ t('admin.accounts.metricCooldown.title') }}</h3>
+            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.metricCooldown.hint') }}</p>
+          </div>
+          <button
+            type="button"
+            @click="metricCooldownEnabled = !metricCooldownEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              metricCooldownEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+            data-testid="metric-cooldown-enabled"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                metricCooldownEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <div v-if="metricCooldownEnabled" class="grid grid-cols-4 gap-2 text-xs">
+          <div>
+            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleTTFTMs') }}</label>
+            <input
+              v-model.number="metricCooldownTTFTThreshold"
+              type="number"
+              min="0"
+              step="any"
+              class="input text-xs py-1"
+              placeholder="10000"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleOTPS') }}</label>
+            <input
+              v-model.number="metricCooldownOTPSThreshold"
+              type="number"
+              min="0"
+              step="any"
+              class="input text-xs py-1"
+              placeholder="20"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleCacheHitRate') }}</label>
+            <input
+              v-model.number="metricCooldownCacheThreshold"
+              type="number"
+              min="0"
+              max="100"
+              step="any"
+              class="input text-xs py-1"
+              placeholder="70"
+            />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleCostPerReq') }}</label>
+            <input
+              v-model.number="metricCooldownCostThreshold"
+              type="number"
+              min="0"
+              step="any"
+              class="input text-xs py-1"
+              placeholder="0.1"
+            />
+          </div>
+        </div>
+      </div>
+
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
       <div
         v-if="account?.platform === 'anthropic' && (account?.type === 'oauth' || account?.type === 'setup-token')"
@@ -2585,6 +2659,11 @@ const autoPause5hThreshold = ref<number | null>(null)
 const autoPause7dThreshold = ref<number | null>(null)
 const autoPause5hDisabled = ref(false)
 const autoPause7dDisabled = ref(false)
+const metricCooldownEnabled = ref(false)
+const metricCooldownTTFTThreshold = ref<number | null>(null)
+const metricCooldownOTPSThreshold = ref<number | null>(null)
+const metricCooldownCacheThreshold = ref<number | null>(null)
+const metricCooldownCostThreshold = ref<number | null>(null)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityProjectId = ref('')
@@ -3035,6 +3114,18 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
 	autoPause7dDisabled.value = extra?.auto_pause_7d_disabled === true
+
+	const mcOverride = (extra?.metric_cooldown_override ?? {}) as Record<string, unknown>
+	metricCooldownEnabled.value = mcOverride.enabled === true
+	const mcRules = (mcOverride.rules ?? {}) as Record<string, Record<string, unknown>>
+	const loadThr = (key: string, ref: typeof metricCooldownTTFTThreshold, fallback: number) => {
+		const r = mcRules[key]
+		ref.value = typeof r?.threshold === 'number' ? r.threshold : fallback
+	}
+	loadThr('ttft_ms', metricCooldownTTFTThreshold, 10000)
+	loadThr('otps', metricCooldownOTPSThreshold, 20)
+	loadThr('cache_hit_rate', metricCooldownCacheThreshold, 70)
+	loadThr('cost_per_req', metricCooldownCostThreshold, 0.1)
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/API Key)
   openaiPassthroughEnabled.value = false
@@ -4225,6 +4316,23 @@ const handleSubmit = async () => {
 			newExtra.auto_pause_7d_disabled = true
 		} else {
 			delete newExtra.auto_pause_7d_disabled
+		}
+
+		// metric_cooldown_override:开关 OFF 则完全删除（沿用全局）；ON 则写 enabled:true + 阈值
+		if (metricCooldownEnabled.value) {
+			const mcRules: Record<string, Record<string, unknown>> = {}
+			const buildThr = (key: string, threshold: number | null) => {
+				if (threshold != null && threshold >= 0) mcRules[key] = { threshold }
+			}
+			buildThr('ttft_ms', metricCooldownTTFTThreshold.value)
+			buildThr('otps', metricCooldownOTPSThreshold.value)
+			buildThr('cache_hit_rate', metricCooldownCacheThreshold.value)
+			buildThr('cost_per_req', metricCooldownCostThreshold.value)
+			const mcOverride: Record<string, unknown> = { enabled: true }
+			if (Object.keys(mcRules).length > 0) mcOverride.rules = mcRules
+			newExtra.metric_cooldown_override = mcOverride
+		} else {
+			delete newExtra.metric_cooldown_override
 		}
 
 		delete newExtra.codex_image_generation_bridge_enabled
