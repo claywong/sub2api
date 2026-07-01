@@ -108,15 +108,21 @@ func (s *OpenAIGatewayService) ForwardCountTokensAsAnthropic(
 	}
 
 	if resp.StatusCode >= 400 {
+		// OAuth 账号缺少 api.responses.write scope 时，Platform Responses 的
+		// input_tokens 端点会返回 401/403/404。这是能力不支持，不是账号异常，
+		// 必须在调用 HandleUpstreamError 之前短路返回，否则会被误判为账号级
+		// 401 错误，触发 token 缓存失效 + SetTempUnschedulable 冷却，导致账号
+		// 被无差别打入临时不可调度状态（issue #3576 / #3574）。
+		if account.Type == AccountTypeOAuth && isOpenAIOAuthInputTokensUnsupported(resp.StatusCode) {
+			writeAnthropicCountTokensError(c, http.StatusNotFound, "not_found_error", "Token counting is not supported for this OpenAI account type")
+			return nil
+		}
+
 		if s.rateLimitService != nil {
 			s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 		}
 
 		upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
-		if account.Type == AccountTypeOAuth && isOpenAIOAuthInputTokensUnsupported(resp.StatusCode) {
-			writeAnthropicCountTokensError(c, http.StatusNotFound, "not_found_error", "Token counting is not supported for this OpenAI account type")
-			return nil
-		}
 		if isOpenAIInputTokensUnsupported(resp.StatusCode, respBody) {
 			writeAnthropicCountTokensError(c, http.StatusNotFound, "not_found_error", "Token counting is not supported by upstream")
 			return nil

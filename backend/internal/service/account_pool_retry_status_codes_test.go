@@ -135,7 +135,7 @@ func TestIsPoolModeRetryableStatus_Account(t *testing.T) {
 			name:       "nil_account_falls_back_to_default_500",
 			account:    nil,
 			statusCode: 500,
-			expected:   false,
+			expected:   true,
 		},
 		{
 			name: "unconfigured_uses_default_403",
@@ -146,11 +146,19 @@ func TestIsPoolModeRetryableStatus_Account(t *testing.T) {
 			expected:   true,
 		},
 		{
-			name: "unconfigured_uses_default_502_false",
+			name: "unconfigured_uses_default_502_true",
 			account: &Account{
 				Credentials: map[string]any{"pool_mode": true},
 			},
 			statusCode: 502,
+			expected:   true,
+		},
+		{
+			name: "unconfigured_uses_default_599_false",
+			account: &Account{
+				Credentials: map[string]any{"pool_mode": true},
+			},
+			statusCode: 599,
 			expected:   false,
 		},
 		{

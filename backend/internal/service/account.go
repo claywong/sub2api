@@ -969,16 +969,17 @@ func parsePoolModeRetryCount(value any) int {
 
 // defaultPoolModeRetryableStatusCodes 池模式下默认触发同账号重试的状态码。
 // 未在 Account.Credentials 中显式配置 pool_mode_retry_status_codes 时使用。
-var defaultPoolModeRetryableStatusCodes = []int{401, 403, 429}
+// 包含 500/502/520：同账号重试耗尽后再交由上游错误阈值计数处理临时不可调度。
+var defaultPoolModeRetryableStatusCodes = []int{401, 403, 429, 500, 502, 520}
 
 // isPoolModeRetryableStatus 池模式下应触发同账号重试的状态码（默认列表）。
 func isPoolModeRetryableStatus(statusCode int) bool {
-	switch statusCode {
-	case 401, 403, 429, 500, 502, 520:
-		return true
-	default:
-		return false
+	for _, c := range defaultPoolModeRetryableStatusCodes {
+		if c == statusCode {
+			return true
+		}
 	}
+	return false
 }
 
 // isUpstreamErrorThresholdStatus 需要走阈值计数的上游错误状态码（500/502/520）

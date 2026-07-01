@@ -8248,7 +8248,7 @@ func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *ht
 	// 避免提前触发 tryTempUnschedulable 封禁账号，导致同账号重试实际路由到其他账号。
 	// custom_error_codes_enabled 账号不延迟：其自定义错误码规则需立即执行。
 	// 例外：500/502/520 的阈值计数每次都执行（含重试期间），保证计数准确。
-	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() && isPoolModeRetryableStatus(resp.StatusCode) {
+	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() && account.IsPoolModeRetryableStatus(resp.StatusCode) {
 		if isUpstreamErrorThresholdStatus(resp.StatusCode) && s.rateLimitService != nil {
 			s.rateLimitService.HandleUpstreamErrorThreshold(ctx, account, resp.StatusCode)
 		}
