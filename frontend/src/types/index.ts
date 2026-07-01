@@ -939,6 +939,16 @@ export interface Account {
   account_health?: AccountHealthRuntime | null // Anthropic 账号健康滑动窗口快照
   health_verdict?: 'StickyOnly' | 'Excluded' | null // 健康三态降级状态，OK 时不返回
   health_verdict_reason?: string | null // 触发原因，如 err_rate=45.0%(≥30%)
+
+  // 影子账号关系（spark 维度影子）
+  parent_account_id?: number | null
+  quota_dimension?: string
+  // 影子账号回填的母账号信息（仅影子非空）
+  parent_email?: string
+  parent_plan_type?: string
+  parent_privacy_mode?: string
+  parent_subscription_expires_at?: string
+  parent_chatgpt_account_id?: string
 }
 
 export interface AccountHealthRuntime {
@@ -1164,6 +1174,8 @@ export interface AdminDataPayload {
   exported_at: string
   proxies: AdminDataProxy[]
   accounts: AdminDataAccount[]
+  // 导出时被排除的 spark 影子账号数量(影子不持凭据、其调度配置不在备份范围)。
+  skipped_shadows?: number
 }
 
 export interface AdminDataProxy {
@@ -1640,6 +1652,7 @@ export interface UserSubscription {
   monthly_window_start: string | null
   created_at: string
   updated_at: string
+  revoked_at?: string | null
   expires_at: string | null
   user?: User
   group?: Group
