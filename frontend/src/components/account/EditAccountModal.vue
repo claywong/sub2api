@@ -4387,6 +4387,9 @@ const handleSubmit = async () => {
       }
       if (webSearchEmulationMode.value === 'default') {
         delete newExtra.web_search_emulation
+      } else {
+        newExtra.web_search_emulation = webSearchEmulationMode.value
+      }
 
       // 私有扩展：会话数量控制（窗口费用 / RPM 等 OAuth-only 设置不在 API Key 暴露）
       if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
