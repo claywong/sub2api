@@ -94,6 +94,12 @@ type APIKeyAuthGroupSnapshot struct {
 	// RPMLimit 分组级每分钟请求数上限（0 = 不限制）；用于 billing_cache_service.checkRPM 级联判断。
 	RPMLimit int `json:"rpm_limit"`
 
+	// 高峰时段倍率字段
+	PeakRateEnabled    bool    `json:"peak_rate_enabled"`
+	PeakStart          string  `json:"peak_start"`
+	PeakEnd            string  `json:"peak_end"`
+	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
+
 	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
 	AllowBalanceFallback bool `json:"allow_balance_fallback"`
 
