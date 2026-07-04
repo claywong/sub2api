@@ -301,7 +301,7 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_BearerAuthScheme(t *testing.T
 	require.Empty(t, getHeaderRaw(msgReq.Header, "x-api-key"))
 	require.Empty(t, getHeaderRaw(msgReq.Header, "cookie"))
 
-	countReq, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
+	countReq, _, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(
 		context.Background(), c, account, []byte(`{"model":"gpt-oss:20b","messages":[]}`), "ollama-key",
 	)
 	require.NoError(t, err)
