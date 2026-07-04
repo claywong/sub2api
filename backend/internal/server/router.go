@@ -109,6 +109,8 @@ func registerRoutes(
 	// 注册各模块路由
 	routes.RegisterAuthRoutes(v1, h, jwtAuth, redisClient, settingService)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, settingService)
+	// 私有扩展：/monitor 页分组消耗 section。
+	routes.RegisterMonitorGroupUsageRoutes(v1, h, jwtAuth)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, settingService)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, settingService)

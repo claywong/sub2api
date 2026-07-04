@@ -1114,6 +1114,29 @@ export default {
     }
   },
 
+  // Group Usage — /monitor 分组消耗 section（私有扩展）
+  groupUsage: {
+    title: '分组消耗（近 1 小时）',
+    description: '按你可见的分组聚合近 1 小时的调用质量与成本',
+    refresh: '刷新',
+    refreshing: '刷新中…',
+    updatedAt: '更新于 {time}',
+    empty: '近 1 小时暂无数据',
+    loadError: '加载分组消耗数据失败',
+    modelCount: '{count} 个模型',
+    columns: {
+      group: '分组',
+      requests: '请求数',
+      successRate: '成功率',
+      cacheHitRate: '缓存率',
+      ttftAvg: 'TTFT 均值',
+      ttftP90: 'TTFT p90',
+      otpsAvg: 'OTPS 均值',
+      costAvg: '次均成本',
+      totalCost: '总成本'
+    }
+  },
+
   // Available Channels (user-facing)
   availableChannels: {
     title: '可用渠道',

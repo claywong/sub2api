@@ -109,6 +109,7 @@ func ProvideHandlers(
 	subscriptionHandler *SubscriptionHandler,
 	announcementHandler *AnnouncementHandler,
 	channelMonitorUserHandler *ChannelMonitorUserHandler,
+	monitorGroupUsageHandler *MonitorGroupUsageHandler, // 私有扩展
 	adminHandlers *AdminHandlers,
 	gatewayHandler *GatewayHandler,
 	openaiGatewayHandler *OpenAIGatewayHandler,
@@ -128,8 +129,9 @@ func ProvideHandlers(
 		Redeem:           redeemHandler,
 		Subscription:     subscriptionHandler,
 		Announcement:     announcementHandler,
-		ChannelMonitor:   channelMonitorUserHandler,
-		Admin:            adminHandlers,
+		ChannelMonitor:    channelMonitorUserHandler,
+		MonitorGroupUsage: monitorGroupUsageHandler, // 私有扩展
+		Admin:             adminHandlers,
 		Gateway:          gatewayHandler,
 		OpenAIGateway:    openaiGatewayHandler,
 		Setting:          settingHandler,
@@ -151,6 +153,7 @@ var ProviderSet = wire.NewSet(
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
 	NewChannelMonitorUserHandler,
+	NewMonitorGroupUsageHandler, // 私有扩展
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
 	NewTotpHandler,

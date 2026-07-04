@@ -25,6 +25,9 @@
       :title="detailTitle"
       @close="closeDetail"
     />
+
+    <!-- 私有扩展：分组消耗（近 1 小时） -->
+    <AccountGroupUsageSection />
   </AppLayout>
 </template>
 
@@ -46,6 +49,8 @@ import MonitorHero, {
 } from '@/components/user/monitor/MonitorHero.vue'
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
+// 私有扩展：分组消耗（近 1 小时） section。
+import AccountGroupUsageSection from '@/components/user/monitor/AccountGroupUsageSection.vue'
 import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
 import { useAutoRefresh } from '@/composables/useAutoRefresh'
 

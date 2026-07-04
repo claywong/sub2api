@@ -1110,6 +1110,29 @@ export default {
     }
   },
 
+  // Group Usage — /monitor group usage section (private extension)
+  groupUsage: {
+    title: 'Group Usage (Last 1 Hour)',
+    description: 'Aggregated quality & cost per visible group over the last hour',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing…',
+    updatedAt: 'Updated {time}',
+    empty: 'No data in the last hour',
+    loadError: 'Failed to load group usage',
+    modelCount: '{count} models',
+    columns: {
+      group: 'Group',
+      requests: 'Requests',
+      successRate: 'Success',
+      cacheHitRate: 'Cache Hit',
+      ttftAvg: 'TTFT Avg',
+      ttftP90: 'TTFT p90',
+      otpsAvg: 'OTPS Avg',
+      costAvg: 'Cost/Req',
+      totalCost: 'Total Cost'
+    }
+  },
+
   // Available Channels (user-facing)
   availableChannels: {
     title: 'Available Channels',
