@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 )
 
 // monitorGroupUsageRepository 使用原生 SQL 完成两级聚合。
@@ -33,7 +34,10 @@ func NewMonitorGroupUsageRepository(db *sql.DB) service.MonitorGroupUsageReposit
 	return &monitorGroupUsageRepository{db: db}
 }
 
-// AggregateByUserVisibleGroups 按用户可见分组聚合近 window 内消耗数据。
+// AggregateByVisibleGroups 按传入的可见分组 ID 集合聚合近 window 内消耗数据。
+//
+// 可见分组由 service 层复用 GetAvailableGroups 口径算好后传入
+// （公开分组 ∪ 用户专属分组 ∪ 有效订阅分组），repo 只按 group_id 集合过滤。
 //
 // 数据口径：
 //   - 请求数        = 成功请求 + 上游错误
@@ -42,12 +46,12 @@ func NewMonitorGroupUsageRepository(db *sql.DB) service.MonitorGroupUsageReposit
 //   - TTFT 均值/p90 = 仅统计 first_token_ms > 0 的记录（加权还原）
 //   - OTPS 均值     = 单条 output_tokens/(duration_ms/1000)，加权还原
 //   - 次均成本      = 总成本 / 成功请求数（错误请求没成本）
-func (r *monitorGroupUsageRepository) AggregateByUserVisibleGroups(
+func (r *monitorGroupUsageRepository) AggregateByVisibleGroups(
 	ctx context.Context,
-	userID int64,
+	groupIDs []int64,
 	window time.Duration,
 ) ([]*service.MonitorGroupUsage, error) {
-	if userID <= 0 {
+	if len(groupIDs) == 0 {
 		return []*service.MonitorGroupUsage{}, nil
 	}
 	windowSeconds := int64(window.Seconds())
@@ -56,14 +60,14 @@ func (r *monitorGroupUsageRepository) AggregateByUserVisibleGroups(
 	}
 
 	// 说明：
-	//  1) visible_groups 从 user_allowed_groups 取用户可见 group_id
+	//  1) visible_groups 来自入参 group_id 集合（$1 是 bigint[]）
 	//  2) usage_agg 按 (group_id, model) 聚合 usage_logs，保留 ttft/otps 的 sum+count 以便外层加权
 	//  3) err_agg  按 (group_id, model) 聚合 ops_error_logs（仅 upstream_http）
 	//  4) 用 FULL OUTER JOIN 合并二者，保留双方独有的 (group, model)
 	//  5) 外层按 group_id 汇总，并用 json_agg 打包模型数组
 	const q = `
 WITH visible_groups AS (
-    SELECT group_id FROM user_allowed_groups WHERE user_id = $1
+    SELECT UNNEST($1::bigint[]) AS group_id
 ),
 usage_agg AS (
     SELECT
@@ -200,7 +204,7 @@ LEFT JOIN group_ttft_p90 gp ON gp.group_id IS NOT DISTINCT FROM gs.group_id
 ORDER BY (gs.req_success + gs.req_upstream_err) DESC
 `
 
-	rows, err := r.db.QueryContext(ctx, q, userID, windowSeconds)
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(groupIDs), windowSeconds)
 	if err != nil {
 		return nil, fmt.Errorf("query monitor group usage: %w", err)
 	}
