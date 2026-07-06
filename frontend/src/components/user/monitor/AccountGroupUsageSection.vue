@@ -48,21 +48,20 @@
             <th class="py-2 pr-4 font-medium text-right">{{ t('groupUsage.columns.ttftAvg') }}</th>
             <th class="py-2 pr-4 font-medium text-right">{{ t('groupUsage.columns.ttftP90') }}</th>
             <th class="py-2 pr-4 font-medium text-right">{{ t('groupUsage.columns.otpsAvg') }}</th>
-            <th class="py-2 pr-4 font-medium text-right">{{ t('groupUsage.columns.costAvg') }}</th>
-            <th class="py-2 font-medium text-right">{{ t('groupUsage.columns.totalCost') }}</th>
+            <th class="py-2 font-medium text-right">{{ t('groupUsage.columns.costAvg') }}</th>
           </tr>
         </thead>
         <tbody>
           <template v-if="loading && groups.length === 0">
             <tr v-for="i in 3" :key="`skel-${i}`">
-              <td colspan="10" class="py-3">
+              <td colspan="9" class="py-3">
                 <div class="h-4 rounded bg-gray-100 dark:bg-dark-700/60 animate-pulse"></div>
               </td>
             </tr>
           </template>
           <template v-else-if="groups.length === 0">
             <tr>
-              <td colspan="10" class="py-10 text-center text-gray-400">
+              <td colspan="9" class="py-10 text-center text-gray-400">
                 {{ t('groupUsage.empty') }}
               </td>
             </tr>
@@ -107,11 +106,8 @@
                 <td class="py-2 pr-4 text-right tabular-nums text-gray-800 dark:text-gray-200">
                   {{ formatOtps(g.otps_avg) }}
                 </td>
-                <td class="py-2 pr-4 text-right tabular-nums text-gray-800 dark:text-gray-200">
-                  {{ formatCost(g.cost_avg) }}
-                </td>
                 <td class="py-2 text-right tabular-nums text-gray-800 dark:text-gray-200">
-                  {{ formatTotalCost(g.total_cost) }}
+                  {{ formatCost(g.cost_avg) }}
                 </td>
               </tr>
               <template v-if="expanded.has(groupKey(g))">
@@ -142,11 +138,8 @@
                   <td class="py-1.5 pr-4 text-right tabular-nums text-gray-600 dark:text-gray-400">
                     {{ formatOtps(m.otps_avg) }}
                   </td>
-                  <td class="py-1.5 pr-4 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                    {{ formatCost(m.cost_avg) }}
-                  </td>
                   <td class="py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-400">
-                    {{ formatTotalCost(m.total_cost) }}
+                    {{ formatCost(m.cost_avg) }}
                   </td>
                 </tr>
               </template>
@@ -235,13 +228,6 @@ function formatCost(v: number | null): string {
   if (v < 0.001) return `$${v.toFixed(6)}`
   if (v < 0.01) return `$${v.toFixed(5)}`
   return `$${v.toFixed(4)}`
-}
-
-function formatTotalCost(v: number | null | undefined): string {
-  if (v === null || v === undefined) return '-'
-  if (v === 0) return '$0'
-  if (v < 0.01) return `$${v.toFixed(4)}`
-  return `$${v.toFixed(2)}`
 }
 
 // ── Classes (threshold coloring) ──

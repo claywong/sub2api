@@ -172,7 +172,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	channelMonitorService := service.ProvideChannelMonitorService(channelMonitorRepository, secretEncryptor)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
 	monitorGroupUsageRepository := repository.NewMonitorGroupUsageRepository(db)
-	monitorGroupUsageService := service.NewMonitorGroupUsageService(monitorGroupUsageRepository)
+	monitorGroupUsageService := service.NewMonitorGroupUsageService(monitorGroupUsageRepository, apiKeyService)
 	monitorGroupUsageHandler := handler.NewMonitorGroupUsageHandler(monitorGroupUsageService)
 	dashboardAggregationRepository := repository.NewDashboardAggregationRepository(db)
 	dashboardStatsCache := repository.NewDashboardCache(redisClient, configConfig)
