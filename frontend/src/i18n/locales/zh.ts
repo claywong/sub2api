@@ -946,6 +946,7 @@ export default {
     upstreamEndpoint: '上游端点',
     type: '类型',
     tokens: 'Token',
+    otpsHint: '输出速度（Output Tokens Per Second，已扣除首字延迟）',
     cost: '费用',
     firstToken: '首 Token',
     duration: '耗时',

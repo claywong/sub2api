@@ -40,7 +40,9 @@ func NewMonitorGroupUsageRepository(db *sql.DB) service.MonitorGroupUsageReposit
 //   - 成功率        = 成功请求 / (成功请求 + 上游错误)
 //   - 缓存率        = cache_read / (cache_read + input + cache_creation) * 100
 //   - TTFT 均值/p90 = 仅统计 first_token_ms > 0 的记录（加权还原）
-//   - OTPS 均值     = 单条 output_tokens/(duration_ms/1000)，加权还原
+//   - OTPS 均值     = 单条 output_tokens/(decode_ms/1000)，加权还原；
+//     decode_ms 有首字延迟样本（first_token_ms > 0 且 < duration_ms）时取 duration_ms-first_token_ms（扣除等待时间，只算生成阶段），
+//     否则（如非流式请求没有首字延迟采样）退回整段 duration_ms
 //   - 次均成本      = 总成本 / 成功请求数（错误请求没成本）
 func (r *monitorGroupUsageRepository) AggregateByUserVisibleGroups(
 	ctx context.Context,
@@ -76,7 +78,11 @@ usage_agg AS (
         COUNT(*) FILTER (WHERE ul.first_token_ms > 0)                AS ttft_count,
         PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY ul.first_token_ms)
             FILTER (WHERE ul.first_token_ms > 0)                     AS ttft_p90,
-        SUM(ul.output_tokens::float8 / (ul.duration_ms / 1000.0))
+        SUM(ul.output_tokens::float8 / (
+                CASE WHEN ul.first_token_ms > 0 AND ul.duration_ms > ul.first_token_ms
+                     THEN (ul.duration_ms - ul.first_token_ms)
+                     ELSE ul.duration_ms
+                END / 1000.0))
             FILTER (WHERE ul.duration_ms > 0 AND ul.output_tokens > 0) AS otps_sum,
         COUNT(*) FILTER (WHERE ul.duration_ms > 0 AND ul.output_tokens > 0) AS otps_count,
         SUM(ul.total_cost * COALESCE(ul.rate_multiplier, 1))::float8 AS total_cost

@@ -942,6 +942,7 @@ export default {
     upstreamEndpoint: 'Upstream Endpoint',
     type: 'Type',
     tokens: 'Tokens',
+    otpsHint: 'Output speed (Output Tokens Per Second, excluding time to first token)',
     cost: 'Cost',
     firstToken: 'First Token',
     duration: 'Duration',
