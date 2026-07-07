@@ -98,6 +98,9 @@ func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params
 func (m *mockAccountRepoForPlatform) ListDistinctModelNames(_ context.Context) ([]string, error) {
 	return nil, nil
 }
+func (m *mockAccountRepoForPlatform) ListAllWithFilters(ctx context.Context, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, error) {
+	return nil, nil
+}
 func (m *mockAccountRepoForPlatform) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
 	return nil, nil
 }
