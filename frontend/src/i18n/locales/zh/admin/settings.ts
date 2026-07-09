@@ -807,7 +807,19 @@ export default {
         keyCopied: '密钥已复制到剪贴板',
         keyWarning: '此密钥仅显示一次，请立即复制保存。',
         securityWarning: '警告：此密钥拥有完整的管理员权限，请妥善保管。',
-        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>'
+        usage: '使用方法：在请求头中添加 x-api-key: <your-admin-api-key>',
+        ipWhitelist: {
+          title: 'IP 白名单',
+          description: '设置后仅允许白名单内的 IP 使用管理员 API Key',
+          hint: '每行一个 IP 或 CIDR，留空表示不限制来源 IP',
+          placeholder: '192.168.1.100\n10.0.0.0/8',
+          save: '保存',
+          saving: '保存中...',
+          saved: 'IP 白名单已保存',
+          clear: '清空',
+          cleared: 'IP 白名单已清空',
+          invalidFormat: 'IP 白名单格式不正确，请检查每行的 IP 或 CIDR'
+        }
       },
       soraS3: {
         title: 'Sora 存储配置',

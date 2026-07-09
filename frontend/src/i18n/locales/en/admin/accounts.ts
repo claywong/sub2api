@@ -86,6 +86,7 @@ export default {
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',
+      allModels: 'All Models',
       ungroupedGroup: 'Ungrouped',
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
@@ -140,7 +141,10 @@ export default {
         creditsExhausted: 'Credits Exhausted',
         creditsExhaustedUntil: 'AI Credits exhausted, expected recovery at {time}',
         overloadedUntil: 'Overloaded until {time}',
-        viewTempUnschedDetails: 'View temp unschedulable details'
+        viewTempUnschedDetails: 'View temp unschedulable details',
+        healthStickyOnly: 'Health degraded: sticky only',
+        healthExcluded: 'Health degraded: excluded',
+        healthVerdictReason: 'Reason: {reason}'
       },
       columns: {
         name: 'Name',
@@ -504,6 +508,12 @@ export default {
         webSearchDefault: 'Default',
         webSearchEnabled: 'Enabled',
         webSearchDisabled: 'Disabled',
+        passthroughMode: 'Passthrough mode',
+        passthroughModeDesc:
+          'Request-side protocol mode for Anthropic `messages` / `count_tokens`. `compat` keeps the existing compatibility path, `auth_only` only replaces upstream auth, and `full` preserves the original request headers/body as much as possible while injecting only upstream auth.',
+        passthroughModeCompat: 'compat (compatibility)',
+        passthroughModeAuthOnly: 'auth_only (auth replacement only)',
+        passthroughModeFull: 'full (full passthrough)',
       },
       modelRestriction: 'Model Restriction (Optional)',
       modelWhitelist: 'Model Whitelist',
@@ -515,6 +525,8 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      fromModel: 'Source model',
+      toModel: 'Target model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -587,6 +599,15 @@ export default {
 	  autoPause5hDisabled: 'Disable 5h auto-pause',
 	  autoPause7dDisabled: 'Disable 7d auto-pause',
 	  autoPauseDisabledHint: 'When enabled, this account is never auto-paused (even if a global default threshold is configured).',
+      metricCooldown: {
+        title: 'Metric Cooldown',
+        hint: 'When enabled, the scheduler periodically evaluates the last N minutes of this account against 4 metrics. Hitting any threshold cools the account down. Empty thresholds inherit the global default.',
+        ruleTTFTMs: 'TTFT threshold > (ms)',
+        ruleOTPS: 'OTPS threshold < (tokens/s)',
+        ruleCacheHitRate: 'Cache hit rate threshold < (%)',
+        ruleCostPerReq: 'Cost/req threshold > (USD)',
+        inheritGlobalHint: 'Empty = inherit global',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
@@ -697,6 +718,9 @@ export default {
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
       accountUpdated: 'Account updated successfully',
+      messages: {
+        accountCreated: 'Account created successfully',
+      },
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
       pleaseSelectStatus: 'Please select a valid account status',
@@ -815,6 +839,8 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
+          accessTokenAuth: 'Manual AT Input',
+          mobileRefreshTokenAuth: 'Manual Mobile RT Input',
           codexSessionAuth: 'Codex JSON / AT Batch Input',
           codexSessionDesc: 'Paste Codex JSON or an accessToken. Accounts use the step 1 settings.',
           codexSessionInputLabel: 'Codex JSON or accessToken',

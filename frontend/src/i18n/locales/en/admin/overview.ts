@@ -497,6 +497,7 @@ export default {
       failedToDelete: 'Failed to delete user',
       failedToToggle: 'Failed to update user status',
       failedToLoadApiKeys: 'Failed to load user API keys',
+      passwordCopied: 'Password copied to clipboard',
       emailRequired: 'Please enter email',
       concurrencyMin: 'Concurrency must be at least 1',
       soraStorageQuota: 'Sora Storage Quota',
@@ -768,6 +769,7 @@ export default {
       groupUpdated: 'Group updated successfully',
       groupDeleted: 'Group deleted successfully',
       failedToLoad: 'Failed to load groups',
+      failedToSave: 'Failed to save group',
       failedToCreate: 'Failed to create group',
       failedToUpdate: 'Failed to update group',
       failedToDelete: 'Failed to delete group',
@@ -823,7 +825,25 @@ export default {
         monthlyLimit: 'Monthly Limit (USD)',
         defaultValidityDays: 'Default Validity (Days)',
         validityHint: 'Number of days the subscription is valid when assigned to a user',
-        noLimit: 'No limit'
+        noLimit: 'No limit',
+        balanceFallback: {
+          title: 'Balance Fallback',
+          description: 'Allow billing to fall back to the user balance once the subscription quota is exhausted.',
+          enabled: 'Enabled',
+          disabled: 'Disabled'
+        }
+      },
+      sessionModelLock: {
+        title: 'Session Model Lock',
+        tooltip: 'Once protected models are specified, a session cannot switch to them midway, preventing bypass of their independent quota limits.',
+        listLabel: 'Protected Models',
+        listHint: 'Models listed here are subject to session-level locking and independent quota limits.',
+        listPlaceholder: 'Select or enter protected model names',
+        quotaTitle: 'Shared Quota for Protected Models',
+        quotaHint: 'All protected models share a single daily/weekly limit (USD). Leave empty for no limit.',
+        quotaDailyLabel: 'Daily Limit (USD)',
+        quotaWeeklyLabel: 'Weekly Limit (USD)',
+        quotaPlaceholder: 'No limit'
       },
       imagePricing: {
         title: 'Image Generation Pricing',

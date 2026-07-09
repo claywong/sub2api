@@ -553,6 +553,7 @@ export default {
       balanceAdjustedSuccess: '余额调整成功',
       concurrencyAdjustedSuccess: '并发数调整成功',
       failedToSave: '保存用户失败',
+      passwordCopied: '密码已复制',
       failedToAdjust: '调整失败',
       emailRequired: '请输入邮箱',
       concurrencyMin: '并发数不能小于1',
@@ -901,7 +902,25 @@ export default {
         monthlyLimit: '每月限额（USD）',
         defaultValidityDays: '默认有效期（天）',
         validityHint: '分配给用户时订阅的有效天数',
-        noLimit: '无限制'
+        noLimit: '无限制',
+        balanceFallback: {
+          title: '余额兜底',
+          description: '订阅配额耗尽后，是否允许回退到用户余额继续计费。',
+          enabled: '已启用',
+          disabled: '已禁用'
+        }
+      },
+      sessionModelLock: {
+        title: '会话级模型锁定',
+        tooltip: '指定受保护模型后，同一会话中途将无法切换到这些模型，避免绕过其独立额度限制。',
+        listLabel: '受保护模型',
+        listHint: '在此列出的模型将受会话级锁定与独立额度限制约束。',
+        listPlaceholder: '选择或输入受保护的模型名称',
+        quotaTitle: '受保护模型共享额度',
+        quotaHint: '所有受保护模型共用一个日/周限额（USD），留空表示不限制。',
+        quotaDailyLabel: '每日限额（USD）',
+        quotaWeeklyLabel: '每周限额（USD）',
+        quotaPlaceholder: '无限制'
       },
       imagePricing: {
         title: '图片生成计费',
