@@ -812,7 +812,19 @@ export default {
         keyCopied: 'Key copied to clipboard',
         keyWarning: 'This key will only be shown once. Please copy it now.',
         securityWarning: 'Warning: This key provides full admin access. Keep it secure.',
-        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>'
+        usage: 'Usage: Add to request header - x-api-key: <your-admin-api-key>',
+        ipWhitelist: {
+          title: 'IP Whitelist',
+          description: 'When set, only IPs in the whitelist can use the admin API key',
+          hint: 'One IP or CIDR per line. Leave empty to allow all source IPs.',
+          placeholder: '192.168.1.100\n10.0.0.0/8',
+          save: 'Save',
+          saving: 'Saving...',
+          saved: 'IP whitelist saved',
+          clear: 'Clear',
+          cleared: 'IP whitelist cleared',
+          invalidFormat: 'Invalid IP whitelist format. Please check each IP or CIDR line.'
+        }
       },
       soraS3: {
         title: 'Sora Storage',

@@ -89,6 +89,7 @@ export default {
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      allModels: '全部模型',
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
       // Schedulable toggle
@@ -261,7 +262,10 @@ export default {
         creditsExhausted: '积分已用尽',
         creditsExhaustedUntil: 'AI Credits 已用尽，预计 {time} 恢复',
         overloadedUntil: '负载过重，重置时间：{time}',
-        viewTempUnschedDetails: '查看临时不可调度详情'
+        viewTempUnschedDetails: '查看临时不可调度详情',
+        healthStickyOnly: '健康降级：仅粘性会话',
+        healthExcluded: '健康降级：已排除调度',
+        healthVerdictReason: '触发原因：{reason}'
       },
       tempUnschedulable: {
         title: '临时不可调度',
@@ -602,6 +606,12 @@ export default {
         webSearchDefault: '默认',
         webSearchEnabled: '开启',
         webSearchDisabled: '关闭',
+        passthroughMode: '透传模式',
+        passthroughModeDesc:
+          'Anthropic `messages` / `count_tokens` 的请求侧协议模式。`compat` 保持现有兼容链路，`auth_only` 仅替换认证，`full` 尽量保留原始请求头与请求体并只注入上游认证。',
+        passthroughModeCompat: 'compat（兼容模式）',
+        passthroughModeAuthOnly: 'auth_only（仅替换认证）',
+        passthroughModeFull: 'full（完整透传）',
       },
       modelRestriction: '模型限制（可选）',
       modelWhitelist: '模型白名单',
@@ -612,6 +622,8 @@ export default {
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',
       actualModel: '实际模型',
+      fromModel: '源模型',
+      toModel: '目标模型',
       addMapping: '添加映射',
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
@@ -680,6 +692,15 @@ export default {
 	  autoPause5hDisabled: '禁用 5h 自动暂停',
 	  autoPause7dDisabled: '禁用 7d 自动暂停',
 	  autoPauseDisabledHint: '开启后该账号永不进入自动暂停（即使全局默认阈值已配置）。',
+      metricCooldown: {
+        title: '指标冷却',
+        hint: '开启后按全局 cron 周期扫描该账号近 N 分钟的 4 个指标，任一命中阈值即冷却该账号。阈值留空继承全局默认。',
+        ruleTTFTMs: 'TTFT 阈值 > （毫秒）',
+        ruleOTPS: 'OTPS 阈值 < （tokens/秒）',
+        ruleCacheHitRate: '缓存命中率阈值 < （%）',
+        ruleCostPerReq: '均次成本阈值 > （USD）',
+        inheritGlobalHint: '留空使用全局默认',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',
@@ -790,6 +811,9 @@ export default {
       updating: '更新中...',
       accountCreated: '账号创建成功',
       accountUpdated: '账号更新成功',
+      messages: {
+        accountCreated: '账号创建成功',
+      },
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',
       pleaseSelectStatus: '请选择有效的账号状态',
@@ -902,6 +926,8 @@ export default {
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
+          accessTokenAuth: '手动输入 AT',
+          mobileRefreshTokenAuth: '手动输入 Mobile RT',
           codexSessionAuth: 'Codex JSON / AT 批量输入',
           codexSessionDesc: '粘贴 Codex JSON 或 accessToken，按第一步配置创建账号。',
           codexSessionInputLabel: 'Codex JSON 或 accessToken',

@@ -85,6 +85,12 @@ export default {
     tomorrow: 'Tomorrow',
     unknown: 'Unknown',
     minutes: 'min',
+    apply: 'Apply',
+    clear: 'Clear selection',
+    creating: 'Creating...',
+    required: 'Required',
+    sending: 'Sending...',
+    tryAgain: 'Please try again',
     time: {
       never: 'Never',
       justNow: 'Just now',

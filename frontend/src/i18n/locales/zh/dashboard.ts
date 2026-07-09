@@ -246,6 +246,7 @@ export default {
     cacheTtlOverriddenLabel: 'TTL 替换',
     cacheTtlOverridden5m: '按 5m 计费',
     cacheTtlOverridden1h: '按 1h 计费',
+    otpsHint: '输出速度（每秒输出 token 数）',
     totalRequests: '总请求数',
     totalTokens: '总 Token',
     cacheTotal: '缓存',

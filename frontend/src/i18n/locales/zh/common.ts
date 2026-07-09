@@ -85,6 +85,12 @@ export default {
     tomorrow: '明天',
     unknown: '未知',
     minutes: '分钟',
+    apply: '应用',
+    clear: '清除选择',
+    creating: '创建中...',
+    required: '必填',
+    sending: '发送中...',
+    tryAgain: '请重试',
     time: {
       never: '从未',
       justNow: '刚刚',
