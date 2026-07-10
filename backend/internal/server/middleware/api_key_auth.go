@@ -193,12 +193,22 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 			// 订阅模式：验证订阅限额
 			if subscription != nil {
 				needsMaintenance, validateErr := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+				if needsMaintenance {
+					refreshed, maintenanceErr := subscriptionService.EnsureWindowMaintenance(c.Request.Context(), subscription)
+					if maintenanceErr != nil {
+						AbortWithError(c, 500, "SUBSCRIPTION_MAINTENANCE_FAILED", "Failed to maintain subscription usage windows")
+						return
+					}
+					subscription = refreshed
+					_, validateErr = subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+				}
+
 				// 私有扩展：DB 内存快照未超限时再问一次 Redis 缓存，与 handler 层 CheckBillingEligibility 数据源对齐，
 				// 避免出现"中间件放行 → handler 才发现超限 → 错过余额兜底"的窗口期。
 				// 仅把"额度超限"类错误注入 fallback 流程；服务不可用 / 熔断打开等瞬时错误交由 handler 层 CheckBillingEligibility
 				// 走它原有的 503 语义，避免被误报成 403 SUBSCRIPTION_INVALID。
-				// needsMaintenance=true 表示窗口刚过期、内存已清零但 Redis 缓存尚未被 DoWindowMaintenance 刷新，
-				// 此时 Redis 里的旧用量仍是超限值，跳过二次检查防止误判为超限触发余额兜底。
+				// needsMaintenance=true 表示本次请求刚完成窗口推进；即使缓存失效失败，也不读取旧窗口值，
+				// 避免误判为超限并触发余额兜底。
 				if validateErr == nil && !needsMaintenance && billingCacheService != nil {
 					if cacheErr := billingCacheService.CheckSubscriptionUsageLimit(c.Request.Context(), apiKey.User.ID, apiKey.Group, subscription); cacheErr != nil {
 						if errors.Is(cacheErr, service.ErrDailyLimitExceeded) ||
@@ -230,12 +240,6 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 						AbortWithError(c, status, code, validateErr.Error())
 						return
 					}
-				}
-
-				// 窗口维护异步化（不阻塞请求）；仅当仍在订阅模式时执行
-				if subscription != nil && needsMaintenance {
-					maintenanceCopy := *subscription
-					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查

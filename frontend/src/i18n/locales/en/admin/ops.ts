@@ -145,7 +145,11 @@ export default {
         '24h': 'Last 24 hours',
         '7d': 'Last 7 days',
         '30d': 'Last 30 days',
-        custom: 'Custom'
+        custom: 'Custom Range'
+      },
+      customTimeRange: {
+        startTime: 'Start Time',
+        endTime: 'End Time'
       },
       openaiTokenStats: {
         title: 'OpenAI Token Request Stats',
@@ -166,10 +170,6 @@ export default {
           avgDurationMs: 'Avg Duration (ms)',
           requestsWithFirstToken: 'Requests With First Token'
         }
-      },
-      customTimeRange: {
-        startTime: 'Start time',
-        endTime: 'End time'
       },
       fullscreen: {
         enter: 'Enter Fullscreen'
