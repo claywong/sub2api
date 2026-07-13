@@ -1094,15 +1094,15 @@ func init() {
 	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
 	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	// groupDescAllowBalanceFallback is the schema descriptor for allow_balance_fallback field.
-	groupDescAllowBalanceFallback := groupFields[44].Descriptor()
+	groupDescAllowBalanceFallback := groupFields[45].Descriptor()
 	// group.DefaultAllowBalanceFallback holds the default value on creation for the allow_balance_fallback field.
 	group.DefaultAllowBalanceFallback = groupDescAllowBalanceFallback.Default.(bool)
 	// groupDescProtectedModels is the schema descriptor for protected_models field.
-	groupDescProtectedModels := groupFields[45].Descriptor()
+	groupDescProtectedModels := groupFields[46].Descriptor()
 	// group.DefaultProtectedModels holds the default value on creation for the protected_models field.
 	group.DefaultProtectedModels = groupDescProtectedModels.Default.([]string)
 	// groupDescProtectedModelQuotas is the schema descriptor for protected_model_quotas field.
-	groupDescProtectedModelQuotas := groupFields[46].Descriptor()
+	groupDescProtectedModelQuotas := groupFields[47].Descriptor()
 	// group.DefaultProtectedModelQuotas holds the default value on creation for the protected_model_quotas field.
 	group.DefaultProtectedModelQuotas = groupDescProtectedModelQuotas.Default.(map[string]interface{})
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
