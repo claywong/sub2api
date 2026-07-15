@@ -32,7 +32,7 @@ func TestAccountHandlerListIncludesHealthForAnthropicAPIKey(t *testing.T) {
 		healthCache.RecordRealCall(58, service.CallSample{Success: true, TTFTMs: 11000, DurationMs: 22000, OutputTokens: 20})
 	}
 
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, healthCache)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, healthCache)
 	router := gin.New()
 	router.GET("/api/v1/admin/accounts", handler.List)
 

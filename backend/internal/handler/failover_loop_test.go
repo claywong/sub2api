@@ -880,7 +880,7 @@ func TestHandleFailoverError_IsSameAccountRetry(t *testing.T) {
 		require.False(t, fs.IsSameAccountRetry)
 	})
 
-	t.Run("context取消时标记为true（已递增重试计数）", func(t *testing.T) {
+	t.Run("context已取消时立即返回Canceled且不标记重试", func(t *testing.T) {
 		mock := &mockTempUnscheduler{}
 		fs := NewFailoverState(3, false)
 		err := newTestFailoverErr(400, true, false)
@@ -891,8 +891,9 @@ func TestHandleFailoverError_IsSameAccountRetry(t *testing.T) {
 		action := fs.HandleFailoverError(ctx, mock, 100, "openai", maxSameAccountRetries, err)
 
 		require.Equal(t, FailoverCanceled, action)
-		// FailoverCanceled 在 sleep 阶段触发，此前 IsSameAccountRetry 已被设为 true
-		require.True(t, fs.IsSameAccountRetry)
+		// 客户端已断开：HandleFailoverError 在入口处即返回 FailoverCanceled，
+		// 不进入同账号重试分支，IsSameAccountRetry 保持初始的 false。
+		require.False(t, fs.IsSameAccountRetry)
 	})
 
 	t.Run("标记随每次调用正确切换", func(t *testing.T) {

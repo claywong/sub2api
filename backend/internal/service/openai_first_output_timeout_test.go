@@ -47,7 +47,7 @@ func (u *blockingOpenAIResponseHeaderUpstream) Do(req *http.Request, _ string, _
 	}
 }
 
-func (u *blockingOpenAIResponseHeaderUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u *blockingOpenAIResponseHeaderUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	return u.Do(req, "", 0, 0)
 }
 
