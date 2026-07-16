@@ -139,6 +139,7 @@ docs/*
 !docs/anthropic-account-scheduling.md
 !docs/anthropic-scheduling-health-aware.md
 !docs/ops-error-webhook.md
+!docs/ASYNC_IMAGE_TASKS.md
 !docs/legal/
 !docs/legal/*.md
 .serena/
