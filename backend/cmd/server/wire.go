@@ -82,6 +82,10 @@ func provideCleanup(
 	opsScheduledReport *service.OpsScheduledReportService,
 	opsSystemLogSink *service.OpsSystemLogSink,
 	opsWebhookDispatcher *service.OpsErrorWebhookDispatcher,
+	opsService *service.OpsService,
+	opsIngressReject *service.OpsIngressRejectAggregator,
+	apiKeyService *service.APIKeyService,
+	authCacheInvalidationWorker *service.AuthCacheInvalidationWorker,
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
@@ -126,6 +130,30 @@ func provideCleanup(
 			{"OpsErrorWebhookDispatcher", func() error {
 				if opsWebhookDispatcher != nil {
 					opsWebhookDispatcher.Stop()
+				}
+				return nil
+			}},
+			{"OpsIngressRejectAggregator", func() error {
+				if opsIngressReject != nil {
+					opsIngressReject.Stop()
+				}
+				return nil
+			}},
+			{"AuthCacheInvalidationWorker", func() error {
+				if authCacheInvalidationWorker != nil {
+					authCacheInvalidationWorker.Stop()
+				}
+				return nil
+			}},
+			{"AuthCacheInvalidationSubscriber", func() error {
+				if apiKeyService != nil {
+					apiKeyService.StopAuthCacheInvalidationSubscriber()
+				}
+				return nil
+			}},
+			{"OpsRuntimeSettingsRefresh", func() error {
+				if opsService != nil {
+					opsService.StopRuntimeSettingsRefresh()
 				}
 				return nil
 			}},
