@@ -238,6 +238,16 @@ func (Group) Fields() []ent.Field {
 			Default(map[string]any{}).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}"),
+
+		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
+		field.String("max_reasoning_effort").
+			MaxLen(20).
+			Default("").
+			Comment("OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max"),
+		field.JSON("reasoning_effort_mappings", []domain.ReasoningEffortMapping{}).
+			Default([]domain.ReasoningEffortMapping{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("OpenAI reasoning effort 自定义精确映射；先映射再应用上限"),
 	}
 }
 

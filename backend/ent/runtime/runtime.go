@@ -1109,6 +1109,16 @@ func init() {
 	groupDescProtectedModelQuotas := groupFields[48].Descriptor()
 	// group.DefaultProtectedModelQuotas holds the default value on creation for the protected_model_quotas field.
 	group.DefaultProtectedModelQuotas = groupDescProtectedModelQuotas.Default.(map[string]interface{})
+	// groupDescMaxReasoningEffort is the schema descriptor for max_reasoning_effort field.
+	groupDescMaxReasoningEffort := groupFields[49].Descriptor()
+	// group.DefaultMaxReasoningEffort holds the default value on creation for the max_reasoning_effort field.
+	group.DefaultMaxReasoningEffort = groupDescMaxReasoningEffort.Default.(string)
+	// group.MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
+	group.MaxReasoningEffortValidator = groupDescMaxReasoningEffort.Validators[0].(func(string) error)
+	// groupDescReasoningEffortMappings is the schema descriptor for reasoning_effort_mappings field.
+	groupDescReasoningEffortMappings := groupFields[50].Descriptor()
+	// group.DefaultReasoningEffortMappings holds the default value on creation for the reasoning_effort_mappings field.
+	group.DefaultReasoningEffortMappings = groupDescReasoningEffortMappings.Default.([]domain.ReasoningEffortMapping)
 	idempotencyrecordMixin := schema.IdempotencyRecord{}.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0

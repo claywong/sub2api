@@ -103,12 +103,12 @@ func convertOpenAICompactInputsForGrok(body []byte) ([]byte, error) {
 	converted := make([]any, 0, len(items))
 	for _, raw := range items {
 		item, ok := raw.(map[string]any)
-		if !ok || !isOpenAICompactionType(stringValue(item["type"])) {
+		if !ok || !isOpenAICompactionType(grokStringValue(item["type"])) {
 			converted = append(converted, raw)
 			continue
 		}
 		changed = true
-		if encrypted := strings.TrimSpace(stringValue(item["encrypted_content"])); encrypted != "" {
+		if encrypted := strings.TrimSpace(grokStringValue(item["encrypted_content"])); encrypted != "" {
 			converted = append(converted, map[string]any{
 				"type":              "reasoning",
 				"summary":           []any{},
@@ -154,9 +154,9 @@ func convertGrokResponseToOpenAICompact(body []byte) ([]byte, error) {
 		if !ok {
 			continue
 		}
-		switch strings.TrimSpace(stringValue(item["type"])) {
+		switch strings.TrimSpace(grokStringValue(item["type"])) {
 		case "reasoning":
-			if value := strings.TrimSpace(stringValue(item["encrypted_content"])); value != "" {
+			if value := strings.TrimSpace(grokStringValue(item["encrypted_content"])); value != "" {
 				encrypted = value
 			}
 		case "message":
@@ -166,7 +166,7 @@ func convertGrokResponseToOpenAICompact(body []byte) ([]byte, error) {
 					if !ok {
 						continue
 					}
-					if text := strings.TrimSpace(stringValue(part["text"])); text != "" {
+					if text := strings.TrimSpace(grokStringValue(part["text"])); text != "" {
 						summaryParts = append(summaryParts, text)
 					}
 				}
@@ -211,7 +211,7 @@ func compactSummaryText(value any) string {
 		if !ok {
 			continue
 		}
-		if text := strings.TrimSpace(stringValue(part["text"])); text != "" {
+		if text := strings.TrimSpace(grokStringValue(part["text"])); text != "" {
 			texts = append(texts, text)
 		}
 	}
@@ -227,7 +227,7 @@ func isOpenAICompactionType(value string) bool {
 	}
 }
 
-func stringValue(value any) string {
+func grokStringValue(value any) string {
 	text, _ := value.(string)
 	return text
 }

@@ -823,7 +823,7 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 {
 		body, err = classifyAnthropicResponseInputAsCacheRead(body, usage)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 	}
 
