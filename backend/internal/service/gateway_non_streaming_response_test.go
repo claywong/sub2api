@@ -180,7 +180,7 @@ func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ForceCacheBillingR
 			}
 			svc := &GatewayService{cfg: &config.Config{}}
 
-			usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(WithForceCacheBilling(context.Background()), resp, c, &Account{ID: 2})
+			usage, _, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(WithForceCacheBilling(context.Background()), resp, c, &Account{ID: 2})
 
 			require.NoError(t, err)
 			require.Equal(t, int(gjson.Get(tt.body, "usage.input_tokens").Int()), usage.InputTokens, "local accounting must retain the unclassified usage")
