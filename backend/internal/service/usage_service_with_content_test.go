@@ -51,7 +51,7 @@ func TestListWithFilters_WithContentFalse_NoContentFetched(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results[0].RequestBody != "" || results[0].ResponseBody != "" || results[0].SessionID != "" {
+	if results[0].RequestBody != "" || results[0].ResponseBody != "" || results[0].SessionID != nil {
 		t.Error("expected no content fields when withContent=false")
 	}
 }
@@ -75,12 +75,32 @@ func TestListWithFilters_WithContentTrue_MergesContent(t *testing.T) {
 	if results[0].ResponseBody != `{"text":"hello"}` {
 		t.Errorf("req-1 response_body: got %q", results[0].ResponseBody)
 	}
-	if results[0].SessionID != "sess-abc" {
-		t.Errorf("req-1 session_id: got %q", results[0].SessionID)
+	if results[0].SessionID == nil || *results[0].SessionID != "sess-abc" {
+		t.Errorf("req-1 session_id: got %v", results[0].SessionID)
 	}
 	// req-2 无记录，字段应为空
-	if results[1].RequestBody != "" || results[1].SessionID != "" {
+	if results[1].RequestBody != "" || results[1].SessionID != nil {
 		t.Error("req-2 should have empty content fields")
+	}
+}
+
+// usage_log 已落库的 session_id 优先于 request_logs 的兜底值。
+func TestListWithFilters_WithContentTrue_PersistedSessionIDWins(t *testing.T) {
+	persisted := "sess-persisted"
+	logs := []UsageLog{{RequestID: "req-1", SessionID: &persisted}}
+	svc := newUsageSvcForContentTest(logs, map[string]*RequestLog{
+		"req-1": {RequestID: "req-1", RequestBody: "body", SessionID: "sess-from-request-log"},
+	})
+
+	results, _, err := svc.ListWithFilters(context.Background(), pagination.PaginationParams{}, usagestats.UsageLogFilters{}, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if results[0].SessionID == nil || *results[0].SessionID != "sess-persisted" {
+		t.Errorf("expected persisted session_id to win, got %v", results[0].SessionID)
+	}
+	if results[0].RequestBody != "body" {
+		t.Errorf("request_body should still merge: got %q", results[0].RequestBody)
 	}
 }
 
@@ -119,7 +139,7 @@ func TestListWithFilters_WithContentTrue_NoMatchInRequestLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if results[0].RequestBody != "" || results[0].SessionID != "" {
+	if results[0].RequestBody != "" || results[0].SessionID != nil {
 		t.Error("expected empty content when no matching request_log entry")
 	}
 }

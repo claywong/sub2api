@@ -454,7 +454,12 @@ func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.Pa
 				if rl, ok := contentMap[logs[i].RequestID]; ok {
 					logs[i].RequestBody = rl.RequestBody
 					logs[i].ResponseBody = rl.ResponseBody
-					logs[i].SessionID = rl.SessionID
+					// session_id 已是 usage_log 持久化字段；仅当该行未落库
+					// （历史数据）时才用 request_logs 的值兜底。
+					if logs[i].SessionID == nil && rl.SessionID != "" {
+						sessionID := rl.SessionID
+						logs[i].SessionID = &sessionID
+					}
 				}
 			}
 		}

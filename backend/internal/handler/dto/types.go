@@ -132,6 +132,8 @@ type Group struct {
 
 	// OpenAI Messages 调度开关（用户侧需要此字段判断是否展示 Claude Code 教程）
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch"`
+	// OpenAI Live 接口开关
+	AllowLive bool `json:"allow_live"`
 
 	// 账号过滤控制（仅 OpenAI/Antigravity 平台有效）
 	RequireOAuthOnly  bool `json:"require_oauth_only"`
@@ -530,6 +532,9 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent"`
 	// IPAddress is visible to the owner of the usage record.
 	IPAddress *string `json:"ip_address,omitempty"`
+	// SessionID is the explicit client-provided request correlation identifier
+	// (e.g. the session_id / X-Session-Id headers). Omitted when absent.
+	SessionID *string `json:"session_id,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
@@ -572,7 +577,8 @@ type AdminUsageLog struct {
 	Account *AccountSummary `json:"account,omitempty"`
 
 	// 以下字段仅在请求方传递 with_content=true 且有记录时填充。
-	SessionID    *string `json:"session_id,omitempty"`
+	// session_id 由嵌入的 UsageLog 提供（已是持久化字段），此处不再重复声明，
+	// 否则同名 json tag 会遮蔽持久化值。
 	RequestBody  *string `json:"request_body,omitempty"`
 	ResponseBody *string `json:"response_body,omitempty"`
 }
