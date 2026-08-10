@@ -92,6 +92,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
+	beginUpstreamResponseModelObservation(c)
 
 	if account != nil && account.IsAnthropicFullPassthroughEnabled() {
 		return s.forwardAnthropicFullPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
@@ -864,7 +865,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的
 			// usage 与错误一起返回，handler 在错误处理完成后照常提交 usage 记录。
-			if partial := partialStreamUsageResult(resp, streamResult, originalModel, mappedModel, startTime, err); partial != nil {
+			if partial := partialStreamUsageResult(c, resp, streamResult, originalModel, mappedModel, startTime, err); partial != nil {
 				return partial, err
 			}
 			return nil, err
@@ -881,15 +882,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	return &ForwardResult{
-		RequestID:            resp.Header.Get("x-request-id"),
-		Usage:                *usage,
-		Model:                originalModel, // 使用原始模型用于计费和日志
-		UpstreamModel:        mappedModel,
-		Stream:               reqStream,
-		Duration:             time.Since(startTime),
-		FirstTokenMs:         firstTokenMs,
-		ClientDisconnect:     clientDisconnect,
-		CapturedResponseBody: capturedBody,
+		RequestID:                     resp.Header.Get("x-request-id"),
+		Usage:                         *usage,
+		Model:                         originalModel, // 使用原始模型用于计费和日志
+		UpstreamModel:                 mappedModel,
+		UpstreamResponseModel:         observedUpstreamResponseModel(c),
+		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		Stream:                        reqStream,
+		Duration:                      time.Since(startTime),
+		FirstTokenMs:                  firstTokenMs,
+		ClientDisconnect:              clientDisconnect,
+		CapturedResponseBody:          capturedBody,
 	}, nil
 }
 
