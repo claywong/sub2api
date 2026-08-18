@@ -454,19 +454,9 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
-		log.Printf("[Ops] RecordErrorBatch failed, fallback to single inserts: %v", err)
-		var firstErr error
-		for _, entry := range prepared {
-			if _, insertErr := s.opsRepo.InsertErrorLog(ctx, entry); insertErr != nil {
-				log.Printf("[Ops] RecordErrorBatch fallback insert failed: %v", insertErr)
-				if firstErr == nil {
-					firstErr = insertErr
-				}
-				continue
-			}
-			s.webhookDispatcher.Enqueue(entry)
-		}
-		return firstErr
+		// upstream 5f1943310：批量插入可能部分成功，回退单条会重复写入，故不再 fallback。
+		log.Printf("[Ops] RecordErrorBatch failed: %v", err)
+		return err
 	}
 	for _, entry := range prepared {
 		s.webhookDispatcher.Enqueue(entry)
