@@ -1000,25 +1000,12 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"openai_ws_force_http",
 		"openai_responses_mode",
 		"openai_responses_supported",
-		// 配额相关：IsQuotaExceeded() 在调度循环中需要这些字段
-		"quota_limit",
-		"quota_used",
-		"quota_daily_limit",
-		"quota_daily_used",
-		"quota_daily_start",
-		"quota_daily_reset_mode",
+		"codex_fingerprint_mode",
+		"codex_fingerprint_seed",
+		// 以下为私有扩展补充的键（其余 quota_* 键上游列表已覆盖，不再重复）：
+		// 配额重置时间点：IsQuotaExceeded() 在调度循环中需要
 		"quota_daily_reset_at",
-		"quota_daily_reset_hour",
-		"quota_weekly_limit",
-		"quota_weekly_used",
-		"quota_weekly_start",
-		"quota_weekly_reset_mode",
 		"quota_weekly_reset_at",
-		"quota_weekly_reset_day",
-		"quota_weekly_reset_hour",
-		"quota_reset_timezone",
-		// 模型级限流：IsSchedulableForModelWithContext() 需要此字段
-		"model_rate_limits",
 		// RPM 限流：isAccountSchedulableForRPM() 需要这些字段
 		"base_rpm",
 		"rpm_strategy",

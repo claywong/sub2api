@@ -2468,13 +2468,25 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  try {
-    const [p, g, m] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll(), adminAPI.accounts.getModelNames()])
-    proxies.value = p
-    groups.value = g
-    modelNames.value = m
-  } catch (error) {
-    console.error('Failed to load proxies/groups/models:', error)
+  const [proxiesResult, groupsResult, modelNamesResult] = await Promise.allSettled([
+    adminAPI.proxies.getAll(),
+    adminAPI.groups.getAll(),
+    adminAPI.accounts.getModelNames()
+  ])
+  if (proxiesResult.status === 'fulfilled') {
+    proxies.value = proxiesResult.value
+  } else {
+    console.error('Failed to load proxies:', proxiesResult.reason)
+  }
+  if (groupsResult.status === 'fulfilled') {
+    groups.value = groupsResult.value
+  } else {
+    console.error('Failed to load groups:', groupsResult.reason)
+  }
+  if (modelNamesResult.status === 'fulfilled') {
+    modelNames.value = modelNamesResult.value
+  } else {
+    console.error('Failed to load model names:', modelNamesResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)
