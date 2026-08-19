@@ -11,7 +11,14 @@
   @author wangzhong
 -->
 <template>
-  <section class="space-y-6">
+  <!--
+    keydown.enter.prevent 是必需的：本面板被 SettingsView 挂在它的
+    <form @submit.prevent="saveSettings"> 内部，在这里的输入框按回车会触发
+    外层表单提交，结果是静默保存了「系统设置」的全部其它字段，
+    而本面板的配置反而没保存（它走自己的保存按钮）。
+    面板内没有 textarea，统一拦掉回车不会影响多行输入。
+  -->
+  <section class="space-y-6" @keydown.enter.prevent>
     <!-- 配置区 -->
     <div class="card">
       <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
