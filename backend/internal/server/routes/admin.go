@@ -127,6 +127,31 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+
+		// 飞书离职自动禁用（私有扩展）
+		registerFeishuOffboardRoutes(admin, h)
+	}
+}
+
+// registerFeishuOffboardRoutes 注册「飞书离职自动禁用」管理路由。
+// 私有扩展（不属于 upstream sub2api）：整个函数是纯追加，merge 时保留即可。
+//
+// 挂在 admin 分组下，因此自动继承管理员鉴权、面板限流与审计中间件。
+// handler 未接线时静默跳过，避免 nil 解引用打挂整个路由注册。
+func registerFeishuOffboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h == nil || h.Admin == nil || h.Admin.FeishuOffboard == nil {
+		return
+	}
+
+	feishu := admin.Group("/feishu-offboard")
+	{
+		feishu.GET("/config", h.Admin.FeishuOffboard.GetConfig)
+		feishu.PUT("/config", h.Admin.FeishuOffboard.UpdateConfig)
+		feishu.POST("/test", h.Admin.FeishuOffboard.TestConnection)
+		// 破坏性操作：非 dry-run 会真的禁用账号，依赖 admin 组的审计中间件留痕。
+		feishu.POST("/run", h.Admin.FeishuOffboard.TriggerRun)
+		feishu.GET("/runs", h.Admin.FeishuOffboard.ListRuns)
+		feishu.GET("/runs/:id", h.Admin.FeishuOffboard.GetRun)
 	}
 }
 

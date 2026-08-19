@@ -12,6 +12,7 @@ export default {
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+        feishuOffboard: 'Feishu Offboarding',
       },
       features: {
         channelMonitor: {
@@ -1326,6 +1327,141 @@ export default {
       user_error_view: {
         label: 'Allow users to view their own error requests',
         description: 'When enabled, users can see a redacted view of their failed requests on the usage page (no internal/upstream details). Requires ops monitoring enabled to have data.',
+      },
+      // Feishu offboarding auto-disable (private extension)
+      feishuOffboard: {
+        title: 'Feishu Offboarding Auto-Disable',
+        description:
+          'Checks Feishu employment status on a schedule and automatically disables sub2api accounts of resigned employees.',
+        riskNotice:
+          'This feature disables user accounts automatically. Run it in dry-run mode for a few days and verify the verdicts before switching to real execution.',
+        loading: 'Loading...',
+        serviceUnavailable:
+          'The backend service is not wired up yet (the API returned 503). Default values are shown and saving will fail. Verify the feature is deployed on the server.',
+        enabled: 'Enable Feishu offboarding sync',
+        enabledHint:
+          'When disabled, the scheduled job stops running. Existing config and run history are kept.',
+        schedule: 'Cron expression',
+        scheduleHint:
+          'Standard 5-field cron expression, evaluated in the server timezone. Leave blank to use the default.',
+        scheduleDefaultHint: 'Default: daily at 01:00',
+        appId: 'Feishu App ID',
+        appIdPlaceholder: 'cli_xxxxxxxxxxxxxxxx',
+        appIdHint:
+          'App ID of your Feishu custom app. Contact (directory) read permission is required.',
+        appSecret: 'Feishu App Secret',
+        appSecretPlaceholder: 'Leave blank to keep unchanged',
+        appSecretHint: 'App Secret of your Feishu custom app. Never echoed back after saving.',
+        appSecretConfiguredHint:
+          'A secret is already stored. Leave blank to keep it, or enter a new value to overwrite.',
+        secretConfigured: 'Configured',
+        secretNotConfigured: 'Not configured',
+        dryRun: 'Dry-run mode',
+        dryRunHint:
+          'Records verdicts without actually disabling anything. Use it to verify results before going live. The scheduled job still runs and writes history, but no account is touched.',
+        circuitBreaker: 'Safety circuit breaker threshold',
+        circuitBreakerHint:
+          'If a single run matches more than this number, it only alerts instead of executing. Guards against mass false disables caused by Feishu API anomalies. Default 15.',
+        notifyTo: 'Notification emails',
+        notifyToPlaceholder: 'ops@example.com',
+        notifyToHint: 'Run results are emailed to these addresses. Requires SMTP to be configured.',
+        addEmail: 'Add email',
+        removeEmail: 'Remove this email',
+        save: 'Save config',
+        test: 'Test connection',
+        testing: 'Testing...',
+        testSuccess: 'Feishu connection is healthy',
+        testFailed: 'Feishu connection failed',
+        runNow: 'Run once now',
+        running: 'Running...',
+        runSuccess: 'Run finished, {disabled} account(s) disabled',
+        runDryRunSuccess: 'Dry run finished, matched {resigned} resigned employee(s), nothing disabled',
+        runFailed: 'Run failed',
+        saveSuccess: 'Config saved successfully',
+        saveFailed: 'Failed to save config',
+        loadFailed: 'Failed to load config',
+        trigger: {
+          cron: 'Scheduled',
+          manual: 'Manual',
+        },
+        verdict: {
+          resigned: 'Resigned',
+          in_service: 'In service',
+          frozen: 'Needs manual review',
+          unverifiable: 'Unverifiable',
+          skip_admin: 'Admin skipped',
+        },
+        runConfirm: {
+          title: 'Run offboarding check now',
+          message:
+            'This will query Feishu employment status immediately and act on the verdicts. Confirm the execution mode first.',
+          dryRunLabel: 'Dry-run mode (recommended)',
+          dryRunHint: 'Records verdicts only, no account is disabled.',
+          realWarning:
+            'Real execution: accounts matched as resigned will be disabled immediately. Make sure the verdict rules have been verified.',
+          confirm: 'Start run',
+        },
+        history: {
+          title: 'Run history',
+          description: 'Recent runs. Click a row to see the per-user verdicts of that run.',
+          refresh: 'Refresh',
+          empty: 'No runs yet',
+          loadFailed: 'Failed to load run history',
+          viewDetail: 'View details',
+          modeDryRun: 'Dry run',
+          modeReal: 'Real run',
+          circuitBroken: 'Circuit broken',
+          circuitBrokenHint:
+            'Too many matches, execution was blocked. Check whether the Feishu data is abnormal before handling it manually.',
+          columns: {
+            runAt: 'Run at',
+            trigger: 'Trigger',
+            mode: 'Mode',
+            checked: 'Checked',
+            resigned: 'Resigned',
+            disabled: 'Disabled',
+            unverifiable: 'Unverifiable',
+            circuit: 'Circuit',
+            duration: 'Duration',
+            actions: 'Actions',
+          },
+        },
+        flags: {
+          yes: 'yes',
+          no: 'no',
+          is_resigned: 'Resigned',
+          is_resignedHint: 'Decisive flag: treated as resigned when "yes".',
+          is_activated: 'Activated',
+          is_activatedHint:
+            'Informational only, not used for the verdict. A Feishu account often stays activated after the employee resigns.',
+          is_exited: 'Exited tenant',
+          is_exitedHint: 'Decisive flag: treated as having left the company when "yes".',
+          is_frozen: 'Frozen',
+          is_frozenHint:
+            'Frozen/suspended state. Falls into "needs manual review" and is never auto-disabled.',
+          is_unjoin: 'Not joined',
+          is_unjoinHint: 'Onboarding not confirmed yet. Never auto-disabled.',
+        },
+        detail: {
+          title: 'Verdict details',
+          empty: 'This run has no verdict details',
+          loadFailed: 'Failed to load verdict details',
+          disabledYes: 'Disabled',
+          flagsMissing: 'Feishu returned no status (verdict is unverifiable, not disabled)',
+          activatedNote:
+            'Staying activated after resignation is normal; the verdict is based on is_resigned.',
+          multiCandidateNote:
+            'This email maps to multiple Feishu accounts; the right person was confirmed by exact enterprise_email match.',
+          columns: {
+            user: 'User',
+            verdict: 'Verdict',
+            feishu: 'Feishu info',
+            flags: 'Feishu flags',
+            candidates: 'Candidates',
+            disabled: 'Disabled',
+            reason: 'Reason',
+          },
+        },
       },
       saveSettings: 'Save Settings',
       saving: 'Saving...',

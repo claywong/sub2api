@@ -894,6 +894,10 @@ var ProviderSet = wire.NewSet(
 	ProvideOpsAggregationService,
 	ProvideOpsAlertEvaluatorService,
 	ProvideOpsCleanupService,
+	// 私有扩展：飞书离职自动禁用（provider 定义在 wire_feishu_offboard.go）
+	ProvideFeishuOffboardConfigStore,
+	ProvideFeishuOffboardEmailNotifier,
+	ProvideFeishuOffboardService,
 	ProvideOpsScheduledReportService,
 	NewEmailService,
 	NewNotificationEmailService,
