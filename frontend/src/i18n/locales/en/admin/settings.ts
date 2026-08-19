@@ -1265,7 +1265,7 @@ export default {
         circuitBreakerHint:
           'If a single run matches more than this number, it only alerts instead of executing. Guards against mass false disables caused by Feishu API anomalies. Default 15.',
         notifyTo: 'Notification emails',
-        notifyToPlaceholder: 'ops@example.com',
+        notifyToPlaceholder: "ops{'@'}example.com",
         notifyToHint: 'Run results are emailed to these addresses. Requires SMTP to be configured.',
         addEmail: 'Add email',
         removeEmail: 'Remove this email',

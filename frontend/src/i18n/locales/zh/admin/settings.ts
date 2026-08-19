@@ -1254,7 +1254,7 @@ export default {
         circuitBreakerHint:
           '单次命中超过此数只告警不执行，防止飞书接口异常导致批量误禁用。默认 15。',
         notifyTo: '通知邮箱',
-        notifyToPlaceholder: 'ops@example.com',
+        notifyToPlaceholder: "ops{'@'}example.com",
         notifyToHint: '每次执行结束后把结果发送到这些邮箱。需要先配置 SMTP。',
         addEmail: '添加邮箱',
         removeEmail: '移除该邮箱',
