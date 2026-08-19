@@ -122,9 +122,17 @@ type OffboardDecision struct {
 	EmployeeNo   string `json:"employee_no,omitempty"`
 	// FeishuFlags 采纳记录的原始状态位，保留用于追溯。
 	FeishuFlags *FeishuUserStatus `json:"feishu_flags,omitempty"`
-	// CandidateCount 该邮箱在飞书返回了几条候选。>1 说明存在邮箱回收复用，
+	// CandidateCount 该邮箱在飞书返回了几条候选。>1 说明该邮箱关联了多个账号，
 	// 是最容易误判的场景，值得在报告里显式呈现。
 	CandidateCount int `json:"candidate_count"`
+	// MatchedCount 其中 enterprise_email 精确匹配的有几条。
+	//
+	// 区分 CandidateCount 与 MatchedCount 才能分清两种截然不同的情形：
+	//   - candidate>1 而 matched==1：邮箱被回收，其余记录属于别人；
+	//   - matched>1：同一个人有多个飞书账号（离职后回归等），
+	//     此时若各记录状态冲突，按「任一在职即不禁用」的保守规则裁决。
+	// 报告里呈现这个数字，复核的人才能判断系统用的是哪条依据。
+	MatchedCount int `json:"matched_count"`
 	// Disabled 是否真的执行了禁用（dry-run 或熔断时为 false）。
 	Disabled bool `json:"disabled"`
 	// DisableError 禁用失败的原因（若有）。

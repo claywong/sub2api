@@ -1254,7 +1254,7 @@ export default {
         circuitBreakerHint:
           '单次命中超过此数只告警不执行，防止飞书接口异常导致批量误禁用。默认 15。',
         notifyTo: '通知邮箱',
-        notifyToPlaceholder: 'ops@example.com',
+        notifyToPlaceholder: "ops{'@'}example.com",
         notifyToHint: '每次执行结束后把结果发送到这些邮箱。需要先配置 SMTP。',
         addEmail: '添加邮箱',
         removeEmail: '移除该邮箱',
@@ -1335,14 +1335,23 @@ export default {
           disabledYes: '已禁用',
           flagsMissing: '飞书未返回状态（判定为无法核实，不会禁用）',
           activatedNote: '离职后飞书账号仍激活属正常，判定依据是 is_resigned。',
+          matchedCount: '匹配 {count} 条',
+          matchedCountHint: '候选记录中 enterprise_email 与本账号邮箱精确一致的条数，判定只依据这些记录。',
+          matchedNone: '未逐条核对',
+          matchedNoneHint:
+            '本次未做逐条邮箱核对：飞书只返回一条候选且明确在职，或通讯录查不到该邮箱。',
           multiCandidateNote:
-            '该邮箱在飞书有多个关联账号，已按 enterprise_email 精确匹配确认当事人。',
+            '飞书返回 {candidates} 条候选，仅 1 条邮箱与本账号一致；其余属于用过该邮箱的其他账号，已排除，判定只依据匹配的那一条。',
+          multiMatchedKeptNote:
+            '该邮箱在飞书有 {matched} 条匹配记录（共 {candidates} 条候选），状态可能不一致。已按「任一账号在职即不禁用」的保守规则裁决：只要还有一个账号在职，就说明人还在职，不禁用。',
+          multiMatchedResignedNote:
+            '该邮箱在飞书有 {matched} 条匹配记录（共 {candidates} 条候选），全部显示已离职，因此判定离职。只要其中任意一条显示在职，就不会禁用。',
           columns: {
             user: '用户',
             verdict: '判定',
             feishu: '飞书信息',
             flags: '飞书状态位',
-            candidates: '候选数',
+            candidates: '候选数 / 匹配数',
             disabled: '禁用',
             reason: '判定依据',
           },
