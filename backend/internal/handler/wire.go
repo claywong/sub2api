@@ -47,11 +47,14 @@ func ProvideAdminHandlers(
 	schedulerHandler *admin.SchedulerAdminHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
+	feishuOffboardHandler *admin.FeishuOffboardHandler, // 私有扩展
+	feishuOffboardService *service.FeishuOffboardService, // 私有扩展
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 ) *AdminHandlers {
 	accountHandler.SetUpstreamBillingProbeService(upstreamBillingProbe)
 	accountHandler.SetOllamaCloudUsageService(ollamaCloudUsage)
+	feishuOffboardHandler.SetService(feishuOffboardService) // 私有扩展
 	return &AdminHandlers{
 		Dashboard:              dashboardHandler,
 		User:                   userHandler,
@@ -89,6 +92,7 @@ func ProvideAdminHandlers(
 		Scheduler:              schedulerHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
+		FeishuOffboard:         feishuOffboardHandler, // 私有扩展
 	}
 }
 
@@ -286,6 +290,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewSchedulerAdminHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	admin.NewFeishuOffboardHandler, // 私有扩展
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
