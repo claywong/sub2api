@@ -1352,14 +1352,24 @@ export default {
           flagsMissing: 'Feishu returned no status (verdict is unverifiable, not disabled)',
           activatedNote:
             'Staying activated after resignation is normal; the verdict is based on is_resigned.',
+          matchedCount: '{count} matched',
+          matchedCountHint:
+            'How many candidate records have an enterprise_email exactly equal to this account. Only those records inform the verdict.',
+          matchedNone: 'not cross-checked',
+          matchedNoneHint:
+            'No per-record email check was performed this run: Feishu returned a single candidate that is clearly in service, or the email was not found in the directory.',
           multiCandidateNote:
-            'This email maps to multiple Feishu accounts; the right person was confirmed by exact enterprise_email match.',
+            'Feishu returned {candidates} candidates, but only 1 email matches this account. The rest belong to other accounts that once used this email and were excluded; the verdict relies solely on the matching record.',
+          multiMatchedKeptNote:
+            'This email has {matched} matching records in Feishu (out of {candidates} candidates) and their statuses may disagree. Resolved by the conservative rule "keep the account if any record is in service": one active account means the person is still employed, so nothing was disabled.',
+          multiMatchedResignedNote:
+            'This email has {matched} matching records in Feishu (out of {candidates} candidates) and all of them are marked resigned, hence the resigned verdict. A single record still in service would have prevented the disable.',
           columns: {
             user: 'User',
             verdict: 'Verdict',
             feishu: 'Feishu info',
             flags: 'Feishu flags',
-            candidates: 'Candidates',
+            candidates: 'Candidates / Matched',
             disabled: 'Disabled',
             reason: 'Reason',
           },

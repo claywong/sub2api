@@ -12,6 +12,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -70,10 +71,12 @@ func decideSingle(t *testing.T, cli FeishuContactClient, u User) OffboardDecisio
 	return got[0]
 }
 
-// 生产实测：zhaoxinxin@g7.com.cn 返回 3 条候选，
-// 2 条是已离职的「赵新鑫」（enterprise_email 为空），
-// 1 条是在职的「赵鑫鑫」（邮箱精确匹配）。
-// 只看"有没有 resigned=true"会禁掉在职的赵鑫鑫。
+// 候选里只有一条邮箱能对上、其余属于别人时，只依据匹配那条判定，
+// 不能被其他候选的离职状态带偏。
+//
+// 真实数据里更常见的形态是多条记录都能匹配上邮箱
+// （见 TestDecide_SamePersonTwoAccounts_*，实测 15/281 个用户是那种），
+// 单条匹配这一路径同样需要守住。
 func TestDecide_EmailReuse_InServiceHolderMustNotBeDisabled(t *testing.T) {
 	email := "zhaoxinxin@g7.com.cn"
 	cli := &fakeFeishuClient{
@@ -134,6 +137,125 @@ func TestDecide_EmailReuse_ResignedHolderIsDetected(t *testing.T) {
 	}
 	if got.EmployeeNo != "9223" {
 		t.Errorf("应采纳邮箱匹配那条的工号 9223，实际 %q", got.EmployeeNo)
+	}
+}
+
+// 生产实测：hejiacheng@g7.com.cn 返回 2 条，同名、同工号 2781、
+// 两条 enterprise_email 都精确匹配，但一条 is_resigned=true、另一条 false
+// （离职后回归，旧账号未清理）。飞书把离职那条排在前面。
+//
+// 这条用例锁的是一个真实缺陷：早先的实现"第一条邮箱匹配就返回"，
+// 会把这个当天仍在正常使用、余额 900+ 的在职员工禁掉。
+// 规则改为「任一条在职即判在职」后才修复。
+func TestDecide_SamePersonTwoAccounts_AnyActiveMeansInService(t *testing.T) {
+	email := "hejiacheng@g7.com.cn"
+	cli := &fakeFeishuClient{
+		byEmail: map[string][]FeishuUserCandidate{
+			// 顺序照抄飞书实际返回：离职那条在前
+			email: {
+				{OpenID: "ou_resigned", Email: email, Status: statusOf(true, true, false)},
+				{OpenID: "ou_active", Email: email, Status: statusOf(false, true, false)},
+			},
+		},
+		byOpenID: map[string]*FeishuUserDetail{
+			"ou_resigned": {OpenID: "ou_resigned", Name: "何佳诚", EmployeeNo: "2781",
+				EnterpriseEmail: email, Status: statusOf(true, true, false)},
+			"ou_active": {OpenID: "ou_active", Name: "何佳诚", EmployeeNo: "2781",
+				JobTitle: "软件交付工程师",
+				EnterpriseEmail: email, Status: statusOf(false, true, false)},
+		},
+	}
+
+	got := decideSingle(t, cli, User{ID: 12, Email: email, Username: "何佳诚", Role: RoleUser})
+
+	if got.Verdict != OffboardVerdictInService {
+		t.Fatalf("存在在职账号时必须判 in_service，实际 %q（原因：%s）",
+			got.Verdict, got.Reason)
+	}
+	if got.FeishuOpenID != "ou_active" {
+		t.Errorf("应采纳在职那条 ou_active 作为依据，实际 %q", got.FeishuOpenID)
+	}
+	if got.MatchedCount != 2 {
+		t.Errorf("应记录 2 条邮箱匹配记录以便追溯，实际 %d", got.MatchedCount)
+	}
+	// 报告里必须说明"有离职记录但没禁"，否则复核的人会以为系统漏了。
+	if !strings.Contains(got.Reason, "离职") {
+		t.Errorf("Reason 应说明存在离职记录却未禁用的原因，实际 %q", got.Reason)
+	}
+}
+
+// 顺序反过来（在职那条在前）结论必须一致——不能依赖飞书返回顺序。
+func TestDecide_SamePersonTwoAccounts_OrderIndependent(t *testing.T) {
+	email := "rehire-order@g7.com.cn"
+	mk := func(first, second FeishuUserCandidate) OffboardVerdict {
+		cli := &fakeFeishuClient{
+			byEmail: map[string][]FeishuUserCandidate{email: {first, second}},
+			byOpenID: map[string]*FeishuUserDetail{
+				"ou_r": {OpenID: "ou_r", EnterpriseEmail: email,
+					Status: statusOf(true, true, false)},
+				"ou_a": {OpenID: "ou_a", EnterpriseEmail: email,
+					Status: statusOf(false, true, false)},
+			},
+		}
+		return decideSingle(t, cli,
+			User{ID: 1, Email: email, Role: RoleUser}).Verdict
+	}
+	r := FeishuUserCandidate{OpenID: "ou_r", Email: email, Status: statusOf(true, true, false)}
+	a := FeishuUserCandidate{OpenID: "ou_a", Email: email, Status: statusOf(false, true, false)}
+
+	if v1, v2 := mk(r, a), mk(a, r); v1 != v2 {
+		t.Fatalf("结论不能依赖飞书返回顺序：离职在前=%q 在职在前=%q", v1, v2)
+	} else if v1 != OffboardVerdictInService {
+		t.Fatalf("两种顺序都应判 in_service，实际 %q", v1)
+	}
+}
+
+// 全部匹配记录都离职 → 才判离职。
+func TestDecide_AllMatchedResigned_IsResigned(t *testing.T) {
+	email := "allgone@g7.com.cn"
+	cli := &fakeFeishuClient{
+		byEmail: map[string][]FeishuUserCandidate{
+			email: {
+				{OpenID: "ou_1", Email: email, Status: statusOf(true, false, false)},
+				{OpenID: "ou_2", Email: email, Status: statusOf(true, true, false)},
+			},
+		},
+		byOpenID: map[string]*FeishuUserDetail{
+			"ou_1": {OpenID: "ou_1", EnterpriseEmail: email, Status: statusOf(true, false, false)},
+			"ou_2": {OpenID: "ou_2", EnterpriseEmail: email, Status: statusOf(true, true, false)},
+		},
+	}
+
+	got := decideSingle(t, cli, User{ID: 2, Email: email, Role: RoleUser})
+
+	if got.Verdict != OffboardVerdictResigned {
+		t.Fatalf("全部匹配记录均离职时应判 resigned，实际 %q", got.Verdict)
+	}
+	if got.MatchedCount != 2 {
+		t.Errorf("MatchedCount 应为 2，实际 %d", got.MatchedCount)
+	}
+}
+
+// 离职 + 冻结、无在职记录 → 交人工，不禁用。
+func TestDecide_ResignedPlusFrozen_NoActive_IsNotDisabled(t *testing.T) {
+	email := "mixed@g7.com.cn"
+	cli := &fakeFeishuClient{
+		byEmail: map[string][]FeishuUserCandidate{
+			email: {
+				{OpenID: "ou_r", Email: email, Status: statusOf(true, false, false)},
+				{OpenID: "ou_f", Email: email, Status: statusOf(false, true, true)},
+			},
+		},
+		byOpenID: map[string]*FeishuUserDetail{
+			"ou_r": {OpenID: "ou_r", EnterpriseEmail: email, Status: statusOf(true, false, false)},
+			"ou_f": {OpenID: "ou_f", EnterpriseEmail: email, Status: statusOf(false, true, true)},
+		},
+	}
+
+	got := decideSingle(t, cli, User{ID: 3, Email: email, Role: RoleUser})
+
+	if got.Verdict == OffboardVerdictResigned {
+		t.Fatalf("状态不一致（离职+冻结）时不应禁用，实际 %q", got.Verdict)
 	}
 }
 

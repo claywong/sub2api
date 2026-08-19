@@ -106,8 +106,20 @@ export interface FeishuOffboardDecision {
    * （通讯录查不到），此时判定必然是 unverifiable，不会禁用。
    */
   feishu_flags?: FeishuUserStatusFlags | null;
-  /** 飞书侧匹配到的候选人数（>1 表示存在歧义） */
+  /** 飞书按邮箱返回的候选记录数（>1 表示该邮箱关联了多个账号） */
   candidate_count: number;
+  /**
+   * 候选中 enterprise_email 精确匹配的记录数。
+   *
+   * 与 candidate_count 组合才能分清两种情形：
+   * - candidate > 1 且 matched === 1：其余候选属于用过该邮箱的其他账号，已排除；
+   * - matched > 1：同一邮箱对应多条本人记录，状态可能冲突，
+   *   后端按「任一账号在职即不禁用」的保守规则裁决。
+   *
+   * 为 0 表示本次没做邮箱逐条核对（单候选且明确在职的快路径，或飞书查不到），
+   * 展示时不要写成「0 条匹配」。
+   */
+  matched_count: number;
   /** 本次是否真的执行了禁用（dry-run 下恒为 false） */
   disabled: boolean;
   /** 禁用失败时的错误信息 */

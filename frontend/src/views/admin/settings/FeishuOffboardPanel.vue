@@ -559,15 +559,39 @@
                     {{ t("admin.settings.feishuOffboard.detail.flagsMissing") }}
                   </span>
                 </td>
-                <td
-                  class="whitespace-nowrap px-3 py-2 text-right"
-                  :class="
-                    decision.candidate_count > 1
-                      ? 'font-semibold text-amber-600 dark:text-amber-400'
-                      : 'text-gray-600 dark:text-gray-300'
-                  "
-                >
-                  {{ decision.candidate_count }}
+                <!-- 候选数 / 匹配数：两个数字放一起才能分清「邮箱关联了别人的账号」
+                     与「同一邮箱多条本人记录状态冲突」这两种完全不同的情形 -->
+                <td class="whitespace-nowrap px-3 py-2 text-right">
+                  <p
+                    :class="
+                      decision.candidate_count > 1
+                        ? 'font-semibold text-amber-600 dark:text-amber-400'
+                        : 'text-gray-600 dark:text-gray-300'
+                    "
+                  >
+                    {{ decision.candidate_count }}
+                  </p>
+                  <p
+                    class="mt-0.5 text-xs"
+                    :class="
+                      matchedCount(decision) > 1
+                        ? 'font-semibold text-amber-600 dark:text-amber-400'
+                        : 'text-gray-400'
+                    "
+                    :title="
+                      matchedCount(decision) > 0
+                        ? t('admin.settings.feishuOffboard.detail.matchedCountHint')
+                        : t('admin.settings.feishuOffboard.detail.matchedNoneHint')
+                    "
+                  >
+                    {{
+                      matchedCount(decision) > 0
+                        ? t("admin.settings.feishuOffboard.detail.matchedCount", {
+                            count: matchedCount(decision),
+                          })
+                        : t("admin.settings.feishuOffboard.detail.matchedNone")
+                    }}
+                  </p>
                 </td>
                 <td class="whitespace-nowrap px-3 py-2">
                   <span v-if="decision.disabled" class="badge badge-danger">
@@ -575,15 +599,17 @@
                   </span>
                   <span v-else class="text-gray-400">-</span>
                 </td>
-                <td class="px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
-                  <p>{{ decision.reason || "-" }}</p>
-                  <!-- 多候选 + 已离职：说明系统做过 enterprise_email 精确甄别，
-                       否则复核的人会怀疑禁错了人（邮箱回收复用占比约 5.3%） -->
+                <!-- min-w + break-words：判定依据是复核的唯一凭据，
+                     多条匹配记录时后端会写很长的说明，必须完整换行显示不被截断 -->
+                <td class="min-w-[16rem] px-3 py-2 text-xs text-gray-600 break-words dark:text-gray-300">
+                  <p class="whitespace-pre-line">{{ decision.reason || "-" }}</p>
+                  <!-- 多候选/多匹配的裁决说明：不解释的话复核的人会怀疑判错了
+                       （实测邮箱多账号占活跃用户约 5.3%） -->
                   <p
-                    v-if="showsMultiCandidateNote(decision)"
-                    class="mt-0.5 text-amber-600 dark:text-amber-400"
+                    v-if="candidateNote(decision)"
+                    class="mt-1 text-amber-600 dark:text-amber-400"
                   >
-                    {{ t("admin.settings.feishuOffboard.detail.multiCandidateNote") }}
+                    {{ candidateNote(decision) }}
                   </p>
                   <p v-if="decision.disable_error" class="mt-0.5 text-red-600 dark:text-red-400">
                     {{ decision.disable_error }}
@@ -785,9 +811,43 @@ function showsActivatedNote(flags: FeishuUserStatusFlags): boolean {
   return flags.is_resigned === true && flags.is_activated === true;
 }
 
-/** 多候选且判定为已离职时，说明系统做过 enterprise_email 精确甄别 */
-function showsMultiCandidateNote(decision: FeishuOffboardDecision): boolean {
-  return decision.candidate_count > 1 && decision.verdict === "resigned";
+/**
+ * 邮箱精确匹配的记录数。
+ *
+ * 走快路径（单候选且明确在职，不查详情）与飞书查不到时后端不做逐条邮箱核对，
+ * 该值为 0；历史记录也可能完全没有这个字段，统一兜底成 0。
+ */
+function matchedCount(decision: FeishuOffboardDecision): number {
+  const value = Number(decision.matched_count);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+/**
+ * 多账号情形的裁决说明，返回空串表示无需说明。
+ *
+ * 三种要说明的情形，措辞各不相同，因为复核的人要问的问题不一样：
+ * - matched > 1 且判在职：「这人飞书有离职记录，为什么没禁？」
+ * - matched > 1 且判离职：「凭什么禁？」→ 全部匹配记录都离职才禁
+ * - candidate > 1 而 matched === 1：「另外几条是谁？」→ 别人的账号，已排除
+ */
+function candidateNote(decision: FeishuOffboardDecision): string {
+  const matched = matchedCount(decision);
+  const prefix = "admin.settings.feishuOffboard.detail";
+
+  if (matched > 1) {
+    const params = { matched, candidates: decision.candidate_count };
+    // 判在职时最需要解释：飞书确实有离职记录，是保守规则决定了不禁用
+    if (decision.verdict === "resigned") {
+      return t(`${prefix}.multiMatchedResignedNote`, params);
+    }
+    return t(`${prefix}.multiMatchedKeptNote`, params);
+  }
+
+  if (matched === 1 && decision.candidate_count > 1) {
+    return t(`${prefix}.multiCandidateNote`, { candidates: decision.candidate_count });
+  }
+
+  return "";
 }
 
 function formatDuration(ms: number): string {

@@ -99,14 +99,17 @@ func (d *offboardDecider) DecideOffboard(
 //
 // 为什么需要第二阶段的详情查询而不能只看批量结果：
 //
-// 一个邮箱在飞书可能返回多条记录，且分属不同的人。邮箱被回收后重新分配给新人，
-// 而历史账号仍与该邮箱关联。实测 zhaoxinxin@g7.com.cn 返回 3 条：
-// 2 条是已离职的「赵新鑫」（enterprise_email 为空），1 条是在职的「赵鑫鑫」
-// （enterprise_email 精确等于该邮箱）。281 个活跃用户里有 15 个（5.3%）是这种情况。
+// 一个邮箱在飞书可能返回多条记录，而 batch_get_id 不给出这些记录归属于谁。
+// 实测 281 个活跃用户里有 15 个（5.3%）命中此形态，且每一例都是
+// "恰好一条在职、其余若干条已离职"，成因有两类：
+//   - 同一个人有多个账号（工号相同，如 hejiacheng 的工号均为 2781），
+//     典型是离职后回归而旧账号未清理；
+//   - 不同的人共用/继承同一邮箱（工号不同，如 zhaoxinxin 下的
+//     赵新鑫 3600 与赵鑫鑫 10733）。
 //
-// 如果只看"候选里有没有 is_resigned=true"就判离职，会把在职的赵鑫鑫禁掉。
-// 所以必须逐个查详情，用 enterprise_email 精确比对，认定唯一的当事人，
-// 只依据那一条的状态做判定。
+// 两类都不能只看"候选里有没有 is_resigned=true"，否则会禁掉在职的人。
+// 所以必须逐个查详情，用 enterprise_email 精确比对筛出与本人邮箱相符的记录，
+// 再由 applyMatchedDetails 按"任一在职即不禁用"裁决。
 //
 // 单条候选且明确在职时可以跳过详情查询——这是纯粹的性能优化，
 // 覆盖了绝大多数用户，且不影响判定正确性（没有第二条记录可混淆）。
@@ -139,8 +142,16 @@ func (d *offboardDecider) decideOne(
 		return base
 	}
 
-	// 慢路径：逐个查详情，用 enterprise_email 找出真正的当事人。
+	// 慢路径：逐个查详情，收集**所有** enterprise_email 能对上的记录。
+	//
+	// 这里必须收集全部而不是"第一条匹配就返回"：同一个人可能有多个飞书账号，
+	// 邮箱全都对得上但状态冲突。实测 hejiacheng@g7.com.cn 返回 2 条，
+	// 同名、同工号 2781、两条 enterprise_email 都精确匹配，
+	// 但一条 is_resigned=true、另一条 false（离职后回归，旧账号未清理）。
+	// 按顺序取第一条的话，飞书恰好把离职那条排在前面，
+	// 就会禁掉一个当天还在正常使用的在职员工。
 	var lastErr error
+	matched := make([]*FeishuUserDetail, 0, len(candidates))
 	for _, c := range candidates {
 		if strings.TrimSpace(c.OpenID) == "" {
 			continue
@@ -148,14 +159,18 @@ func (d *offboardDecider) decideOne(
 		detail, err := d.client.GetUserDetail(ctx, c.OpenID)
 		if err != nil {
 			// 单条查不到不代表结论，继续看其他候选；
-			// 全部失败才归为无法核实。
+			// 一条都没匹配上且有报错时才归为无法核实。
 			lastErr = err
 			continue
 		}
 		if !detail.MatchesEmail(u.Email) {
 			continue
 		}
-		return applyDetail(base, detail)
+		matched = append(matched, detail)
+	}
+
+	if len(matched) > 0 {
+		return applyMatchedDetails(base, matched)
 	}
 
 	if lastErr != nil {
@@ -172,6 +187,104 @@ func (d *offboardDecider) decideOne(
 		"飞书返回 %d 条候选，但无一条邮箱等于 %s（疑为邮箱回收后的历史账号）",
 		len(candidates), u.Email)
 	return base
+}
+
+// applyMatchedDetails 依据所有邮箱匹配成功的记录做最终裁决。
+//
+// 裁决规则：**任一条显示在职就判在职，只有全部记录都显示离职才判离职。**
+//
+// 这个不对称是有意的。漏判的代价是一个已离职账号多留一天，下次核查还能抓到；
+// 误判的代价是打断一个在职员工的工作，而 sub2api 侧没有操作审计可以一键回滚。
+// 两者量级差得远，所以宁可保守。
+//
+// 同一个人有多个飞书账号是真实存在的（离职后回归、账号迁移未清理），
+// 这种情况下"有一个活跃账号"就足以说明人还在职。
+func applyMatchedDetails(
+	base OffboardDecision, matched []*FeishuUserDetail,
+) OffboardDecision {
+	base.MatchedCount = len(matched)
+
+	var (
+		inService  *FeishuUserDetail
+		resigned   *FeishuUserDetail
+		restricted *FeishuUserDetail // 冻结 / 未激活
+		noStatus   *FeishuUserDetail
+	)
+	for _, d := range matched {
+		if d.Status == nil {
+			if noStatus == nil {
+				noStatus = d
+			}
+			continue
+		}
+		switch {
+		case d.Status.IsResigned || d.Status.IsExited:
+			if resigned == nil {
+				resigned = d
+			}
+		case d.Status.IsFrozen || d.Status.IsUnjoin || !d.Status.IsActivated:
+			if restricted == nil {
+				restricted = d
+			}
+		default:
+			if inService == nil {
+				inService = d
+			}
+		}
+	}
+
+	// 有任何一条在职 → 判在职。这是本函数存在的核心理由。
+	if inService != nil {
+		out := applyDetail(base, inService)
+		if resigned != nil {
+			// 冲突要在报告里说清楚，否则复核的人看到"这人飞书有离职记录却没被禁"
+			// 会以为系统漏了。
+			out.Reason = fmt.Sprintf(
+				"在职（该邮箱在飞书另有 %d 条已离职记录，"+
+					"但存在仍在职的账号，按保守规则不禁用；常见于离职后回归未清理旧账号）",
+				countResigned(matched))
+		}
+		return out
+	}
+
+	// 无在职记录，但有受限记录（冻结/未激活）→ 交人工，不禁用。
+	if restricted != nil {
+		out := applyDetail(base, restricted)
+		if resigned != nil {
+			out.Verdict = OffboardVerdictFrozen
+			out.Reason = "该邮箱在飞书同时存在已离职与冻结/未激活的账号，状态不一致，需人工判断"
+		}
+		return out
+	}
+
+	// 全部匹配记录都显示离职 → 判离职。
+	if resigned != nil {
+		out := applyDetail(base, resigned)
+		if len(matched) > 1 {
+			out.Reason = fmt.Sprintf("%s（该邮箱在飞书的 %d 条匹配记录均已离职）",
+				out.Reason, len(matched))
+		}
+		return out
+	}
+
+	// 只剩没有状态的记录，无法判定。
+	if noStatus != nil {
+		return applyDetail(base, noStatus)
+	}
+
+	base.Verdict = OffboardVerdictUnverifiable
+	base.Reason = "飞书匹配记录均无状态信息，无法核实"
+	return base
+}
+
+func countResigned(matched []*FeishuUserDetail) int {
+	n := 0
+	for _, d := range matched {
+		if d.Status != nil && (d.Status.IsResigned || d.Status.IsExited) {
+			n++
+		}
+	}
+	return n
 }
 
 // applyDetail 依据已确认身份的详情记录得出最终结论。
