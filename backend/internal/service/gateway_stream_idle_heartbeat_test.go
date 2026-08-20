@@ -188,6 +188,94 @@ func TestGatewayService_AnthropicPassthrough_BlankLineHeartbeatDoesNotDeferIdleT
 	require.False(t, result.clientDisconnect)
 }
 
+func newIdleTimeoutOpenAIGatewayService(intervalSec int) *OpenAIGatewayService {
+	return &OpenAIGatewayService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				StreamDataIntervalTimeout: intervalSec,
+				MaxLineSize:               defaultMaxLineSize,
+			},
+		},
+		rateLimitService: &RateLimitService{},
+	}
+}
+
+// 第三条 Anthropic 流式路径：国产供应商原生 Anthropic 直通
+// （handleNativeAnthropicStreamingResponse）。挂在 OpenAIGatewayService 上，
+// 与前两条路径分属不同 service，需独立覆盖。
+func TestNativeAnthropicStreaming_BlankLineHeartbeatDoesNotDeferIdleTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newIdleTimeoutOpenAIGatewayService(1)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	stop := make(chan struct{})
+	go pumpLines(pw, "\n", 200*time.Millisecond, stop)
+
+	result, err := svc.handleNativeAnthropicStreamingResponse(
+		context.Background(), resp, c, &Account{ID: 5},
+		"claude-opus-5", "claude-opus-5", "claude-opus-5", time.Now())
+	close(stop)
+	_ = pw.Close()
+	_ = pr.Close()
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "stream data interval timeout",
+		"原生直通路径同样不应被空行心跳续命")
+	require.NotNil(t, result)
+	require.Nil(t, result.FirstTokenMs, "从未收到 data 行，FirstTokenMs 应为空")
+}
+
+func TestNativeAnthropicStreaming_PingDataEventDefersIdleTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newIdleTimeoutOpenAIGatewayService(1)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       pr,
+	}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		// 持续 1.6s > 1s 阈值：若官方 ping 不计入基准则此处必然误杀。
+		for i := 0; i < 8; i++ {
+			if _, err := pw.Write([]byte("event: ping\ndata: {\"type\": \"ping\"}\n\n")); err != nil {
+				return
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":7}}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":4}}\n\n"))
+		_, _ = pw.Write([]byte("data: {\"type\":\"message_stop\"}\n\n"))
+	}()
+
+	result, err := svc.handleNativeAnthropicStreamingResponse(
+		context.Background(), resp, c, &Account{ID: 6},
+		"claude-opus-5", "claude-opus-5", "claude-opus-5", time.Now())
+	_ = pr.Close()
+
+	require.NoError(t, err, "带负载的 ping 应续命，不应误判为空闲超时")
+	require.NotNil(t, result)
+	require.Equal(t, 7, result.Usage.InputTokens)
+	require.Equal(t, 4, result.Usage.OutputTokens)
+	require.NotNil(t, result.FirstTokenMs, "收到 ping 的 data 行即应记首字时间")
+}
+
 func TestSSELineCarriesData(t *testing.T) {
 	cases := []struct {
 		name string
