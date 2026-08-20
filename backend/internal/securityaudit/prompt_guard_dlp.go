@@ -98,7 +98,7 @@ func (g *GuardEvaluator) EvaluateDLP(
 	start := g.clock.Now()
 
 	// 第一层：正则。零网络调用，未命中直接返回。
-	scan := ScanDLP(snapshot.ScanText, dlpCfg.EffectiveScanners())
+	scan := ScanDLPWithOverrides(snapshot.ScanText, dlpCfg.EffectiveScanners(), dlpCfg.RuleOverrides)
 	if len(scan.Findings) == 0 {
 		if scan.ExcludedCount > 0 {
 			LogDLPInfo(EventDLPRegexExcluded, mergeLogFields(snapshotLogFields(snapshot), map[string]any{

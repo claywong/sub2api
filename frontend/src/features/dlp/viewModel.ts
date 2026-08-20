@@ -18,6 +18,7 @@ import type {
   DlpDraft,
   DlpEndpointDraft,
   DlpPageDraft,
+  DlpRule,
   DlpUpdateRequest,
   GuardPassthrough,
 } from './types'
@@ -31,6 +32,11 @@ export const DLP_SCANNER_CATALOG = [
   { id: 'dlp_pii', label: 'Personal Information' },
   { id: 'dlp_sensitive', label: 'Sensitive Field' },
 ] as const
+
+// 后端未下发时的兜底值。正常情况下这两个都由 GET /config 给出，
+// 这里只保证接口降级时表单仍能渲染。
+export const DEFAULT_DLP_SEVERITIES = ['medium', 'high']
+export const DEFAULT_DLP_BLOCKING_SEVERITIES = ['high', 'critical']
 
 export const DEFAULT_DLP_CONFIRM_MODEL = 'gpt-5.6-luna'
 export const DEFAULT_DLP_CONFIRM_TIMEOUT_MS = 5000
@@ -67,7 +73,38 @@ export function dlpConfigToDraft(config?: DlpConfig | null): DlpDraft {
       clear_token: false,
     })),
     available_scanners: [...(config?.available_scanners ?? [])],
+    rules: (config?.rules ?? []).map((rule) => ({ ...rule })),
+    available_severities: [...(config?.available_severities ?? DEFAULT_DLP_SEVERITIES)],
+    // 阈值缺失时按「high 才拦」兜底，与后端 dlpShouldBlock 的默认判定一致。
+    blocking_severities: [...(config?.blocking_severities ?? DEFAULT_DLP_BLOCKING_SEVERITIES)],
   }
+}
+
+// ruleBlocks 判断一条规则在当前草稿下命中后是否会拦截请求。
+//
+// 三个条件都必须成立：规则未被关掉、拦截总开关已打开、严重度在后端给出的
+// 拦截阈值内。阈值来自 blocking_severities 而不是硬编码 'high'，
+// 后端调整阈值时界面自动跟上。
+export function ruleBlocks(draft: DlpDraft, rule: DlpRule): boolean {
+  if (rule.disabled || !draft.block_on_high_severity) return false
+  return draft.blocking_severities.includes(rule.severity)
+}
+
+// ruleChangedFromDefault 判断规则是否被改动过（严重度改了或被关掉）。
+// 界面用它标出偏离内置默认的条目，便于管理员回看自己动过什么。
+export function ruleChangedFromDefault(rule: DlpRule): boolean {
+  return rule.disabled || rule.severity !== rule.default_severity
+}
+
+// rulesByScanner 按检测器分组，顺序沿用后端下发的注册顺序。
+export function rulesByScanner(rules: DlpRule[], scannerID: string): DlpRule[] {
+  return rules.filter((rule) => rule.scanner_id === scannerID)
+}
+
+// countEnabledRules 统计某检测器下未被关掉的规则数。
+// 界面用它提示「3/9 条已启用」，也用于阻止把所有规则关光后保存。
+export function countEnabledRules(rules: DlpRule[], scannerID: string): number {
+  return rulesByScanner(rules, scannerID).filter((rule) => !rule.disabled).length
 }
 
 // buildGuardPassthrough 抽出需要原样回传的 qwen3guard 字段。
@@ -147,6 +184,12 @@ export function buildDlpUpdateRequest(draft: DlpDraft): DlpUpdateRequest {
       clear_token: endpoint.clear_token,
       timeout_ms: Number(endpoint.timeout_ms),
       enabled: endpoint.enabled,
+    })),
+    // 提交全量规则列表，后端只留与内置默认值的偏差。
+    rules: draft.rules.map((rule) => ({
+      id: rule.id,
+      severity: rule.severity,
+      enabled: !rule.disabled,
     })),
   }
 }

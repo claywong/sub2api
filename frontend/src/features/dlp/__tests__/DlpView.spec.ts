@@ -37,6 +37,18 @@ const dlpConfig = (): DlpConfig => ({
     timeout_ms: 5000, enabled: true, has_token: true, token_status: 'configured',
   }],
   available_scanners: [],
+  rules: [
+    {
+      id: 'credential-aws-access-key', scanner_id: 'dlp_credential', title: 'AWS Access Key',
+      default_severity: 'medium', severity: 'medium', disabled: false, broad: false,
+    },
+    {
+      id: 'pii-idcard', scanner_id: 'dlp_pii', title: '身份证号',
+      default_severity: 'high', severity: 'high', disabled: false, broad: false,
+    },
+  ],
+  available_severities: ['medium', 'high'],
+  blocking_severities: ['high', 'critical'],
 })
 
 // 响应里必须带上 qwen3guard 字段：DLP 页面保存时要原样回传，
@@ -55,6 +67,7 @@ const DlpPanelStub = defineComponent({
   emits: ['update:draft'],
   template: `<div data-test="dlp-panel">
     <button data-test="toggle-block" @click="$emit('update:draft', { ...draft, block_on_high_severity: !draft.block_on_high_severity })">toggle</button>
+    <button data-test="raise-severity" @click="$emit('update:draft', { ...draft, rules: draft.rules.map((r) => r.id === 'credential-aws-access-key' ? { ...r, severity: 'high' } : r) })">raise</button>
   </div>`,
 })
 const EventsStub = defineComponent({
@@ -185,6 +198,26 @@ describe('DlpView', () => {
       dlp: expect.objectContaining({ block_on_high_severity: false }),
     }))
     expect(mocks.showSuccess).toHaveBeenCalled()
+  })
+
+  it('submits rule severity changes', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+    await wrapper.get('[data-test="raise-severity"]').trigger('click')
+
+    expect(wrapper.text()).toContain('admin.dlp.saveBar.dirty')
+    await wrapper.get('[data-test="save-config"]').trigger('click')
+    await flushPromises()
+
+    const payload = mocks.updateConfig.mock.calls[0][0]
+    const aws = payload.dlp.rules.find(
+      (rule: { id: string }) => rule.id === 'credential-aws-access-key',
+    )
+    expect(aws.severity).toBe('high')
+    expect(aws.enabled).toBe(true)
+    // 必须提交全量规则：少提交的会被后端当成「没带 rules」而保持原有覆盖。
+    expect(payload.dlp.rules).toHaveLength(2)
   })
 
   it('resyncs the version after a save so the next save is not rejected', async () => {

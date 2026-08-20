@@ -4,18 +4,44 @@ import { SCANNER_CATALOG } from '@/features/prompt-audit/viewModel'
 import zhAdmin from '@/i18n/locales/zh/admin/dlp'
 import enAdmin from '@/i18n/locales/en/admin/dlp'
 import DlpPanel from '../components/DlpPanel.vue'
-import type { DlpConfig, DlpConfigResponse } from '../types'
+import type { DlpConfig, DlpConfigResponse, DlpRule } from '../types'
 import {
   buildConfigUpdateRequest,
   buildDlpUpdateRequest,
   buildGuardPassthrough,
+  countEnabledRules,
   createDefaultDlpEndpoint,
   DEFAULT_DLP_CONFIRM_MODEL,
   DLP_SCANNER_CATALOG,
   dlpConfigToDraft,
   dlpDraftFingerprint,
   responseToPageDraft,
+  ruleBlocks,
+  ruleChangedFromDefault,
+  rulesByScanner,
 } from '../viewModel'
+
+// 规则样本取自后端 dlpRules 的真实条目与默认严重度。
+// AWS Access Key 默认 medium 是关键样本：它是「开了拦截开关却不拦凭证泄露」
+// 这个反直觉行为的来源，也是严重度可配的动因。
+const AWS_RULE = 'credential-aws-access-key'
+const GENERIC_KEY_RULE = 'credential-generic-api-key'
+const IDCARD_RULE = 'pii-idcard'
+
+const dlpRules = (): DlpRule[] => [
+  {
+    id: AWS_RULE, scanner_id: 'dlp_credential', title: 'AWS Access Key',
+    default_severity: 'medium', severity: 'medium', disabled: false, broad: false,
+  },
+  {
+    id: GENERIC_KEY_RULE, scanner_id: 'dlp_credential', title: '通用 API Key',
+    default_severity: 'medium', severity: 'medium', disabled: false, broad: true,
+  },
+  {
+    id: IDCARD_RULE, scanner_id: 'dlp_pii', title: '身份证号',
+    default_severity: 'high', severity: 'high', disabled: false, broad: false,
+  },
+]
 
 const dlpConfig = (): DlpConfig => ({
   enabled: true,
@@ -34,6 +60,9 @@ const dlpConfig = (): DlpConfig => ({
     has_token: true, token_status: 'configured',
   }],
   available_scanners: [],
+  rules: dlpRules(),
+  available_severities: ['medium', 'high'],
+  blocking_severities: ['high', 'critical'],
 })
 
 const dlpGroups = () => [
@@ -255,6 +284,109 @@ describe('qwen3guard passthrough', () => {
   })
 })
 
+// 严重度可配是为了解决一个反直觉行为：AWS Access Key 等凭证类规则内置是中危，
+// 管理员开了「高危命中时拦截」也不会拦。这组测试守住可配后的语义。
+describe('rule severity and toggles', () => {
+  it('marks a rule as blocking only when severity is in the blocking set', () => {
+    const draft = dlpConfigToDraft(dlpConfig())
+    const aws = draft.rules.find((rule) => rule.id === AWS_RULE)!
+    const idCard = draft.rules.find((rule) => rule.id === IDCARD_RULE)!
+
+    // 默认 medium：开了拦截开关也不拦，这正是问题所在。
+    expect(ruleBlocks(draft, aws)).toBe(false)
+    expect(ruleBlocks(draft, idCard)).toBe(true)
+
+    // 提到 high 后才拦。
+    expect(ruleBlocks(draft, { ...aws, severity: 'high' })).toBe(true)
+  })
+
+  it('never blocks when the master switch is off', () => {
+    const draft = dlpConfigToDraft({ ...dlpConfig(), block_on_high_severity: false })
+    for (const rule of draft.rules) {
+      expect(ruleBlocks(draft, { ...rule, severity: 'high' })).toBe(false)
+    }
+  })
+
+  it('never blocks a disabled rule', () => {
+    // 关掉的规则根本不参与扫描，不可能拦截。
+    const draft = dlpConfigToDraft(dlpConfig())
+    const idCard = draft.rules.find((rule) => rule.id === IDCARD_RULE)!
+    expect(ruleBlocks(draft, { ...idCard, disabled: true })).toBe(false)
+  })
+
+  it('reads the blocking threshold from the backend instead of hardcoding high', () => {
+    // 后端调整阈值时界面要自动跟上，不能把 'high' 写死在前端。
+    const draft = dlpConfigToDraft({ ...dlpConfig(), blocking_severities: ['medium', 'high'] })
+    const aws = draft.rules.find((rule) => rule.id === AWS_RULE)!
+    expect(ruleBlocks(draft, aws)).toBe(true)
+  })
+
+  it('flags rules that deviate from their built-in default', () => {
+    const draft = dlpConfigToDraft(dlpConfig())
+    const aws = draft.rules.find((rule) => rule.id === AWS_RULE)!
+
+    expect(ruleChangedFromDefault(aws)).toBe(false)
+    expect(ruleChangedFromDefault({ ...aws, severity: 'high' })).toBe(true)
+    // 关掉也算改动过。
+    expect(ruleChangedFromDefault({ ...aws, disabled: true })).toBe(true)
+  })
+
+  it('groups and counts rules per detector', () => {
+    const draft = dlpConfigToDraft(dlpConfig())
+    expect(rulesByScanner(draft.rules, 'dlp_credential')).toHaveLength(2)
+    expect(rulesByScanner(draft.rules, 'dlp_pii')).toHaveLength(1)
+    expect(countEnabledRules(draft.rules, 'dlp_credential')).toBe(2)
+
+    const withDisabled = draft.rules.map((rule) =>
+      rule.id === AWS_RULE ? { ...rule, disabled: true } : rule,
+    )
+    expect(countEnabledRules(withDisabled, 'dlp_credential')).toBe(1)
+  })
+
+  it('submits the full rule list with enabled flags', () => {
+    // 后端只留与默认值的偏差，但前端必须提交全量——少提交的规则会被
+    // 当成「没带 rules 字段」而保持原有覆盖，管理员的取消操作就丢了。
+    const draft = responseToPageDraft(configResponse())
+    draft.dlp.rules = draft.dlp.rules.map((rule) =>
+      rule.id === AWS_RULE ? { ...rule, severity: 'high' } : rule,
+    )
+    const request = buildConfigUpdateRequest(draft)
+
+    expect(request.dlp.rules).toHaveLength(3)
+    const aws = request.dlp.rules.find((rule) => rule.id === AWS_RULE)!
+    expect(aws.severity).toBe('high')
+    expect(aws.enabled).toBe(true)
+  })
+
+  it('converts disabled into enabled=false for the backend', () => {
+    const draft = responseToPageDraft(configResponse())
+    draft.dlp.rules = draft.dlp.rules.map((rule) =>
+      rule.id === GENERIC_KEY_RULE ? { ...rule, disabled: true } : rule,
+    )
+    const request = buildConfigUpdateRequest(draft)
+    const generic = request.dlp.rules.find((rule) => rule.id === GENERIC_KEY_RULE)!
+    expect(generic.enabled).toBe(false)
+  })
+
+  it('counts a rule change as a dirty draft', () => {
+    // 否则改了严重度但保存按钮不亮，改动会被静默丢弃。
+    const draft = responseToPageDraft(configResponse())
+    const server = responseToPageDraft(configResponse())
+    draft.dlp.rules = draft.dlp.rules.map((rule) =>
+      rule.id === AWS_RULE ? { ...rule, severity: 'high' } : rule,
+    )
+    expect(dlpDraftFingerprint(draft)).not.toBe(dlpDraftFingerprint(server))
+  })
+
+  it('falls back to renderable defaults when the backend omits rule metadata', () => {
+    const draft = dlpConfigToDraft(undefined)
+    expect(draft.rules).toEqual([])
+    // 没有可选严重度就渲染不出选择器，没有阈值就算不出「会拦 / 仅记录」。
+    expect(draft.available_severities.length).toBeGreaterThan(0)
+    expect(draft.blocking_severities.length).toBeGreaterThan(0)
+  })
+})
+
 describe('DlpPanel', () => {
   it('hides the configuration body while DLP is disabled', () => {
     const wrapper = mountPanel({ ...dlpConfig(), enabled: false })
@@ -269,6 +401,108 @@ describe('DlpPanel', () => {
     }
     expect(wrapper.find('[data-test="dlp-block-high"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="dlp-cache-enabled"]').exists()).toBe(true)
+  })
+
+  it('lists each rule with its severity selector', () => {
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [] })
+    for (const rule of dlpRules()) {
+      expect(wrapper.find(`[data-test="dlp-rule-${rule.id}"]`).exists()).toBe(true)
+      expect(wrapper.find(`[data-test="dlp-rule-severity-${rule.id}"]`).exists()).toBe(true)
+    }
+    // 规则标题来自后端，不经 i18n——前端硬编码一份必然漂移。
+    expect(wrapper.text()).toContain('AWS Access Key')
+    expect(wrapper.text()).toContain('身份证号')
+  })
+
+  it('shows the real disposition per rule rather than making the admin infer it', () => {
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [] })
+    // AWS Access Key 默认中危：开了拦截开关也只记录。
+    expect(wrapper.get(`[data-test="dlp-rule-effect-${AWS_RULE}"]`).text())
+      .toContain('admin.dlp.rules.effectAudit')
+    // 身份证号是高危：会拦。
+    expect(wrapper.get(`[data-test="dlp-rule-effect-${IDCARD_RULE}"]`).text())
+      .toContain('admin.dlp.rules.effectBlock')
+  })
+
+  it('shows every rule as records-only when the master switch is off', () => {
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [], block_on_high_severity: false })
+    expect(wrapper.get(`[data-test="dlp-rule-effect-${IDCARD_RULE}"]`).text())
+      .toContain('admin.dlp.rules.effectAudit')
+  })
+
+  it('emits an updated severity when the selector changes', async () => {
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [] })
+    await wrapper.get(`[data-test="dlp-rule-severity-${AWS_RULE}"]`).setValue('high')
+
+    const next = wrapper.emitted('update:draft')?.[0]?.[0] as { rules: DlpRule[] }
+    const aws = next.rules.find((rule) => rule.id === AWS_RULE)!
+    expect(aws.severity).toBe('high')
+    // 只动目标规则，其余保持原样。
+    expect(next.rules.find((rule) => rule.id === IDCARD_RULE)!.severity).toBe('high')
+    expect(next.rules.find((rule) => rule.id === GENERIC_KEY_RULE)!.severity).toBe('medium')
+  })
+
+  it('emits a disabled flag when a rule is switched off', async () => {
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [] })
+    await wrapper.get(`[data-test="dlp-rule-enabled-${GENERIC_KEY_RULE}"]`).setValue(false)
+
+    const next = wrapper.emitted('update:draft')?.[0]?.[0] as { rules: DlpRule[] }
+    expect(next.rules.find((rule) => rule.id === GENERIC_KEY_RULE)!.disabled).toBe(true)
+    expect(next.rules.find((rule) => rule.id === AWS_RULE)!.disabled).toBe(false)
+  })
+
+  it('disables the severity selector for a switched-off rule', () => {
+    const config = dlpConfig()
+    config.scanners = []
+    config.rules = config.rules.map((rule) =>
+      rule.id === AWS_RULE ? { ...rule, disabled: true } : rule,
+    )
+    const wrapper = mountPanel(config)
+    const selector = wrapper.get(`[data-test="dlp-rule-severity-${AWS_RULE}"]`)
+    expect(selector.attributes()).toHaveProperty('disabled')
+    expect(wrapper.get(`[data-test="dlp-rule-effect-${AWS_RULE}"]`).text())
+      .toContain('admin.dlp.rules.effectOff')
+  })
+
+  it('marks rules that were changed from their default', () => {
+    const config = dlpConfig()
+    config.scanners = []
+    config.rules = config.rules.map((rule) =>
+      rule.id === AWS_RULE ? { ...rule, severity: 'high' } : rule,
+    )
+    const wrapper = mountPanel(config)
+    expect(wrapper.find(`[data-test="dlp-rule-changed-${AWS_RULE}"]`).exists()).toBe(true)
+    expect(wrapper.find(`[data-test="dlp-rule-changed-${IDCARD_RULE}"]`).exists()).toBe(false)
+  })
+
+  it('warns when every rule in a detector is switched off', () => {
+    // 逐条关光等于关掉整个检测器，但勾选框还是选中的，不提示就看不出来。
+    const config = dlpConfig()
+    config.scanners = []
+    config.rules = config.rules.map((rule) =>
+      rule.scanner_id === 'dlp_credential' ? { ...rule, disabled: true } : rule,
+    )
+    const wrapper = mountPanel(config)
+    expect(wrapper.find('[data-test="dlp-scanner-all-disabled-dlp_credential"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="dlp-scanner-all-disabled-dlp_pii"]').exists()).toBe(false)
+  })
+
+  it('does not warn about empty detectors when the backend sent no rules', () => {
+    // 接口降级时规则表为空，不该显示「全部已关闭」这种误导性提示。
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [], rules: [] })
+    expect(wrapper.find('[data-test="dlp-scanner-all-disabled-dlp_credential"]').exists()).toBe(false)
+  })
+
+  it('flags broad rules so the admin knows which ones are noisy', () => {
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: [] })
+    expect(wrapper.text()).toContain('admin.dlp.rules.broad')
+  })
+
+  it('hides rule details for a detector that is switched off entirely', () => {
+    // 检测器整体关掉时规则明细无意义，展示出来会让人以为还在生效。
+    const wrapper = mountPanel({ ...dlpConfig(), scanners: ['dlp_pii'] })
+    expect(wrapper.find(`[data-test="dlp-rule-${IDCARD_RULE}"]`).exists()).toBe(true)
+    expect(wrapper.find(`[data-test="dlp-rule-${AWS_RULE}"]`).exists()).toBe(false)
   })
 
   it('treats an empty detector list as all enabled', () => {
@@ -384,9 +618,19 @@ describe('DLP i18n coverage', () => {
       'endpoints', 'endpointsHint', 'endpointRequired', 'addEndpoint', 'removeEndpoint',
       'endpointEnabled', 'endpointName', 'endpointBaseUrl', 'endpointModel', 'endpointTimeout',
       'endpointToken', 'clearToken', 'tokenKeepPlaceholder', 'tokenEmptyPlaceholder',
+      'rules.enabledCount', 'rules.severityFor', 'rules.effectBlock', 'rules.effectAudit',
+      'rules.effectOff', 'rules.changed', 'rules.changedHint', 'rules.broad', 'rules.broadHint',
     ]
     for (const key of required) {
       expect(zhKeys).toContain(key)
+    }
+  })
+
+  it('labels every configurable severity in both languages', () => {
+    // 漏一个会让选择器显示原始值（medium/high），管理员看不懂。
+    for (const level of ['medium', 'high']) {
+      expect(zhKeys).toContain(`rules.severity.${level}`)
+      expect(enKeys).toContain(`rules.severity.${level}`)
     }
   })
 

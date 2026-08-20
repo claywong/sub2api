@@ -37,7 +37,8 @@ export default {
 
     enabled: '启用 DLP 检测',
     detectors: '检测器',
-    detectorsHint: '未勾选任何检测器时视为全部启用。',
+    detectorsHint:
+      '未勾选任何检测器时视为全部启用。展开后可逐条调整规则的严重度，或单独关掉误报多的规则。',
     detectorLabels: {
       dlp_credential: '凭证泄露',
       dlp_pii: '个人信息',
@@ -46,7 +47,20 @@ export default {
     disposition: '命中处置',
     blockOnHigh: '高危命中时拦截请求',
     blockOnHighHint:
-      '仅对高危命中（证件号、银行卡、云密钥、数据库连接串、口令等）生效；中危命中（JWT、手机号）恒为仅记录不拦截。',
+      '只有标为「高危」的规则命中才会拦截，中危命中一律只记录事件。哪条规则算高危可在下方逐条调整——默认只有 6 条是高危，AWS Access Key、GitHub Token、私钥块等凭证类默认是中危，也就是不拦。',
+    rules: {
+      enabledCount: '{enabled}/{total} 条规则已启用',
+      severity: { medium: '中危', high: '高危' },
+      severityFor: '{rule} 的严重度',
+      effectBlock: '会拦截',
+      effectAudit: '仅记录',
+      effectOff: '已关闭',
+      changed: '已改',
+      changedHint: '默认为{severity}',
+      broad: '宽泛',
+      broadHint: '这条规则匹配范围较宽，误报相对多；可单独关掉而不影响同类的精确规则。',
+      allDisabledWarning: '该检测器下所有规则都已关闭，等同于关掉整个检测器。',
+    },
     scope: '适用范围',
     scopeHint: 'DLP 有自己独立的生效范围，与提示词审计的审计模式、分组设置无关。',
     allGroups: '全部分组',

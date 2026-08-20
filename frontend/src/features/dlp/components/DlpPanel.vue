@@ -115,20 +115,111 @@
             {{ t('admin.dlp.detectors') }}
           </legend>
           <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('admin.dlp.detectorsHint') }}</p>
-          <div class="mt-3 grid gap-2 sm:grid-cols-2">
-            <label
+
+          <div class="mt-4 space-y-4">
+            <div
               v-for="scanner in DLP_SCANNER_CATALOG"
               :key="scanner.id"
-              class="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-dark-200 dark:hover:bg-dark-800"
+              class="rounded-lg border border-gray-200 dark:border-dark-700"
             >
-              <input
-                type="checkbox"
-                :checked="isScannerEnabled(scanner.id)"
-                :aria-label="detectorLabel(scanner.id)"
-                @change="toggleScanner(scanner.id)"
-              />
-              <span>{{ detectorLabel(scanner.id) }}</span>
-            </label>
+              <div class="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5 dark:border-dark-800">
+                <label class="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-dark-100">
+                  <input
+                    type="checkbox"
+                    :checked="isScannerEnabled(scanner.id)"
+                    :data-test="`dlp-scanner-${scanner.id}`"
+                    :aria-label="detectorLabel(scanner.id)"
+                    @change="toggleScanner(scanner.id)"
+                  />
+                  <span>{{ detectorLabel(scanner.id) }}</span>
+                </label>
+                <span class="text-xs text-gray-500 dark:text-dark-400">
+                  {{ t('admin.dlp.rules.enabledCount', {
+                    enabled: countEnabledRules(dlp.rules, scanner.id),
+                    total: rulesByScanner(dlp.rules, scanner.id).length,
+                  }) }}
+                </span>
+              </div>
+
+              <!--
+                逐条关光等于关掉整个检测器，但界面上勾选框还是选中的，
+                不提示的话看起来仍在生效。
+              -->
+              <p
+                v-if="isScannerEnabled(scanner.id) && hasRules(scanner.id) && countEnabledRules(dlp.rules, scanner.id) === 0"
+                class="bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+                :data-test="`dlp-scanner-all-disabled-${scanner.id}`"
+              >
+                {{ t('admin.dlp.rules.allDisabledWarning') }}
+              </p>
+
+              <!--
+                检测器被整体关掉时规则明细无意义，折叠起来避免误以为还在生效。
+              -->
+              <ul v-if="isScannerEnabled(scanner.id)" class="divide-y divide-gray-100 dark:divide-dark-800">
+                <li
+                  v-for="rule in rulesByScanner(dlp.rules, scanner.id)"
+                  :key="rule.id"
+                  class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"
+                  :data-test="`dlp-rule-${rule.id}`"
+                >
+                  <label class="flex min-w-0 flex-1 items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      :checked="!rule.disabled"
+                      :data-test="`dlp-rule-enabled-${rule.id}`"
+                      :aria-label="rule.title"
+                      @change="toggleRule(rule.id)"
+                    />
+                    <span
+                      class="truncate"
+                      :class="rule.disabled ? 'text-gray-400 line-through dark:text-dark-500' : 'text-gray-800 dark:text-dark-100'"
+                    >
+                      {{ rule.title }}
+                    </span>
+                    <span
+                      v-if="rule.broad"
+                      class="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+                      :title="t('admin.dlp.rules.broadHint')"
+                    >
+                      {{ t('admin.dlp.rules.broad') }}
+                    </span>
+                  </label>
+
+                  <div class="flex shrink-0 items-center gap-2">
+                    <span
+                      v-if="ruleChangedFromDefault(rule)"
+                      class="rounded bg-primary-100 px-1.5 py-0.5 text-[11px] text-primary-800 dark:bg-primary-950/40 dark:text-primary-200"
+                      :data-test="`dlp-rule-changed-${rule.id}`"
+                      :title="t('admin.dlp.rules.changedHint', { severity: severityLabel(rule.default_severity) })"
+                    >
+                      {{ t('admin.dlp.rules.changed') }}
+                    </span>
+                    <span
+                      class="w-16 text-right text-[11px]"
+                      :class="ruleBlocks(dlp, rule) ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-dark-400'"
+                      :data-test="`dlp-rule-effect-${rule.id}`"
+                    >
+                      {{ rule.disabled
+                        ? t('admin.dlp.rules.effectOff')
+                        : ruleBlocks(dlp, rule) ? t('admin.dlp.rules.effectBlock') : t('admin.dlp.rules.effectAudit') }}
+                    </span>
+                    <select
+                      class="input w-24 py-1 text-xs"
+                      :value="rule.severity"
+                      :disabled="rule.disabled"
+                      :data-test="`dlp-rule-severity-${rule.id}`"
+                      :aria-label="t('admin.dlp.rules.severityFor', { rule: rule.title })"
+                      @change="setRuleSeverity(rule.id, ($event.target as HTMLSelectElement).value)"
+                    >
+                      <option v-for="level in dlp.available_severities" :key="level" :value="level">
+                        {{ severityLabel(level) }}
+                      </option>
+                    </select>
+                  </div>
+                </li>
+              </ul>
+            </div>
           </div>
         </fieldset>
 
@@ -361,12 +452,16 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PromptAuditGroup } from '@/features/prompt-audit/types'
-import type { DlpDraft, DlpEndpointDraft } from '../types'
+import type { DlpDraft, DlpEndpointDraft, DlpRule } from '../types'
 import {
   cloneDlpData,
+  countEnabledRules,
   createDefaultDlpEndpoint,
   DEFAULT_DLP_CONFIRM_MODEL,
   DLP_SCANNER_CATALOG,
+  ruleBlocks,
+  ruleChangedFromDefault,
+  rulesByScanner,
 } from '../viewModel'
 
 // groups 收的是与 qwen3guard 同一份分组列表，但选择结果各自独立存储。
@@ -432,6 +527,42 @@ function toggleScanner(id: string) {
 
 function detectorLabel(id: string): string {
   return t(`admin.dlp.detectorLabels.${id}`)
+}
+
+// severityLabel 把后端下发的严重度值转成文案。
+// 后端将来新增取值时回落到原值，界面不会显示空白。
+function severityLabel(level: string): string {
+  const key = `admin.dlp.rules.severity.${level}`
+  const translated = t(key)
+  return translated === key ? level : translated
+}
+
+// patchRule 改写单条规则。
+//
+// 规则列表整体重建而非原地改：props 是只读的响应式代理，直接改会绕过
+// update:draft，父组件的脏检查也就发现不了这次改动。
+function patchRule(ruleID: string, value: Partial<DlpRule>) {
+  patch({
+    rules: props.draft.rules.map((rule) =>
+      rule.id === ruleID ? { ...rule, ...value } : { ...rule },
+    ),
+  })
+}
+
+// hasRules 判断检测器下是否有规则。
+// 后端未下发规则表（接口降级）时不该显示「全部已关闭」这种误导性警告。
+function hasRules(scannerID: string): boolean {
+  return rulesByScanner(props.draft.rules, scannerID).length > 0
+}
+
+function toggleRule(ruleID: string) {
+  const target = props.draft.rules.find((rule) => rule.id === ruleID)
+  if (!target) return
+  patchRule(ruleID, { disabled: !target.disabled })
+}
+
+function setRuleSeverity(ruleID: string, severity: string) {
+  patchRule(ruleID, { severity })
 }
 
 function tokenPlaceholder(endpoint: DlpEndpointDraft): string {

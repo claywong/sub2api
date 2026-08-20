@@ -58,8 +58,12 @@ type DLPConfig struct {
 	CacheSensitiveTTLHours int `json:"cache_sensitive_ttl_hours,omitempty"`
 	CacheBenignTTLHours    int `json:"cache_benign_ttl_hours,omitempty"`
 	// BlockOnHighSeverity 控制 high/critical 命中是否拦截请求。
-	// medium 命中（JWT、手机号）按 detection-rules.md 恒为仅审计，不受此开关影响。
+	// medium 命中恒为仅审计，不受此开关影响。哪些规则算 high 可由管理员配置，
+	// 见 RuleOverrides。
 	BlockOnHighSeverity bool `json:"block_on_high_severity,omitempty"`
+	// RuleOverrides 是单条规则的严重度与启停覆盖，只存与内置默认值的偏差。
+	// 语义与归一化见 prompt_dlp_rule_overrides.go。
+	RuleOverrides DLPRuleOverrides `json:"rule_overrides,omitempty"`
 	// AllGroups / GroupIDs 是 DLP 自己的生效范围，与 qwen3guard 的分组设置独立。
 	//
 	// 必须独立：DLP 与内容安全是两类检测，管理员完全可能只想对部分分组查敏感信息，
@@ -85,6 +89,8 @@ type ActiveDLPConfig struct {
 	BlockOnHighSeverity bool
 	AllGroups           bool
 	GroupIDs            []int64
+	// RuleOverrides 是单条规则的严重度与启停覆盖，见 prompt_dlp_rule_overrides.go。
+	RuleOverrides DLPRuleOverrides
 }
 
 // IncludesGroup 判断某分组是否在 DLP 的生效范围内。
@@ -193,6 +199,8 @@ func (cfg DLPConfig) ToActiveDLPConfig(decryptToken func(string) (string, error)
 		// IncludesGroup 用二分查找，这里必须保证有序。持久化层已排序去重，
 		// 这里再排一次是为了容忍手工改过的配置行。
 		GroupIDs: sortedUniqueGroupIDs(cfg.GroupIDs),
+		// 归一化一次：容忍手工改过的配置行里出现已下线的 rule ID 或非法严重度。
+		RuleOverrides: normalizeDLPRuleOverrides(cfg.RuleOverrides),
 	}
 	// 向后兼容：分组字段是后加的，早先存下的 DLP 配置里没有 all_groups，
 	// 反序列化后是 false + 空列表，照新语义会变成"不对任何分组生效"，
@@ -289,6 +297,15 @@ func ValidateDLPConfig(cfg DLPConfig) error {
 		if !IsDLPScanner(scanner) {
 			return infraerrors.BadRequest("dlp_invalid_scanner", "DLP 检测器无效")
 		}
+	}
+	if err := validateDLPRuleOverrides(cfg.RuleOverrides); err != nil {
+		return err
+	}
+	// 「启用了 DLP 但每条规则都被关掉」与「启用却没选任何分组」是同一类问题：
+	// 配置看着是开的，实际静默不工作。必须在保存时拒掉。
+	if enabledDLPRuleCount(cfg.Scanners, cfg.RuleOverrides) == 0 {
+		return infraerrors.BadRequest("dlp_rule_scope_required",
+			"启用 DLP 检测时至少需要保留一条生效的检测规则")
 	}
 	// 启用却没有任何生效范围时，DLP 会静默不工作。这类"开了但没效果"的配置
 	// 必须在保存时就拒掉，否则管理员只能靠观察日志才发现。

@@ -49,6 +49,16 @@ type PublicDLPConfig struct {
 	Endpoints              []PublicDLPEndpoint `json:"endpoints"`
 	// AvailableScanners 让前端不必硬编码检测器清单。
 	AvailableScanners []ScannerDefinition `json:"available_scanners"`
+	// Rules 是全部检测规则及其生效严重度/启停状态。
+	//
+	// 规则表住在后端（dlpRules），前端硬编码一份必然随版本漂移，
+	// 所以整表下发，界面只负责渲染。
+	Rules []DLPRuleCatalogEntry `json:"rules"`
+	// AvailableSeverities 是允许管理员设置的严重度取值，供前端渲染选择器。
+	AvailableSeverities []RiskLevel `json:"available_severities"`
+	// BlockingSeverities 是会触发拦截的严重度（前提是 BlockOnHighSeverity 打开）。
+	// 界面用它按草稿实时算「会拦 / 仅记录」，详见 BlockingDLPSeverities 的注释。
+	BlockingSeverities []RiskLevel `json:"blocking_severities"`
 }
 
 // UpdateDLPEndpoint 是 DLP 确认节点的写入请求。
@@ -76,6 +86,34 @@ type UpdateDLPRequest struct {
 	AllGroups              bool                `json:"all_groups"`
 	GroupIDs               []int64             `json:"group_ids"`
 	Endpoints              []UpdateDLPEndpoint `json:"endpoints"`
+	// Rules 是管理员提交的规则设置。前端提交全量列表，后端只留与内置默认值的偏差
+	// （见 normalizeDLPRuleOverrides）。省略该字段时保持原有覆盖不变。
+	Rules []UpdateDLPRule `json:"rules,omitempty"`
+}
+
+// UpdateDLPRule 是单条规则的写入请求。
+type UpdateDLPRule struct {
+	ID string `json:"id" binding:"required"`
+	// Severity 为空时沿用内置默认严重度。
+	Severity RiskLevel `json:"severity,omitempty"`
+	// Enabled 为 false 表示逐条关掉该规则。
+	// 用 Enabled 而非 Disabled：与界面上的勾选框同向，避免前端反转语义时出错。
+	Enabled bool `json:"enabled"`
+}
+
+// dlpRuleOverridesFromUpdate 把写入请求里的规则列表转成覆盖表。
+//
+// req 为 nil 表示本次请求没带 rules 字段，返回 current 保持原值不变——
+// 与 dlpStorageFromUpdate 对 dlp 字段的处理保持一致的语义。
+func dlpRuleOverridesFromUpdate(current DLPRuleOverrides, rules []UpdateDLPRule) DLPRuleOverrides {
+	if rules == nil {
+		return normalizeDLPRuleOverrides(current)
+	}
+	overrides := make(DLPRuleOverrides, len(rules))
+	for _, rule := range rules {
+		overrides[rule.ID] = DLPRuleOverride{Severity: rule.Severity, Disabled: !rule.Enabled}
+	}
+	return normalizeDLPRuleOverrides(overrides)
 }
 
 // publicDLPFromStorage 把持久化配置转成对外视图。
@@ -84,16 +122,21 @@ type UpdateDLPRequest struct {
 // invalidTokenIDs 沿用 upstream 传给 PublicFromStorage 的同一份集合。
 func publicDLPFromStorage(stored *DLPConfig, invalidTokenIDs map[string]struct{}) PublicDLPConfig {
 	public := PublicDLPConfig{
-		Scanners:          []string{},
-		GroupIDs:          []int64{},
-		Endpoints:         []PublicDLPEndpoint{},
-		AvailableScanners: dlpScannerDefinitionList(),
+		Scanners:            []string{},
+		GroupIDs:            []int64{},
+		Endpoints:           []PublicDLPEndpoint{},
+		AvailableScanners:   dlpScannerDefinitionList(),
+		AvailableSeverities: ConfigurableDLPSeverities(),
+		BlockingSeverities:  BlockingDLPSeverities(),
 	}
 	if stored == nil {
 		// 未配置过 DLP 时给「全部分组」作为表单默认，与 upstream 新建配置的默认一致。
 		public.AllGroups = true
+		// 规则表按内置默认值下发，让表单在首次配置时也能正常渲染。
+		public.Rules = DLPRuleCatalog(nil)
 		return public
 	}
+	public.Rules = DLPRuleCatalog(stored.RuleOverrides)
 	public.AllGroups = stored.AllGroups
 	if len(stored.GroupIDs) > 0 {
 		public.GroupIDs = append(public.GroupIDs, stored.GroupIDs...)
@@ -166,11 +209,14 @@ func dlpStorageFromUpdate(
 		Endpoints: make([]StorageEndpoint, 0, len(req.Endpoints)),
 	}
 	currentByID := map[string]StorageEndpoint{}
+	var currentOverrides DLPRuleOverrides
 	if current != nil {
+		currentOverrides = current.RuleOverrides
 		for _, endpoint := range current.Endpoints {
 			currentByID[endpoint.ID] = endpoint
 		}
 	}
+	next.RuleOverrides = dlpRuleOverridesFromUpdate(currentOverrides, req.Rules)
 	for _, endpoint := range req.Endpoints {
 		stored, err := dlpStoredEndpoint(endpoint, currentByID, encryptor)
 		if err != nil {

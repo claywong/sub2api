@@ -38,7 +38,8 @@ export default {
 
     enabled: 'Enable DLP detection',
     detectors: 'Detectors',
-    detectorsHint: 'Leaving every detector unchecked means all of them are enabled.',
+    detectorsHint:
+      'Leaving every detector unchecked means all of them are enabled. Expand a detector to adjust each rule\'s severity, or switch off a single noisy rule.',
     detectorLabels: {
       dlp_credential: 'Credential leak',
       dlp_pii: 'Personal information',
@@ -47,7 +48,22 @@ export default {
     disposition: 'Disposition',
     blockOnHigh: 'Block requests on high-severity hits',
     blockOnHighHint:
-      'Applies to high-severity hits only (ID numbers, bank cards, cloud keys, database connection strings, passwords). Medium-severity hits such as JWTs and phone numbers are always audit-only.',
+      'Only rules marked high-severity cause a block; medium-severity hits are always recorded without blocking. Which rules count as high is adjustable per rule below — by default only 6 are high, while credential rules such as AWS Access Key, GitHub Token and private key blocks default to medium, meaning they are not blocked.',
+    rules: {
+      enabledCount: '{enabled}/{total} rules enabled',
+      severity: { medium: 'Medium', high: 'High' },
+      severityFor: 'Severity for {rule}',
+      effectBlock: 'Blocks',
+      effectAudit: 'Records',
+      effectOff: 'Off',
+      changed: 'Changed',
+      changedHint: 'Default is {severity}',
+      broad: 'Broad',
+      broadHint:
+        'This rule matches broadly and produces relatively more false positives. It can be switched off on its own without affecting the precise rules in the same detector.',
+      allDisabledWarning:
+        'Every rule in this detector is switched off, which is equivalent to disabling the detector itself.',
+    },
     scope: 'Scope',
     scopeHint:
       'DLP has its own scope, independent of the prompt audit mode and its group settings.',

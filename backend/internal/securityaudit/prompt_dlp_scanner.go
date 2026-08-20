@@ -52,6 +52,18 @@ type dlpScanResult struct {
 
 // ScanDLP 对文本执行正则检测。enabledScanners 为空表示全部 DLP scanner 启用。
 func ScanDLP(text string, enabledScanners []string) dlpScanResult {
+	return ScanDLPWithOverrides(text, enabledScanners, nil)
+}
+
+// ScanDLPWithOverrides 在 ScanDLP 之上应用管理员的单条规则覆盖。
+//
+// 保留 ScanDLP 的原签名而不是直接加参数：它有大量调用点（含测试）不关心覆盖，
+// 让它们继续用两参数形式更清楚，也避免一处签名变更牵动整片改动。
+//
+// overrides 为 nil 时行为与 ScanDLP 完全一致。
+func ScanDLPWithOverrides(
+	text string, enabledScanners []string, overrides DLPRuleOverrides,
+) dlpScanResult {
 	result := dlpScanResult{ExcludedReasons: map[string]int{}}
 	if strings.TrimSpace(text) == "" {
 		return result
@@ -63,6 +75,13 @@ func ScanDLP(text string, enabledScanners []string) dlpScanResult {
 		if _, ok := enabled[rule.ScannerID]; !ok {
 			continue
 		}
+		// 管理员逐条关掉的规则直接跳过：正则都不跑，零开销。
+		if overrides.IsRuleDisabled(rule.ID) {
+			continue
+		}
+		// 严重度可能被管理员改过。用生效值构造 finding，让下游的去重优先级、
+		// HighestSeverity 与 dlpShouldBlock 自动跟着变——它们都只读 finding.Severity。
+		severity := overrides.EffectiveSeverity(rule)
 		for _, location := range rule.Pattern.FindAllStringSubmatchIndex(text, -1) {
 			match := text[location[0]:location[1]]
 			value, valueStart, valueEnd := dlpRuleValue(rule, text, location)
@@ -82,7 +101,7 @@ func ScanDLP(text string, enabledScanners []string) dlpScanResult {
 			}
 			candidates = append(candidates, DLPFinding{
 				RuleID: rule.ID, Class: rule.Class, ScannerID: rule.ScannerID,
-				Title: rule.Title, Severity: rule.Severity, Score: rule.Confidence,
+				Title: rule.Title, Severity: severity, Score: rule.Confidence,
 				Match: match, Value: value,
 				startByte: valueStart, endByte: valueEnd,
 			})

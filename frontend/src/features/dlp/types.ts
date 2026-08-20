@@ -35,6 +35,26 @@ export interface DlpScannerDefinition {
   description: string
 }
 
+// 管理员可设置的严重度。刻意只有两级：low 与 medium 在拦截行为上完全一致
+// （都不拦），critical 与 high 也一致，多给级别只会让人以为有行为差异。
+export type DlpSeverity = 'medium' | 'high'
+
+// DlpRule 是单条检测规则，对应后端 DLPRuleCatalogEntry。
+//
+// 规则表住在后端（dlpRules），整表下发而非前端硬编码：后端增删规则时界面自动
+// 跟着变，不会漂移。
+export interface DlpRule {
+  id: string
+  scanner_id: string
+  title: string
+  // default_severity 是代码内置值，界面用它标出「已改过默认」。
+  default_severity: DlpSeverity | string
+  severity: DlpSeverity | string
+  disabled: boolean
+  // broad 标记宽泛规则，这类误报相对高。
+  broad: boolean
+}
+
 export interface DlpConfig {
   enabled: boolean
   scanners: string[]
@@ -49,6 +69,16 @@ export interface DlpConfig {
   group_ids: number[]
   endpoints: DlpEndpoint[]
   available_scanners: DlpScannerDefinition[]
+  // rules 是全部检测规则及其生效严重度/启停状态。
+  rules: DlpRule[]
+  // available_severities 是允许设置的严重度取值。
+  available_severities: string[]
+  // blocking_severities 是会触发拦截的严重度（前提是 block_on_high_severity 打开）。
+  //
+  // 为什么是这个而不是逐规则的「是否会拦」布尔值：管理员改严重度时草稿与已保存
+  // 状态不一致，后端算好的布尔值当场过期，界面必须按草稿实时算。但阈值本身归后端
+  // 管——它和 dlpShouldBlock 同源，前端只负责把它和草稿组合。
+  blocking_severities: string[]
 }
 
 export interface DlpDraft extends Omit<DlpConfig, 'endpoints' | 'available_scanners'> {
@@ -77,6 +107,16 @@ export interface DlpUpdateRequest {
     timeout_ms: number
     enabled: boolean
   }>
+  // rules 提交全量列表，后端只留与内置默认值的偏差。
+  rules: DlpRuleUpdate[]
+}
+
+// DlpRuleUpdate 是单条规则的写入请求。
+// 用 enabled 而非 disabled，与界面上的勾选框同向。
+export interface DlpRuleUpdate {
+  id: string
+  severity: string
+  enabled: boolean
 }
 
 // ---------------------------------------------------------------------------
