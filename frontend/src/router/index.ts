@@ -610,6 +610,20 @@ const routes: RouteRecordRaw[] = [
       requiresRiskControl: true
     }
   },
+  // 私有扩展：数据防泄漏（DLP）独立页面，与提示词审计并列但互不依赖。
+  {
+    path: '/admin/dlp',
+    name: 'AdminDlp',
+    component: () => import('@/features/dlp/DlpView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Data Loss Prevention',
+      titleKey: 'admin.dlp.title',
+      descriptionKey: 'admin.dlp.description',
+      requiresRiskControl: true
+    }
+  },
   {
     path: '/admin/usage',
     name: 'AdminUsage',

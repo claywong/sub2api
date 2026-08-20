@@ -51,8 +51,6 @@
               />
               <div v-if="loadErrors.groups" role="alert" class="mt-5 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">{{ loadErrors.groups }}</div>
               <PolicyPanel :draft="draft" :groups="groups" @update:draft="replaceDraft" />
-            <!-- 私有扩展：DLP 敏感信息检测配置 -->
-            <DlpPanel :draft="draft.dlp" @update:draft="replaceDlpDraft" />
             </template>
           </div>
 
@@ -155,14 +153,11 @@ import { extractApiErrorCode, extractApiErrorMessage } from '@/utils/apiError'
 import RuntimeOverview from './components/RuntimeOverview.vue'
 import EndpointPool from './components/EndpointPool.vue'
 import PolicyPanel from './components/PolicyPanel.vue'
-// 私有扩展：DLP 敏感信息检测面板
-import DlpPanel from './components/DlpPanel.vue'
 import EventWorkspace from './components/EventWorkspace.vue'
 import EventDetailDialog from './components/EventDetailDialog.vue'
 import FilterDeleteDialog from './components/FilterDeleteDialog.vue'
 import promptAuditAPI from './api'
 import type {
-  DlpDraft,
   PromptAuditDraft,
   PromptAuditEndpointDraft,
   PromptAuditEvent,
@@ -295,11 +290,6 @@ async function loadInitial() {
 }
 
 function replaceDraft(value: PromptAuditDraft) { draft.value = cloneData(value) }
-// 私有扩展：DLP 面板只持有 draft.dlp 子树，这里合并回完整草稿。
-function replaceDlpDraft(value: DlpDraft) {
-  if (!draft.value) return
-  replaceDraft({ ...draft.value, dlp: value })
-}
 function updateEndpoints(value: PromptAuditEndpointDraft[]) {
   if (!draft.value) return
   replaceDraft({ ...draft.value, endpoints: value })

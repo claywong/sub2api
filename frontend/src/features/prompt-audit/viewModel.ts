@@ -6,21 +6,6 @@ import type {
   PromptEventFilters,
 } from './types'
 
-// 私有扩展：DLP 视图模型逻辑放在 dlpViewModel.ts，此处 re-export 以保持调用方
-// 的 import 路径不变，同时让 upstream 的本文件 diff 保持最小。
-import { buildDlpUpdateRequest, dlpConfigToDraft } from './dlpViewModel'
-
-export {
-  buildDlpUpdateRequest,
-  createDefaultDlpEndpoint,
-  DEFAULT_DLP_CACHE_BENIGN_TTL_HOURS,
-  DEFAULT_DLP_CACHE_SENSITIVE_TTL_HOURS,
-  DEFAULT_DLP_CONFIRM_MODEL,
-  DEFAULT_DLP_CONFIRM_TIMEOUT_MS,
-  DLP_SCANNER_CATALOG,
-  dlpConfigToDraft,
-} from './dlpViewModel'
-
 export const DEFAULT_GUARD_MODEL = 'sileader/qwen3guard:0.6b'
 
 export const SCANNER_CATALOG = [
@@ -52,7 +37,6 @@ export function configToDraft(config: PromptAuditConfig): PromptAuditDraft {
       token: '',
       clear_token: false,
     })),
-    dlp: dlpConfigToDraft(config.dlp),
   }
 }
 
@@ -98,7 +82,6 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
       input_limit: Number(endpoint.input_limit),
       enabled: endpoint.enabled,
     })),
-    dlp: buildDlpUpdateRequest(draft.dlp),
   }
 }
 

@@ -1,16 +1,3 @@
-// 私有扩展：DLP 敏感信息检测的类型定义放在 dlpTypes.ts，此处仅 re-export，
-// 让 upstream 的本文件 diff 保持最小。
-import type { DlpConfig, DlpDraft, DlpUpdateRequest } from './dlpTypes'
-
-export type {
-  DlpConfig,
-  DlpDraft,
-  DlpEndpoint,
-  DlpEndpointDraft,
-  DlpScannerDefinition,
-  DlpUpdateRequest,
-} from './dlpTypes'
-
 export type PromptAuditMode = 'off' | 'async_audit' | 'blocking'
 export type PromptDecision = 'pass' | 'flag' | 'critical'
 export type PromptRiskLevel = 'low' | 'medium' | 'high' | 'critical'
@@ -50,13 +37,10 @@ export interface PromptAuditConfig {
   updated_at: string
   updated_by: number
   change_summary: string
-  // 私有扩展：后端始终下发该字段，旧数据由后端补默认值。
-  dlp: DlpConfig
 }
 
-export interface PromptAuditDraft extends Omit<PromptAuditConfig, 'endpoints' | 'dlp'> {
+export interface PromptAuditDraft extends Omit<PromptAuditConfig, 'endpoints'> {
   endpoints: PromptAuditEndpointDraft[]
-  dlp: DlpDraft
 }
 
 export interface PromptAuditUpdateRequest {
@@ -71,8 +55,6 @@ export interface PromptAuditUpdateRequest {
   scanners: string[]
   all_groups: boolean
   group_ids: number[]
-  // 私有扩展：DLP 配置。省略时后端保持原值不变。
-  dlp?: DlpUpdateRequest
   endpoints: Array<{
     id: string
     name: string

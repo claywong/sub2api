@@ -108,7 +108,10 @@ import { computed, defineComponent, h, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Pagination from '@/components/common/Pagination.vue'
 import type { PromptAuditEvent, PromptEventFilters } from '../types'
-import { cloneData, DLP_SCANNER_CATALOG, emptyEventFilters, SCANNER_CATALOG } from '../viewModel'
+import { cloneData, emptyEventFilters, SCANNER_CATALOG } from '../viewModel'
+// 私有扩展：DLP 事件与 qwen3guard 事件同表，此列表用于把 DLP 的分类 ID 渲染成文案。
+// 单向引用 features/dlp（该目录不反向依赖本 feature，无循环）。
+import { DLP_SCANNER_CATALOG } from '@/features/dlp/viewModel'
 
 const props = defineProps<{
   events: PromptAuditEvent[]; total: number; page: number; pageSize: number
@@ -203,7 +206,7 @@ function translateCategory(category: string): string {
   }
   // 私有扩展：DLP 检测器的分类走自己的文案表，否则事件列表里会显示原始 ID。
   if (DLP_SCANNER_CATALOG.some((scanner) => scanner.id === category)) {
-    return t(`admin.promptAudit.dlp.detectorLabels.${category}`)
+    return t(`admin.dlp.detectorLabels.${category}`)
   }
   return category
 }

@@ -210,6 +210,8 @@ export default {
     securityAudit: '安全审计',
     contentModeration: '内容审核',
     promptAudit: '提示词审计',
+    // 私有扩展：DLP 独立页面的菜单名。
+    dlp: '数据防泄漏',
     auditLogs: '操作日志',
   },
 

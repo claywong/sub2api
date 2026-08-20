@@ -32,58 +32,6 @@ export default {
       copyright_violation: 'Copyright infringement',
       jailbreak: 'Prompt injection or jailbreak attempt',
     },
-    // Private extension: DLP sensitive data detection
-    dlp: {
-      title: 'Data Loss Prevention (DLP)',
-      description:
-        'Detect credentials, ID numbers and passwords in user input and tool results with local regex rules; confirmed hits can be double-checked by a model to cut false positives.',
-      enabled: 'Enable DLP detection',
-      detectors: 'Detectors',
-      detectorsHint: 'Leaving every detector unchecked means all of them are enabled.',
-      detectorLabels: {
-        dlp_credential: 'Credential leak',
-        dlp_pii: 'Personal information',
-        dlp_sensitive: 'Sensitive field',
-      },
-      disposition: 'Disposition',
-      blockOnHigh: 'Block requests on high-severity hits',
-      blockOnHighHint:
-        'Applies to high-severity hits only (ID numbers, bank cards, cloud keys, database connection strings, passwords). Medium-severity hits such as JWTs and phone numbers are always audit-only.',
-      confirm: 'Second-pass confirmation',
-      confirmEnabled: 'Confirm regex hits with a model',
-      confirmEnabledHint:
-        'Only matched snippets are sent to the model, so requests without hits cost nothing extra. Disabling this treats every regex hit as a real leak and raises false positives.',
-      confirmTimeout: 'Confirmation timeout (ms)',
-      failOpenNotice:
-        'When the confirmation service is unavailable or times out the request is allowed through and a degradation warning is logged, so a flaky third-party model cannot take the gateway down.',
-      cache: 'Confirmation cache',
-      cacheEnabled: 'Cache confirmation verdicts',
-      cacheEnabledHint:
-        'Identical snippets reuse the previous verdict while it is valid. Only the verdict is stored, never the matched content.',
-      cacheSensitiveTtl: 'TTL for sensitive verdicts (hours)',
-      cacheBenignTtl: 'TTL for false-positive verdicts (hours)',
-      endpoints: 'Confirmation endpoints',
-      endpointsHint:
-        'Configured separately from the prompt audit pool. The first available endpoint is used.',
-      endpointRequired:
-        'Second-pass confirmation is enabled, so add and enable at least one confirmation endpoint.',
-      addEndpoint: 'Add endpoint',
-      removeEndpoint: 'Remove',
-      endpointEnabled: 'Enabled',
-      endpointName: 'Name',
-      endpointBaseUrl: 'Base URL',
-      endpointModel: 'Model',
-      endpointTimeout: 'Timeout (ms)',
-      endpointToken: 'API key',
-      clearToken: 'Clear the stored key',
-      tokenKeepPlaceholder: 'Leave blank to keep the stored key',
-      tokenEmptyPlaceholder: 'Enter an API key',
-      tokenStatus: {
-        configured: 'Key configured',
-        missing: 'No key configured',
-        invalid: 'Key cannot be decrypted; this endpoint is excluded at runtime',
-      },
-    },
     runtime: {
       title: 'Runtime overview',
       description: 'Shows the configuration currently active on the server. Unsaved draft changes do not affect these values.',

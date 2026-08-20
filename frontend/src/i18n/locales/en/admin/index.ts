@@ -6,6 +6,8 @@ import ops from './ops'
 import settings from './settings'
 import audit from './audit'
 import promptAudit from './promptAudit'
+// Private extension: copy for the standalone DLP page.
+import dlp from './dlp'
 
 export default {
   ...overview,
@@ -16,4 +18,5 @@ export default {
   ...settings,
   ...audit,
   ...promptAudit,
+  ...dlp,
 }
