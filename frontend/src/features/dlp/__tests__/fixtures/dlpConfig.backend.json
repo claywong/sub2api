@@ -1,0 +1,191 @@
+{
+  "enabled": true,
+  "scanners": [
+    "dlp_credential",
+    "dlp_pii",
+    "dlp_sensitive"
+  ],
+  "confirm_enabled": true,
+  "confirm_timeout_ms": 5000,
+  "cache_enabled": true,
+  "cache_sensitive_ttl_hours": 6,
+  "cache_benign_ttl_hours": 24,
+  "block_on_high_severity": true,
+  "all_groups": true,
+  "group_ids": [],
+  "endpoints": [],
+  "available_scanners": [
+    {
+      "id": "dlp_credential",
+      "label": "Credential Leak",
+      "label_zh": "凭证泄露",
+      "description": "API key, token, private key or database connection string leakage"
+    },
+    {
+      "id": "dlp_pii",
+      "label": "Personal Information",
+      "label_zh": "个人信息",
+      "description": "Chinese ID card, bank card or mobile phone number"
+    },
+    {
+      "id": "dlp_sensitive",
+      "label": "Sensitive Field",
+      "label_zh": "敏感字段",
+      "description": "Cloud access key, password field or JDBC connection string"
+    }
+  ],
+  "rules": [
+    {
+      "id": "credential-aws-access-key",
+      "scanner_id": "dlp_credential",
+      "title": "AWS Access Key",
+      "default_severity": "medium",
+      "severity": "high",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "credential-github-token",
+      "scanner_id": "dlp_credential",
+      "title": "GitHub Token",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": true,
+      "broad": false
+    },
+    {
+      "id": "credential-google-api-key",
+      "scanner_id": "dlp_credential",
+      "title": "Google API Key",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "credential-stripe-secret-key",
+      "scanner_id": "dlp_credential",
+      "title": "Stripe Secret Key",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "credential-slack-token",
+      "scanner_id": "dlp_credential",
+      "title": "Slack Token",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "credential-private-key-block",
+      "scanner_id": "dlp_credential",
+      "title": "私钥块",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "credential-jwt",
+      "scanner_id": "dlp_credential",
+      "title": "JWT",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "credential-generic-api-key",
+      "scanner_id": "dlp_credential",
+      "title": "通用 API Key",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": true
+    },
+    {
+      "id": "credential-db-connection-string",
+      "scanner_id": "dlp_credential",
+      "title": "数据库连接串",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "pii-idcard",
+      "scanner_id": "dlp_pii",
+      "title": "身份证号",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "pii-bankcard",
+      "scanner_id": "dlp_pii",
+      "title": "银行卡号",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "pii-phone",
+      "scanner_id": "dlp_pii",
+      "title": "手机号",
+      "default_severity": "medium",
+      "severity": "medium",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "sensitive-cloud-key-field",
+      "scanner_id": "dlp_sensitive",
+      "title": "云密钥字段",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": true
+    },
+    {
+      "id": "sensitive-cloud-key-prefix",
+      "scanner_id": "dlp_sensitive",
+      "title": "云密钥",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": false
+    },
+    {
+      "id": "sensitive-password-field",
+      "scanner_id": "dlp_sensitive",
+      "title": "密码字段",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": true
+    },
+    {
+      "id": "sensitive-jdbc-connection",
+      "scanner_id": "dlp_sensitive",
+      "title": "JDBC 连接串",
+      "default_severity": "high",
+      "severity": "high",
+      "disabled": false,
+      "broad": false
+    }
+  ],
+  "available_severities": [
+    "medium",
+    "high"
+  ],
+  "blocking_severities": [
+    "high",
+    "critical"
+  ]
+}
