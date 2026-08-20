@@ -26,6 +26,12 @@ type EventFilter struct {
 	Keyword    string     `json:"keyword,omitempty"`
 	StartAt    *time.Time `json:"start_at,omitempty"`
 	EndAt      *time.Time `json:"end_at,omitempty"`
+
+	// 私有扩展：按检测来源筛选（DLP / 内容安全）。omitempty 保证不传时
+	// FilterHash 与改动前一致，既有删除确认 token 不失效。
+	// 语义与生成逻辑见 prompt_event_repository_dlp.go。
+	ScannerBackends       []string `json:"scanner_backends,omitempty"`
+	ExcludeScannerBackend bool     `json:"exclude_scanner_backend,omitempty"`
 }
 
 type EventPage struct {
@@ -251,6 +257,8 @@ func canonicalEventFilter(filter EventFilter) EventFilter {
 	filter.RequestID = strings.TrimSpace(filter.RequestID)
 	filter.PromptHash = strings.ToLower(strings.TrimSpace(filter.PromptHash))
 	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	// 私有扩展：来源列表归一化（去空/去重/排序），保证 FilterHash 稳定。
+	filter.ScannerBackends = canonicalScannerBackends(filter.ScannerBackends)
 	if filter.StartAt != nil {
 		value := filter.StartAt.UTC()
 		filter.StartAt = &value
@@ -306,6 +314,11 @@ func buildEventWhere(filter EventFilter, firstIndex int) (string, []any) {
 	}
 	if filter.EndAt != nil {
 		add(" AND e.created_at <= $%d", filter.EndAt.UTC())
+	}
+	// 私有扩展：按检测来源过滤，实现见 prompt_event_repository_dlp.go。
+	if clause, extra := scannerBackendClause(filter.ScannerBackends, filter.ExcludeScannerBackend, firstIndex+len(args)); clause != "" {
+		clauses = append(clauses, clause)
+		args = append(args, extra...)
 	}
 	return strings.Join(clauses, ""), args
 }

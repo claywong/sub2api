@@ -79,6 +79,9 @@ type storageConfig struct {
 	UpdatedAt              time.Time         `json:"updated_at"`
 	UpdatedBy              int64             `json:"updated_by"`
 	ChangeSummary          string            `json:"change_summary"`
+
+	// 私有扩展：DLP 配置。omitempty 保证未配置时序列化结果与 upstream 字节兼容。
+	DLP *DLPConfig `json:"dlp,omitempty"`
 }
 
 type ActiveEndpoint struct {
@@ -115,6 +118,9 @@ type ActiveConfig struct {
 	UpdatedAt              time.Time
 	UpdatedBy              int64
 	ChangeSummary          string
+
+	// 私有扩展：DLP 敏感信息检测配置，定义见 prompt_config_dlp.go。零值表示关闭。
+	DLP ActiveDLPConfig
 }
 
 type PublicEndpoint struct {
@@ -147,6 +153,9 @@ type PublicConfig struct {
 	UpdatedAt              time.Time        `json:"updated_at"`
 	UpdatedBy              int64            `json:"updated_by"`
 	ChangeSummary          string           `json:"change_summary"`
+
+	// 私有扩展：DLP 配置的对外视图，定义见 prompt_config_dlp.go。
+	DLP PublicDLPConfig `json:"dlp"`
 }
 
 type UpdateEndpoint struct {
@@ -175,6 +184,9 @@ type UpdateConfigRequest struct {
 	AllGroups              bool             `json:"all_groups"`
 	GroupIDs               []int64          `json:"group_ids"`
 	Endpoints              []UpdateEndpoint `json:"endpoints"`
+
+	// 私有扩展：DLP 配置。指针 + omitempty，旧客户端不传时保持原值不变。
+	DLP *UpdateDLPRequest `json:"dlp,omitempty"`
 }
 
 func DefaultStorageConfig() storageConfig {
@@ -384,7 +396,9 @@ func (cfg ActiveConfig) InvalidTokenEndpointIDs() []string {
 			ids = append(ids, ep.ID)
 		}
 	}
-	return ids
+	// 私有扩展：DLP 确认节点同样需要暴露 token 失效状态，否则节点会被静默排除在
+	// 运行时之外而管理端毫无提示（与 upstream issue #4887 同一类问题）。
+	return append(ids, cfg.DLP.InvalidTokenEndpointIDs()...)
 }
 
 func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenEndpointIDs []string) PublicConfig {
@@ -417,6 +431,8 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 		QueueCapacity: cfg.QueueCapacity, Scanners: scanners, AllGroups: cfg.AllGroups,
 		GroupIDs: groupIDs, Endpoints: endpoints, ConfigVersion: cfg.ConfigVersion,
 		UpdatedAt: cfg.UpdatedAt, UpdatedBy: cfg.UpdatedBy, ChangeSummary: cfg.ChangeSummary,
+		// 私有扩展：DLP 配置视图，实现见 prompt_config_dlp_dto.go。
+		DLP: publicDLPFromStorage(cfg.DLP, invalid),
 	}
 }
 
@@ -455,6 +471,8 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 			Enabled: ep.Enabled && !tokenInvalid, TokenInvalid: tokenInvalid,
 		})
 	}
+	// 私有扩展：填充 DLP 运行时配置，实现见 prompt_config_dlp.go。
+	active.DLP = activeDLPFromStorage(cfg.DLP, encryptor)
 	return active, nil
 }
 

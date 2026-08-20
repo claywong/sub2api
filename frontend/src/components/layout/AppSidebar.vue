@@ -780,6 +780,8 @@ const adminNavItems = computed((): NavItem[] => {
       children: [
         { path: '/admin/risk-control', label: t('nav.contentModeration'), icon: ShieldIcon },
         { path: '/admin/prompt-audit', label: t('nav.promptAudit'), icon: ShieldIcon },
+        // 私有扩展：DLP 独立页面。
+        { path: '/admin/dlp', label: t('nav.dlp'), icon: ShieldIcon },
       ],
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },

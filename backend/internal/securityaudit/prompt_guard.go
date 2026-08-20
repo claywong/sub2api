@@ -17,6 +17,10 @@ type GuardEvaluator struct {
 	perNodeLimit int
 	nodeMu       sync.Mutex
 	nodes        map[string]chan struct{}
+
+	// 私有扩展：DLP 前置检测组件，通过 WithDLP 注入，实现见 prompt_guard_dlp.go。
+	dlpConfirmer *DLPConfirmer
+	dlpCache     *DLPConfirmCache
 }
 
 func NewGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metrics) *GuardEvaluator {

@@ -273,6 +273,8 @@ func eventFilterFromQuery(c *gin.Context) (EventFilter, error) {
 		GroupID: groupID, UserID: userID, APIKeyID: apiKeyID, RequestID: c.Query("request_id"),
 		PromptHash: c.Query("prompt_hash"), Keyword: c.Query("keyword"),
 	}
+	// 私有扩展：?source=dlp|guard 按检测来源过滤，映射见 prompt_event_repository_dlp.go。
+	filter.ScannerBackends, filter.ExcludeScannerBackend = ResolveEventScannerBackends(c.Query("source"))
 	if value := strings.TrimSpace(c.Query("start_at")); value != "" {
 		filter.StartAt = parseTimeQuery(value)
 		if filter.StartAt == nil {

@@ -20,6 +20,9 @@ type PromptEngine interface {
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
+
+	// 私有扩展：DLP 引擎，通过 WithDLP 注入，实现见 coordinator_dlp.go。
+	dlp DLPEngine
 }
 
 func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
@@ -29,6 +32,11 @@ func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
 func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
+	}
+	// 私有扩展：DLP 检测独立于审计模式，必须跑在 mode 分发之前，否则 ModeOff 与
+	// ModeAsync 下 DLP 会静默不生效。实现见 coordinator_dlp.go。
+	if decision := c.checkDLP(ctx, req); decision != nil {
+		return *decision
 	}
 	mode := ModeOff
 	if c.prompt != nil {
@@ -111,8 +119,11 @@ func prioritize(legacy *LegacyDecision, prompt *PromptDecision) Decision {
 	}
 	switch prompt.Kind {
 	case DecisionBlock:
-		return Decision{Kind: DecisionBlock, HTTPStatus: http.StatusForbidden, ErrorCode: ErrorCodeBlocked,
-			ClientMessage: "提示词安全审计拒绝了该请求，请调整输入后重试", Legacy: legacy, Prompt: prompt}
+		// 私有扩展：DLP 拦截要保留自己的错误码与文案，否则运维在 API 边界上无法
+		// 区分是内容安全拦的还是数据防泄漏拦的。实现见 prompt_guard_dlp.go。
+		errorCode, clientMessage := blockedErrorCodeAndMessage(prompt)
+		return Decision{Kind: DecisionBlock, HTTPStatus: http.StatusForbidden, ErrorCode: errorCode,
+			ClientMessage: clientMessage, Legacy: legacy, Prompt: prompt}
 	case DecisionInvalid:
 		return Decision{Kind: DecisionInvalid, HTTPStatus: http.StatusServiceUnavailable, ErrorCode: ErrorCodeInvalidResponse,
 			ClientMessage: "提示词安全审计暂时不可用，请稍后重试", Legacy: legacy, Prompt: prompt}

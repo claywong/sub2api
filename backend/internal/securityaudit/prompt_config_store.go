@@ -342,6 +342,12 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 		ConfigVersion: current.ConfigVersion, UpdatedBy: actorID,
 		Endpoints: make([]StorageEndpoint, 0, len(req.Endpoints)),
 	}
+	// 私有扩展：DLP 配置，实现见 prompt_config_dlp_dto.go。
+	dlp, err := dlpStorageFromUpdate(current.DLP, req.DLP, m)
+	if err != nil {
+		return storageConfig{}, err
+	}
+	next.DLP = dlp
 	for _, endpoint := range req.Endpoints {
 		baseURL, err := NormalizeBaseURL(endpoint.BaseURL)
 		if err != nil {
@@ -501,6 +507,8 @@ func cloneStorageConfig(cfg storageConfig) storageConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	cfg.Endpoints = append([]StorageEndpoint(nil), cfg.Endpoints...)
+	// 私有扩展：DLP 是指针字段，浅拷贝会让新旧 snapshot 共享同一结构。
+	cfg.DLP = cfg.DLP.Clone()
 	return cfg
 }
 
@@ -508,5 +516,7 @@ func cloneActiveConfig(cfg ActiveConfig) ActiveConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	cfg.Endpoints = append([]ActiveEndpoint(nil), cfg.Endpoints...)
+	// 私有扩展：DLP 内部还有 slice，需要一并深拷贝。
+	cfg.DLP = cfg.DLP.Clone()
 	return cfg
 }
