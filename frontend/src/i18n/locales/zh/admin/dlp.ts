@@ -10,7 +10,7 @@ export default {
   dlp: {
     title: '数据防泄漏（DLP）',
     description:
-      '用本地正则检测用户输入与工具结果里的凭证、证件号、口令等敏感信息；命中后可再用模型二次确认以降低误报。DLP 独立于提示词审计，两者的开关互不影响。',
+      '用本地正则检测用户输入与工具结果里的凭证、证件号、口令等敏感信息；命中后可再用模型二次确认以降低误报。',
     configVersion: '配置版本 v{version}',
     tabs: { config: '配置', events: '事件' },
     actions: { retry: '重试' },
@@ -63,7 +63,7 @@ export default {
       allDisabledWarning: '该检测器下所有规则都已关闭，等同于关掉整个检测器。',
     },
     scope: '适用范围',
-    scopeHint: 'DLP 有自己独立的生效范围，与提示词审计的审计模式、分组设置无关。',
+    scopeHint: '选择对哪些分组执行 DLP 检测。',
     allGroups: '全部分组',
     selectedGroups: '指定分组',
     searchGroups: '搜索分组',
@@ -84,7 +84,7 @@ export default {
     cacheSensitiveTtl: '判为敏感的缓存时长（小时）',
     cacheBenignTtl: '判为误报的缓存时长（小时）',
     endpoints: '确认节点',
-    endpointsHint: '与提示词审计的节点池分开配置，互不影响。按顺序使用第一个可用节点。',
+    endpointsHint: '二次确认使用的模型节点，按顺序使用第一个可用节点。',
     endpointRequired: '已启用二次确认，请至少添加并启用一个确认节点。',
     addEndpoint: '添加节点',
     removeEndpoint: '移除',

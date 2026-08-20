@@ -11,7 +11,7 @@ export default {
   dlp: {
     title: 'Data Loss Prevention (DLP)',
     description:
-      'Detect credentials, ID numbers and passwords in user input and tool results with local regex rules; confirmed hits can be double-checked by a model to cut false positives. DLP is independent of prompt audit — their switches do not affect each other.',
+      'Detect credentials, ID numbers and passwords in user input and tool results with local regex rules; confirmed hits can be double-checked by a model to cut false positives.',
     configVersion: 'Config version v{version}',
     tabs: { config: 'Configuration', events: 'Events' },
     actions: { retry: 'Retry' },
@@ -67,8 +67,7 @@ export default {
         'Every rule in this detector is switched off, which is equivalent to disabling the detector itself.',
     },
     scope: 'Scope',
-    scopeHint:
-      'DLP has its own scope, independent of the prompt audit mode and its group settings.',
+    scopeHint: 'Choose which groups DLP inspects.',
     allGroups: 'All groups',
     selectedGroups: 'Selected groups',
     searchGroups: 'Search groups',
@@ -92,7 +91,7 @@ export default {
     cacheBenignTtl: 'TTL for false-positive verdicts (hours)',
     endpoints: 'Confirmation endpoints',
     endpointsHint:
-      'Configured separately from the prompt audit pool. The first available endpoint is used.',
+      'Model endpoints used for second-pass confirmation. The first available endpoint is used.',
     endpointRequired:
       'Second-pass confirmation is enabled, so add and enable at least one confirmation endpoint.',
     addEndpoint: 'Add endpoint',

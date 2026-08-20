@@ -545,7 +545,7 @@ describe('DlpPanel', () => {
     const wrapper = mountPanel(dlpConfig())
     expect(wrapper.find('[data-test="dlp-scope-all"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="dlp-scope-selected"]').exists()).toBe(true)
-    // 独立于提示词审计这件事必须写在界面上，否则没人知道两者不联动。
+    // 范围说明必须在场：两个单选项本身看不出选的是「对谁生效」。
     expect(wrapper.text()).toContain('admin.dlp.scopeHint')
   })
 
