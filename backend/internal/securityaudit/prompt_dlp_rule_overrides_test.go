@@ -6,6 +6,7 @@ import "testing"
 // 严重度可配的原因。用它当主要样本。
 const (
 	awsRuleID = "credential-aws-access-key"
+	// 测试用假密钥，拆分以绕过 GitHub push protection
 	awsSample = "AKIA" + "ZXCVBNMQWERTYUI7"
 	idCardID  = "pii-idcard"
 )
