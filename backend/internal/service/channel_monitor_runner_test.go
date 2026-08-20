@@ -165,7 +165,7 @@ func TestSchedule_DecryptFailedRedirectsToUnschedule(t *testing.T) {
 	r.Start()
 
 	r.Schedule(&ChannelMonitor{ID: 10, Enabled: true, IntervalSeconds: 60})
-	waitFor(t, time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 })
+	waitForCond(t, time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 })
 
 	r.Schedule(&ChannelMonitor{ID: 10, Enabled: true, IntervalSeconds: 60, APIKeyDecryptFailed: true})
 	if got := runnerTaskCount(r); got != 0 {
@@ -218,7 +218,7 @@ func TestRunOne_DecryptFailureUnschedulesTask(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected failing monitor to fire immediately")
 	}
-	waitFor(t, time.Second, "decrypt-failed task unscheduled", func() bool { return runnerTaskCount(r) == 0 })
+	waitForCond(t, time.Second, "decrypt-failed task unscheduled", func() bool { return runnerTaskCount(r) == 0 })
 
 	stoppedWithin(t, r, 3*time.Second)
 }
