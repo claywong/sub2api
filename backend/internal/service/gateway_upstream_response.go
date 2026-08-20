@@ -760,14 +760,21 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			return false
 		}
 	}
-	var lastReadAt int64
-	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+	// lastDataLineAt: 上游最近一次送来「携带负载的 data 行」的时刻，作为数据间隔
+	// 超时的计时基准。刻意不统计空行/注释心跳/裸 event 行：中转网关排队时发的空
+	// 心跳会无限续命计时器，使超时永不触发（详见 sseLineCarriesData）。
+	// 仍在 scanner goroutine 内更新，保持「只反映上游进展、不受下游写入阻塞影响」。
+	var lastDataLineAt int64
+	atomic.StoreInt64(&lastDataLineAt, time.Now().UnixNano())
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
-			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-			if !sendEvent(scanEvent{line: scanner.Text()}) {
+			line := scanner.Text()
+			if sseLineCarriesData(line) {
+				atomic.StoreInt64(&lastDataLineAt, time.Now().UnixNano())
+			}
+			if !sendEvent(scanEvent{line: line}) {
 				return
 			}
 		}
@@ -1126,8 +1133,8 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			pendingEventLines = append(pendingEventLines, line)
 
 		case <-intervalCh:
-			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			lastData := time.Unix(0, atomic.LoadInt64(&lastDataLineAt))
+			if time.Since(lastData) < streamInterval {
 				continue
 			}
 			if clientDisconnected {
