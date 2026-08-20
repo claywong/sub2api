@@ -155,6 +155,13 @@ func extractMessages(value any, wantedRoles ...string) []promptSegment {
 		for _, text := range texts {
 			result = append(result, promptSegment{text: text, user: role == "user", role: role})
 		}
+		// 私有扩展：工具入参统一在 message 层提取并标记为 tool 角色，
+		// 这样 blocking 收窄模式下能被 trailingToolSegments 补回当前轮。
+		// 若沿用 content 的 assistant 角色，后置的工具调用会被收窄逻辑丢弃。
+		// 实现见 prompt_snapshot_toolresult.go。
+		for _, text := range messageToolArgumentTexts(message) {
+			result = append(result, promptSegment{text: text, role: "tool"})
+		}
 	}
 	return result
 }
@@ -200,6 +207,20 @@ func extractResponses(value any) []promptSegment {
 			case map[string]any:
 				role := strings.ToLower(stringValue(entry["role"]))
 				if role != "" && !isClientInstructionRole(role) {
+					continue
+				}
+				// 私有扩展：Responses 的 function_call_output / function_call，
+				// 实现见 prompt_snapshot_toolresult.go。
+				if texts := responsesFunctionOutputTexts(entry); len(texts) > 0 {
+					for _, text := range texts {
+						result = append(result, promptSegment{text: text, role: "tool"})
+					}
+					continue
+				}
+				if texts := responsesFunctionCallTexts(entry); len(texts) > 0 {
+					for _, text := range texts {
+						result = append(result, promptSegment{text: text, role: "tool"})
+					}
 					continue
 				}
 				if content, exists := entry["content"]; exists {
@@ -257,6 +278,14 @@ func extractGemini(value any) []promptSegment {
 			if object, ok := part.(map[string]any); ok {
 				if text := stringValue(object["text"]); text != "" {
 					result = append(result, promptSegment{text: text, user: role == "" || role == "user", role: role})
+				}
+				// 私有扩展：Gemini 的 functionResponse / functionCall，
+				// 实现见 prompt_snapshot_toolresult.go。
+				for _, text := range geminiFunctionResponseTexts(object) {
+					result = append(result, promptSegment{text: text, role: "tool"})
+				}
+				for _, text := range geminiFunctionCallTexts(object) {
+					result = append(result, promptSegment{text: text, role: "tool"})
 				}
 			}
 		}
@@ -419,6 +448,16 @@ func contentTexts(value any) []string {
 				continue
 			}
 			typeName := strings.ToLower(stringValue(object["type"]))
+			// 私有扩展：Anthropic 的 tool_result / tool_use，实现见 prompt_snapshot_toolresult.go。
+			if texts := anthropicToolResultTexts(typeName, object); len(texts) > 0 {
+				result = append(result, texts...)
+				continue
+			}
+			if isAnthropicToolUseBlock(typeName) {
+				// tool_use 的入参在 message 层单独提取并标记为 tool 角色
+				// （见 extractMessages 里的 hook），此处跳过避免重复。
+				continue
+			}
 			if typeName != "" && typeName != "text" && typeName != "input_text" && typeName != "output_text" {
 				continue
 			}
@@ -481,6 +520,10 @@ func blockingSegmentsLatestUserAndPreviousOutput(values []promptSegment) []strin
 	// priority segment so every part of the latest input is scanned before the
 	// prior output begins.
 	selected := []promptSegment{{text: strings.Join(currentUserText, "\n\n"), user: true, role: "user"}}
+	// 私有扩展：把最近 user 轮之后的工具结果补回当前轮。OpenAI Chat 的工具结果是
+	// 独立的 role="tool" 消息，isUserSegment 不认这个角色，不补会导致同步拦截模式
+	// 下工具结果永远扫不到。实现见 prompt_snapshot_toolresult.go。
+	selected = append(selected, trailingToolSegments(normalized, latestUserEnd)...)
 	for index := latestUserStart - 1; index >= 0; index-- {
 		if !isAssistantOutputSegment(normalized[index]) {
 			continue

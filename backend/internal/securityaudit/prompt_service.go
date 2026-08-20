@@ -40,7 +40,8 @@ func NewPromptService(
 	metrics *AtomicMetrics,
 ) *PromptService {
 	enqueuer := NewEnqueuer(config, repo, payload, metrics)
-	evaluator := NewGuardEvaluator(scanner, repo, metrics)
+	// 私有扩展：给 evaluator 装上 DLP 前置检测，实现见 prompt_guard_dlp.go。
+	evaluator := NewGuardEvaluator(scanner, repo, metrics).WithDLP(NewDLPConfirmer(), newDLPCacheFor(payload))
 	runner := NewRunner(config, repo, payload, scanner, metrics)
 	return &PromptService{
 		config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics,

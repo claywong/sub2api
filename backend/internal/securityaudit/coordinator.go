@@ -111,8 +111,11 @@ func prioritize(legacy *LegacyDecision, prompt *PromptDecision) Decision {
 	}
 	switch prompt.Kind {
 	case DecisionBlock:
-		return Decision{Kind: DecisionBlock, HTTPStatus: http.StatusForbidden, ErrorCode: ErrorCodeBlocked,
-			ClientMessage: "提示词安全审计拒绝了该请求，请调整输入后重试", Legacy: legacy, Prompt: prompt}
+		// 私有扩展：DLP 拦截要保留自己的错误码与文案，否则运维在 API 边界上无法
+		// 区分是内容安全拦的还是数据防泄漏拦的。实现见 prompt_guard_dlp.go。
+		errorCode, clientMessage := blockedErrorCodeAndMessage(prompt)
+		return Decision{Kind: DecisionBlock, HTTPStatus: http.StatusForbidden, ErrorCode: errorCode,
+			ClientMessage: clientMessage, Legacy: legacy, Prompt: prompt}
 	case DecisionInvalid:
 		return Decision{Kind: DecisionInvalid, HTTPStatus: http.StatusServiceUnavailable, ErrorCode: ErrorCodeInvalidResponse,
 			ClientMessage: "提示词安全审计暂时不可用，请稍后重试", Legacy: legacy, Prompt: prompt}

@@ -342,6 +342,12 @@ func (m *ConfigManager) buildNextStorage(current storageConfig, req UpdateConfig
 		ConfigVersion: current.ConfigVersion, UpdatedBy: actorID,
 		Endpoints: make([]StorageEndpoint, 0, len(req.Endpoints)),
 	}
+	// 私有扩展：DLP 配置，实现见 prompt_config_dlp_dto.go。
+	dlp, err := dlpStorageFromUpdate(current.DLP, req.DLP, m)
+	if err != nil {
+		return storageConfig{}, err
+	}
+	next.DLP = dlp
 	for _, endpoint := range req.Endpoints {
 		baseURL, err := NormalizeBaseURL(endpoint.BaseURL)
 		if err != nil {
