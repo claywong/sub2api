@@ -52,6 +52,7 @@ const dlpConfig = (): DlpConfig => ({
   cache_sensitive_ttl_hours: 6,
   cache_benign_ttl_hours: 24,
   block_on_high_severity: true,
+  record_regex_hits: false,
   all_groups: true,
   group_ids: [],
   endpoints: [{
@@ -420,6 +421,22 @@ describe('DlpPanel', () => {
     }
   })
 
+  it('offers the record-allowed-hits switch with its volume warning', async () => {
+    const wrapper = mountPanel(dlpConfig())
+    // 关闭时不显示警示：没打开就不必吓人。
+    expect(wrapper.find('[data-test="dlp-record-regex-hits-warning"]').exists()).toBe(false)
+
+    await wrapper.find('[data-test="dlp-record-regex-hits"]').setValue(true)
+    const next = wrapper.emitted('update:draft')?.[0]?.[0] as { record_regex_hits: boolean }
+    expect(next.record_regex_hits).toBe(true)
+  })
+
+  it('warns about table growth once recording is on', () => {
+    // 这张表没有自动清理，开着会一直长——界面必须说，否则只能等磁盘告警才发现。
+    const wrapper = mountPanel({ ...dlpConfig(), record_regex_hits: true })
+    expect(wrapper.find('[data-test="dlp-record-regex-hits-warning"]').exists()).toBe(true)
+  })
+
   it('hides the cache TTLs when confirmation is off', () => {
     // 缓存存的是二次确认的结论，确认关掉后这两个时长没有意义。
     const wrapper = mountPanel({ ...dlpConfig(), confirm_enabled: false })
@@ -626,6 +643,7 @@ describe('DLP i18n coverage', () => {
     const required = [
       'title', 'description', 'enabled', 'disabledNotice', 'detectors', 'detectorsHint',
       'disposition', 'blockOnHigh', 'blockOnHighHint',
+      'recordRegexHits', 'recordRegexHitsHint', 'recordRegexHitsWarning',
       'scope', 'scopeHint', 'allGroups', 'selectedGroups', 'searchGroups', 'noGroups',
       'missingGroups', 'selectedCount', 'scopeEmptyWarning',
       'confirm', 'confirmEnabled', 'confirmEnabledHint', 'confirmTimeout', 'failOpenNotice',

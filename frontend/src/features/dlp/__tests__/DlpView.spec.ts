@@ -31,7 +31,7 @@ vi.mock('vue-i18n', async () => {
 const dlpConfig = (): DlpConfig => ({
   enabled: true, scanners: ['dlp_pii'], confirm_enabled: true, confirm_timeout_ms: 5000,
   cache_enabled: true, cache_sensitive_ttl_hours: 6, cache_benign_ttl_hours: 24,
-  block_on_high_severity: true, all_groups: true, group_ids: [],
+  block_on_high_severity: true, record_regex_hits: false, all_groups: true, group_ids: [],
   endpoints: [{
     id: 'dlp-1', name: 'Luna', base_url: 'https://api.example.com', model: 'gpt-5.6-luna',
     timeout_ms: 5000, enabled: true, has_token: true, token_status: 'configured',

@@ -64,6 +64,7 @@ export function dlpConfigToDraft(config?: DlpConfig | null): DlpDraft {
       config?.cache_sensitive_ttl_hours || DEFAULT_DLP_CACHE_SENSITIVE_TTL_HOURS,
     cache_benign_ttl_hours: config?.cache_benign_ttl_hours || DEFAULT_DLP_CACHE_BENIGN_TTL_HOURS,
     block_on_high_severity: config?.block_on_high_severity ?? false,
+    record_regex_hits: config?.record_regex_hits ?? false,
     // 默认全部分组：与后端「未配置过 DLP 时给 all_groups=true」的表单默认一致。
     all_groups: config?.all_groups ?? true,
     group_ids: [...(config?.group_ids ?? [])],
@@ -171,6 +172,7 @@ export function buildDlpUpdateRequest(draft: DlpDraft): DlpUpdateRequest {
     cache_sensitive_ttl_hours: Number(draft.cache_sensitive_ttl_hours),
     cache_benign_ttl_hours: Number(draft.cache_benign_ttl_hours),
     block_on_high_severity: draft.block_on_high_severity,
+    record_regex_hits: draft.record_regex_hits,
     all_groups: draft.all_groups,
     // 全部分组时清空列表，避免残留的旧选择在切回指定分组时突然生效。
     group_ids: draft.all_groups ? [] : [...draft.group_ids].sort((a, b) => a - b),

@@ -11,6 +11,7 @@
   "cache_sensitive_ttl_hours": 6,
   "cache_benign_ttl_hours": 24,
   "block_on_high_severity": true,
+  "record_regex_hits": false,
   "all_groups": true,
   "group_ids": [],
   "endpoints": [],

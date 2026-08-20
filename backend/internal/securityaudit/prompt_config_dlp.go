@@ -61,6 +61,14 @@ type DLPConfig struct {
 	// medium 命中恒为仅审计，不受此开关影响。哪些规则算 high 可由管理员配置，
 	// 见 RuleOverrides。
 	BlockOnHighSeverity bool `json:"block_on_high_severity,omitempty"`
+	// RecordRegexHits 控制"正则命中但最终放行"是否也写审计事件。
+	//
+	// 覆盖两类：模型判为误报、确认链路降级放行。两类都落成 decision=pass，
+	// 由 shouldStorePromptAuditEvent 的既有语义决定是否入库。
+	//
+	// 默认关闭。误报通常远多于真命中，而 prompt_audit_events 没有自动清理，
+	// 长期打开会让表持续增长——定位规则误报时临时打开即可。
+	RecordRegexHits bool `json:"record_regex_hits,omitempty"`
 	// RuleOverrides 是单条规则的严重度与启停覆盖，只存与内置默认值的偏差。
 	// 语义与归一化见 prompt_dlp_rule_overrides.go。
 	RuleOverrides DLPRuleOverrides `json:"rule_overrides,omitempty"`
@@ -91,6 +99,8 @@ type ActiveDLPConfig struct {
 	GroupIDs            []int64
 	// RuleOverrides 是单条规则的严重度与启停覆盖，见 prompt_dlp_rule_overrides.go。
 	RuleOverrides DLPRuleOverrides
+	// RecordRegexHits 控制"命中但放行"是否写事件，语义见 DLPConfig 同名字段。
+	RecordRegexHits bool
 }
 
 // IncludesGroup 判断某分组是否在 DLP 的生效范围内。
@@ -192,6 +202,7 @@ func (cfg DLPConfig) ToActiveDLPConfig(decryptToken func(string) (string, error)
 		ConfirmEnabled:      cfg.ConfirmEnabled,
 		CacheEnabled:        cfg.CacheEnabled,
 		BlockOnHighSeverity: cfg.BlockOnHighSeverity,
+		RecordRegexHits:     cfg.RecordRegexHits,
 		ConfirmTimeout:      time.Duration(cfg.ConfirmTimeoutMS) * time.Millisecond,
 		CacheSensitiveTTL:   time.Duration(cfg.CacheSensitiveTTLHours) * time.Hour,
 		CacheBenignTTL:      time.Duration(cfg.CacheBenignTTLHours) * time.Hour,

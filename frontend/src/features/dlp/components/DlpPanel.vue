@@ -231,6 +231,34 @@
           <p class="mt-1 text-xs text-gray-500 dark:text-dark-400" data-test="dlp-block-high-hint">
             {{ t('admin.dlp.blockOnHighHint') }}
           </p>
+
+          <!--
+            这个开关不在底部保存栏：它需要一段关于事件表增长的警示说明，
+            保存栏放不下解释性文案。
+          -->
+          <label class="mt-4 flex items-start gap-2 text-sm text-gray-700 dark:text-dark-200">
+            <input
+              type="checkbox"
+              class="mt-1"
+              :checked="dlp.record_regex_hits"
+              data-test="dlp-record-regex-hits"
+              :aria-label="t('admin.dlp.recordRegexHits')"
+              @change="patch({ record_regex_hits: ($event.target as HTMLInputElement).checked })"
+            />
+            <span>
+              {{ t('admin.dlp.recordRegexHits') }}
+              <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
+                {{ t('admin.dlp.recordRegexHitsHint') }}
+              </span>
+            </span>
+          </label>
+          <p
+            v-if="dlp.record_regex_hits"
+            class="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+            data-test="dlp-record-regex-hits-warning"
+          >
+            {{ t('admin.dlp.recordRegexHitsWarning') }}
+          </p>
         </div>
 
         <fieldset class="border-t border-gray-100 pt-5 dark:border-dark-800">

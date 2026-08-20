@@ -36,17 +36,19 @@ type PublicDLPEndpoint struct {
 
 // PublicDLPConfig 是 DLP 配置的对外视图。
 type PublicDLPConfig struct {
-	Enabled                bool                `json:"enabled"`
-	Scanners               []string            `json:"scanners"`
-	ConfirmEnabled         bool                `json:"confirm_enabled"`
-	ConfirmTimeoutMS       int                 `json:"confirm_timeout_ms"`
-	CacheEnabled           bool                `json:"cache_enabled"`
-	CacheSensitiveTTLHours int                 `json:"cache_sensitive_ttl_hours"`
-	CacheBenignTTLHours    int                 `json:"cache_benign_ttl_hours"`
-	BlockOnHighSeverity    bool                `json:"block_on_high_severity"`
-	AllGroups              bool                `json:"all_groups"`
-	GroupIDs               []int64             `json:"group_ids"`
-	Endpoints              []PublicDLPEndpoint `json:"endpoints"`
+	Enabled                bool     `json:"enabled"`
+	Scanners               []string `json:"scanners"`
+	ConfirmEnabled         bool     `json:"confirm_enabled"`
+	ConfirmTimeoutMS       int      `json:"confirm_timeout_ms"`
+	CacheEnabled           bool     `json:"cache_enabled"`
+	CacheSensitiveTTLHours int      `json:"cache_sensitive_ttl_hours"`
+	CacheBenignTTLHours    int      `json:"cache_benign_ttl_hours"`
+	BlockOnHighSeverity    bool     `json:"block_on_high_severity"`
+	// RecordRegexHits 控制"命中但放行"是否写事件，语义见 DLPConfig 同名字段。
+	RecordRegexHits bool                `json:"record_regex_hits"`
+	AllGroups       bool                `json:"all_groups"`
+	GroupIDs        []int64             `json:"group_ids"`
+	Endpoints       []PublicDLPEndpoint `json:"endpoints"`
 	// AvailableScanners 让前端不必硬编码检测器清单。
 	AvailableScanners []ScannerDefinition `json:"available_scanners"`
 	// Rules 是全部检测规则及其生效严重度/启停状态。
@@ -83,6 +85,7 @@ type UpdateDLPRequest struct {
 	CacheSensitiveTTLHours int                 `json:"cache_sensitive_ttl_hours"`
 	CacheBenignTTLHours    int                 `json:"cache_benign_ttl_hours"`
 	BlockOnHighSeverity    bool                `json:"block_on_high_severity"`
+	RecordRegexHits        bool                `json:"record_regex_hits"`
 	AllGroups              bool                `json:"all_groups"`
 	GroupIDs               []int64             `json:"group_ids"`
 	Endpoints              []UpdateDLPEndpoint `json:"endpoints"`
@@ -148,6 +151,7 @@ func publicDLPFromStorage(stored *DLPConfig, invalidTokenIDs map[string]struct{}
 	public.CacheSensitiveTTLHours = stored.CacheSensitiveTTLHours
 	public.CacheBenignTTLHours = stored.CacheBenignTTLHours
 	public.BlockOnHighSeverity = stored.BlockOnHighSeverity
+	public.RecordRegexHits = stored.RecordRegexHits
 	if len(stored.Scanners) > 0 {
 		public.Scanners = append(public.Scanners, stored.Scanners...)
 	}
@@ -202,6 +206,7 @@ func dlpStorageFromUpdate(
 		CacheSensitiveTTLHours: req.CacheSensitiveTTLHours,
 		CacheBenignTTLHours:    req.CacheBenignTTLHours,
 		BlockOnHighSeverity:    req.BlockOnHighSeverity,
+		RecordRegexHits:        req.RecordRegexHits,
 		AllGroups:              req.AllGroups,
 		// 落库即排序去重，让 ActiveDLPConfig.IncludesGroup 的二分查找有序前提成立。
 		GroupIDs:  sortedUniqueGroupIDs(req.GroupIDs),

@@ -64,6 +64,8 @@ export interface DlpConfig {
   cache_sensitive_ttl_hours: number
   cache_benign_ttl_hours: number
   block_on_high_severity: boolean
+  // record_regex_hits 控制"正则命中但最终放行"（误报、降级放行）是否也写事件。
+  record_regex_hits: boolean
   // DLP 自己的生效范围，与 qwen3guard 的 all_groups/group_ids 完全独立。
   all_groups: boolean
   group_ids: number[]
@@ -95,6 +97,7 @@ export interface DlpUpdateRequest {
   cache_sensitive_ttl_hours: number
   cache_benign_ttl_hours: number
   block_on_high_severity: boolean
+  record_regex_hits: boolean
   all_groups: boolean
   group_ids: number[]
   endpoints: Array<{

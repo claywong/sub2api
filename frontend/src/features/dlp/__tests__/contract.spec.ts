@@ -90,6 +90,18 @@ describe('DLP config contract with the backend', () => {
     expect(draft.blocking_severities.length).toBeGreaterThan(0)
   })
 
+  it('carries every top-level switch the panel and save bar bind to', () => {
+    // 少一个字段前端就读到 undefined，开关会静默显示成关闭——而且保存时会把
+    // 后端的真实值覆盖掉。
+    const draft = dlpConfigToDraft(config)
+    for (const key of [
+      'enabled', 'confirm_enabled', 'cache_enabled',
+      'block_on_high_severity', 'record_regex_hits',
+    ] as const) {
+      expect(typeof draft[key]).toBe('boolean')
+    }
+  })
+
   it('keeps the detector list in sync with the backend', () => {
     // 后端新增检测器但前端目录没跟上时，那个检测器的规则在界面上不可见。
     const backendIDs = config.available_scanners.map((scanner) => scanner.id).sort()

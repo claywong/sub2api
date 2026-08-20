@@ -256,6 +256,8 @@ func TestDLPGuardBlockSwitchOff(t *testing.T) {
 
 func TestDLPGuardFalsePositiveAllows(t *testing.T) {
 	// 模型判为误报时应放行，且不写审计事件。
+	// 「不写事件」是 RecordRegexHits 关闭（默认）时的行为；打开后的行为见
+	// prompt_guard_dlp_passevent_test.go。
 	confirmServer, confirmCalls := newDLPConfirmStub(t, false, http.StatusOK)
 	repo := &dlpNoopRepo{}
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, repo)

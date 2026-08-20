@@ -120,6 +120,8 @@ func (g *GuardEvaluator) EvaluateDLP(
 	if len(sensitive) == 0 {
 		// 全部判为误报，或确认链路故障导致无法判定。两种情况都放行，但日志要能区分。
 		g.logDLPAllowed(snapshot, findings, degraded, latency)
+		// 私有扩展：开关打开时这类放行也写事件，见 prompt_guard_dlp_passevent.go。
+		g.recordDLPPassEvent(ctx, cfg, snapshot, findings, verdicts, degraded, latency)
 		return nil
 	}
 

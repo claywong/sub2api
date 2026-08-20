@@ -48,6 +48,11 @@ export default {
       dlp_sensitive: 'Sensitive field',
     },
     disposition: 'Disposition',
+    recordRegexHits: 'Also record hits that were allowed through',
+    recordRegexHitsHint:
+      'By default only hits confirmed as sensitive become events. Enable this and hits the model judged as false positives — plus hits allowed through because the confirmation service was unavailable — are recorded too: the former shows which rules are noisy, the latter is your only lead on potential missed leaks. Both appear as "Pass" in the list, false positives as "Low" and degraded allows as "Medium", so you can filter for the latter to review.',
+    recordRegexHitsWarning:
+      'False positives usually far outnumber real hits, and the audit event table has no automatic cleanup, so leaving this on makes it grow indefinitely. Turn it on while tuning rules and off afterwards; use "Delete by criteria" in the event list to trim it.',
     blockOnHigh: 'Block requests on high-severity hits',
     blockOnHighHint:
       'Only rules marked high-severity cause a block; medium-severity hits are always recorded without blocking. Which rules count as high is adjustable per rule below — by default only 6 are high, while credential rules such as AWS Access Key, GitHub Token and private key blocks default to medium, meaning they are not blocked.',
