@@ -326,14 +326,19 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			return false
 		}
 	}
-	var lastReadAt int64
-	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+	// lastDataLineAt: 与另两条 Anthropic 流式路径同义——只统计携带负载的 data 行，
+	// 避免中转网关的空心跳无限续命数据间隔超时（详见 sseLineCarriesData）。
+	var lastDataLineAt int64
+	atomic.StoreInt64(&lastDataLineAt, time.Now().UnixNano())
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
-			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-			if !sendEvent(scanEvent{line: scanner.Text()}) {
+			line := scanner.Text()
+			if sseLineCarriesData(line) {
+				atomic.StoreInt64(&lastDataLineAt, time.Now().UnixNano())
+			}
+			if !sendEvent(scanEvent{line: line}) {
 				return
 			}
 		}
@@ -457,8 +462,8 @@ func (s *OpenAIGatewayService) handleNativeAnthropicStreamingResponse(
 			}
 
 		case <-intervalCh:
-			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			lastData := time.Unix(0, atomic.LoadInt64(&lastDataLineAt))
+			if time.Since(lastData) < streamInterval {
 				continue
 			}
 			if clientDisconnected {

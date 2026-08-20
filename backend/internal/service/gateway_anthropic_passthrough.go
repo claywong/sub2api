@@ -474,14 +474,19 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			return false
 		}
 	}
-	var lastReadAt int64
-	atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
+	// lastDataLineAt: 与普通转发路径同义——只统计携带负载的 data 行，
+	// 避免中转网关的空心跳无限续命数据间隔超时（详见 sseLineCarriesData）。
+	var lastDataLineAt int64
+	atomic.StoreInt64(&lastDataLineAt, time.Now().UnixNano())
 	go func(scanBuf *sseScannerBuf64K) {
 		defer putSSEScannerBuf64K(scanBuf)
 		defer close(events)
 		for scanner.Scan() {
-			atomic.StoreInt64(&lastReadAt, time.Now().UnixNano())
-			if !sendEvent(scanEvent{line: scanner.Text()}) {
+			line := scanner.Text()
+			if sseLineCarriesData(line) {
+				atomic.StoreInt64(&lastDataLineAt, time.Now().UnixNano())
+			}
+			if !sendEvent(scanEvent{line: line}) {
 				return
 			}
 		}
@@ -543,8 +548,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				}
 				if !sawTerminalEvent {
 					if clientDisconnected && streamInterval > 0 {
-						lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-						if time.Since(lastRead) >= streamInterval {
+						lastData := time.Unix(0, atomic.LoadInt64(&lastDataLineAt))
+						if time.Since(lastData) >= streamInterval {
 							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
 						}
 					}
@@ -612,8 +617,8 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 
 		case <-intervalCh:
-			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
-			if time.Since(lastRead) < streamInterval {
+			lastData := time.Unix(0, atomic.LoadInt64(&lastDataLineAt))
+			if time.Since(lastData) < streamInterval {
 				continue
 			}
 			if clientDisconnected {
@@ -661,6 +666,28 @@ func extractAnthropicSSEDataLine(line string) (string, bool) {
 		start++
 	}
 	return line[start:], true
+}
+
+// sseLineCarriesData 判定一行 SSE 是否携带有效负载（data 行且内容非空）。
+//
+// 用于数据间隔超时（gateway.stream_data_interval_timeout）的计时基准：只有携带
+// 负载的行才算上游有实质进展。空行、`:` 注释心跳、裸 `event:` 行一律不算——
+// 第三方中转网关在自己排队等上游时常发这类空心跳维持连接不被 LB 掐断，若用它们
+// 刷新计时，上游迟迟不吐首个 token 时间隔超时永不触发，请求会一直干等到客户端
+// 放弃（实测见过 TTFT 154s）。
+//
+// Anthropic 官方的 ping 事件带 `data: {"type":"ping"}`，属于有效负载，仍会正常
+// 刷新计时——extended thinking 期间的官方 ping 表示上游活着且在工作，不应误杀。
+func sseLineCarriesData(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	data, ok := extractAnthropicSSEDataLine(trimmed)
+	if !ok {
+		return false
+	}
+	return strings.TrimSpace(data) != ""
 }
 
 // parseSSEUsagePassthrough 从 Anthropic SSE data 行提取 usage（包级函数：
