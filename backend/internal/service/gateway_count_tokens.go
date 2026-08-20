@@ -23,10 +23,6 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return fmt.Errorf("parse request: empty request")
 	}
 
-	if account != nil && account.IsAnthropicFullPassthroughEnabled() {
-		return s.forwardCountTokensAnthropicFullPassthrough(ctx, c, account, parsed.Body.Bytes())
-	}
-
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
 		if reqModel := parsed.Model; reqModel != "" {

@@ -1809,19 +1809,31 @@
 
       <!-- Anthropic API Key 自动透传开关 -->
       <div
-        v-if="isAnthropicPassthroughModeVisible"
+        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
           <div>
-            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.passthroughMode') }}</label>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.apiKeyPassthrough') }}</label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.anthropic.passthroughModeDesc') }}
+              {{ t('admin.accounts.anthropic.apiKeyPassthroughDesc') }}
             </p>
           </div>
-          <div class="w-52">
-            <Select v-model="anthropicPassthroughMode" :options="anthropicPassthroughModeOptions" />
-          </div>
+          <button
+            type="button"
+            @click="anthropicPassthroughEnabled = !anthropicPassthroughEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              anthropicPassthroughEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                anthropicPassthroughEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
         </div>
       </div>
 
@@ -2998,15 +3010,6 @@ import {
   type CnNativeApiProtocol,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
-import {
-  ANTHROPIC_PASSTHROUGH_MODE_AUTH_ONLY,
-  ANTHROPIC_PASSTHROUGH_MODE_COMPAT,
-  ANTHROPIC_PASSTHROUGH_MODE_FULL,
-  resolveAnthropicPassthroughModeFromExtra,
-  writeAnthropicPassthroughModeToExtra,
-  type AnthropicPassthroughAccountType,
-  type AnthropicPassthroughMode
-} from '@/utils/anthropicPassthroughMode'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
@@ -3355,7 +3358,6 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-const anthropicPassthroughMode = ref<AnthropicPassthroughMode>(ANTHROPIC_PASSTHROUGH_MODE_COMPAT)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
@@ -3612,27 +3614,6 @@ const openAICompactStatusKey = computed(() => {
   return 'admin.accounts.openai.compactAuto'
 })
 
-const currentAnthropicPassthroughType = computed<AnthropicPassthroughAccountType | null>(() => {
-  const type = props.account?.type
-  if (type === 'oauth' || type === 'setup-token' || type === 'apikey') {
-    return type
-  }
-  return null
-})
-const isAnthropicPassthroughModeVisible = computed(() =>
-  props.account?.platform === 'anthropic' && currentAnthropicPassthroughType.value !== null
-)
-const anthropicPassthroughModeOptions = computed(() => {
-  const options = [
-    { value: ANTHROPIC_PASSTHROUGH_MODE_COMPAT, label: t('admin.accounts.anthropic.passthroughModeCompat') }
-  ]
-  if (currentAnthropicPassthroughType.value === 'apikey') {
-    options.push({ value: ANTHROPIC_PASSTHROUGH_MODE_AUTH_ONLY, label: t('admin.accounts.anthropic.passthroughModeAuthOnly') })
-  }
-  options.push({ value: ANTHROPIC_PASSTHROUGH_MODE_FULL, label: t('admin.accounts.anthropic.passthroughModeFull') })
-  return options
-})
-
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
 const tempUnschedPresets = computed(() => [
@@ -3864,7 +3845,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
-  anthropicPassthroughMode.value = ANTHROPIC_PASSTHROUGH_MODE_COMPAT
   codexFingerprintMode.value = 'off'
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
@@ -3934,7 +3914,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     newAccount.platform === 'anthropic' &&
     (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')
   ) {
-    anthropicPassthroughMode.value = resolveAnthropicPassthroughModeFromExtra(extra, newAccount.type)
     if (newAccount.type === 'apikey') {
       anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
       anthropicAPIKeyAuthScheme.value = extra?.anthropic_apikey_auth_scheme === 'authorization_bearer'
@@ -4218,7 +4197,15 @@ const buildAnthropicExtra = (
   base?: Record<string, unknown>,
   type: AccountType | null = props.account?.type ?? null
 ): Record<string, unknown> | undefined => {
-  const extra = writeAnthropicPassthroughModeToExtra(base, type, anthropicPassthroughMode.value)
+  const extra: Record<string, unknown> = { ...(base || {}) }
+  // 自动透传（仅替换认证）仅对 Anthropic API Key 账号有效，字段为布尔 anthropic_passthrough。
+  if (type === 'apikey') {
+    if (anthropicPassthroughEnabled.value) {
+      extra.anthropic_passthrough = true
+    } else {
+      delete extra.anthropic_passthrough
+    }
+  }
   if (webSearchEmulationMode.value === 'default') {
     delete extra.web_search_emulation
   } else {
