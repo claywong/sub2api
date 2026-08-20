@@ -132,7 +132,7 @@ func TestUnschedule_RemovesTask(t *testing.T) {
 	r.Start()
 
 	r.Schedule(&ChannelMonitor{ID: 3, Enabled: true, IntervalSeconds: 60})
-	waitForCond(t,time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 })
+	waitForCond(t, time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 })
 
 	r.Unschedule(3)
 	if got := runnerTaskCount(r); got != 0 {
@@ -149,7 +149,7 @@ func TestSchedule_DisabledRedirectsToUnschedule(t *testing.T) {
 	r.Start()
 
 	r.Schedule(&ChannelMonitor{ID: 9, Enabled: true, IntervalSeconds: 60})
-	waitForCond(t,time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 })
+	waitForCond(t, time.Second, "task registered", func() bool { return runnerTaskCount(r) == 1 })
 
 	r.Schedule(&ChannelMonitor{ID: 9, Enabled: false, IntervalSeconds: 60})
 	if got := runnerTaskCount(r); got != 0 {
@@ -260,7 +260,7 @@ func TestStart_LoadsAllEnabledMonitors(t *testing.T) {
 	}
 	r := newRunnerForTest(svc)
 	r.Start()
-	waitForCond(t,2*time.Second, "all 3 tasks scheduled", func() bool { return runnerTaskCount(r) == 3 })
+	waitForCond(t, 2*time.Second, "all 3 tasks scheduled", func() bool { return runnerTaskCount(r) == 3 })
 
 	stoppedWithin(t, r, 3*time.Second)
 }
@@ -293,7 +293,7 @@ func TestStop_DrainsAllGoroutines(t *testing.T) {
 	for id := int64(1); id <= 5; id++ {
 		r.Schedule(&ChannelMonitor{ID: id, Enabled: true, IntervalSeconds: 60})
 	}
-	waitForCond(t,2*time.Second, "5 tasks scheduled", func() bool { return runnerTaskCount(r) == 5 })
+	waitForCond(t, 2*time.Second, "5 tasks scheduled", func() bool { return runnerTaskCount(r) == 5 })
 
 	stoppedWithin(t, r, 3*time.Second)
 }

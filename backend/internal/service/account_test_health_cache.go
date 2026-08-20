@@ -93,19 +93,19 @@ type CallSample struct {
 
 // HealthSnapshot 滑动窗口聚合后的健康指标快照。
 type HealthSnapshot struct {
-	ReqCount           int
-	ErrCount           int
-	SlowCount          int
-	TTFTSampleCount    int
-	OTPSSampleCount    int
-	TCPConnSampleCount int
-	TTFBSampleCount    int
+	ReqCount            int
+	ErrCount            int
+	SlowCount           int
+	TTFTSampleCount     int
+	OTPSSampleCount     int
+	TCPConnSampleCount  int
+	TTFBSampleCount     int
 	CacheHitSampleCount int
-	ttftSumMs          int64
-	otpsSum            float64
-	tcpConnSumMs       int64
-	ttfbSumMs          int64
-	cacheHitRateSum    float64
+	ttftSumMs           int64
+	otpsSum             float64
+	tcpConnSumMs        int64
+	ttfbSumMs           int64
+	cacheHitRateSum     float64
 }
 
 // ErrRate 窗口内错误率（0~1）；ReqCount=0 时返回 0。
@@ -240,9 +240,9 @@ type HealthVerdictConfig struct {
 
 // AccountTestHealthCache 使用 sync.Map 存储账号健康状态，key 为 accountID int64
 type AccountTestHealthCache struct {
-	m              sync.Map
-	cfg            healthCfg
-	verdictCfg     HealthVerdictConfig
+	m          sync.Map
+	cfg        healthCfg
+	verdictCfg HealthVerdictConfig
 	// OnVerdictChange 在账号健康状态发生切换时调用（异步，不阻塞调度路径）。
 	// 参数：accountID、切换前状态、切换后状态。
 	OnVerdictChange func(accountID int64, prev, current HealthVerdict)

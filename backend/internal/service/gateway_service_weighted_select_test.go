@@ -207,8 +207,8 @@ func TestSelectByWeightedQuality_ToleranceBandLoadBalance(t *testing.T) {
 	s := newWeightedTestService(true)
 	// 两账号 quality 都满分（无样本），倍率 1.0 vs 1.1 → score 相差 ~10%，落在 15% 容差带内
 	available := []accountWithLoad{
-		makeAccount(1, 0, 1.0, 90),  // score 略高，但 load 高
-		makeAccount(2, 0, 1.1, 5),   // score 略低（约 0.91×），但 load 远低
+		makeAccount(1, 0, 1.0, 90), // score 略高，但 load 高
+		makeAccount(2, 0, 1.1, 5),  // score 略低（约 0.91×），但 load 远低
 	}
 	got := s.selectByWeightedQuality(available, "m", nil, "")
 	require.NotNil(t, got)

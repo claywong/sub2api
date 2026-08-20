@@ -29,8 +29,8 @@ const (
 
 // OpsWebhookPayload is the body sent to the configured endpoint for each error.
 type OpsWebhookPayload struct {
-	Event     string         `json:"event"`
-	Timestamp string         `json:"timestamp"`
+	Event     string           `json:"event"`
+	Timestamp string           `json:"timestamp"`
 	Error     *OpsWebhookError `json:"error"`
 }
 

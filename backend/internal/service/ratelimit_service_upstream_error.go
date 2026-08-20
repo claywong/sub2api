@@ -14,6 +14,7 @@
 //     （Go struct 必须整块定义）。
 //   - 这些方法是纯增量，搬到 companion 文件后 ratelimit_service.go 与 upstream
 //     的 diff 可以缩到 10 行内。
+//
 // =============================================================================
 package service
 

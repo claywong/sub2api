@@ -161,7 +161,7 @@ func TestDecide_SamePersonTwoAccounts_AnyActiveMeansInService(t *testing.T) {
 			"ou_resigned": {OpenID: "ou_resigned", Name: "何佳诚", EmployeeNo: "2781",
 				EnterpriseEmail: email, Status: statusOf(true, true, false)},
 			"ou_active": {OpenID: "ou_active", Name: "何佳诚", EmployeeNo: "2781",
-				JobTitle: "软件交付工程师",
+				JobTitle:        "软件交付工程师",
 				EnterpriseEmail: email, Status: statusOf(false, true, false)},
 		},
 	}

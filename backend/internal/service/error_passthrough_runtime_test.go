@@ -383,9 +383,9 @@ func newNonFailoverPassthroughRule(statusCode int, keyword string, respCode int,
 
 func TestIsRetryLater400(t *testing.T) {
 	cases := []struct {
-		name  string
-		body  []byte
-		want  bool
+		name string
+		body []byte
+		want bool
 	}{
 		{
 			name: "anthropic chinese retry message",

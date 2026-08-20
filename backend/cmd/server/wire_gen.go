@@ -301,8 +301,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	sessionModelLockService := service.NewSessionModelLockService(sessionModelLockCache)
 	modelQuotaCacheService := service.NewModelQuotaCacheService(modelQuotaCache)
 	legacyEngine := securityaudit.NewLegacyModerationAdapter(contentModerationService)
-	// 私有扩展：ProvideCoordinator 会一并装上 DLP 引擎，让 DLP 独立于审计模式
-	// 生效。见 securityaudit/coordinator_dlp.go。
 	coordinator := securityaudit.ProvideCoordinator(legacyEngine, promptService, promptService)
 	gatewayHandler := handler.ProvideGatewayHandler(gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, userMessageQueueService, configConfig, settingService, sessionModelLockService, modelQuotaCacheService, coordinator)
 	openAIGatewayHandler := handler.ProvideOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, grokQuotaService, configConfig, coordinator)

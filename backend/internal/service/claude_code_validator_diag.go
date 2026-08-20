@@ -3,11 +3,12 @@
 // 私有扩展（不属于 upstream sub2api）：Claude Code 客户端判定失败诊断。
 //
 // 背景：
-//   分组开启 claude_code_only 后，非 Claude Code 客户端会在路由阶段被
-//   resolveGatewayGroup 拒绝并返回 ErrClaudeCodeOnly，但 upstream 的判定
-//   逻辑（ClaudeCodeValidator.Validate）只返回 bool，不暴露"为什么不通过"。
-//   运维拿到 "this group only allows Claude Code clients" 时无法定位根因
-//   （UA 不对？metadata 格式不对？缺 header？）。
+//
+//	分组开启 claude_code_only 后，非 Claude Code 客户端会在路由阶段被
+//	resolveGatewayGroup 拒绝并返回 ErrClaudeCodeOnly，但 upstream 的判定
+//	逻辑（ClaudeCodeValidator.Validate）只返回 bool，不暴露"为什么不通过"。
+//	运维拿到 "this group only allows Claude Code clients" 时无法定位根因
+//	（UA 不对？metadata 格式不对？缺 header？）。
 //
 // 本文件提供：
 //   - DiagnoseClaudeCodeReject：只读复刻 Validate 的检查顺序，返回失败原因码。
@@ -19,6 +20,7 @@
 // 与 upstream 合并策略：
 //   - 纯增量：新函数、新类型、新常量，不改动 upstream 已有方法。
 //   - handler/gateway_helper.go 与 gateway_service.go 各加 1 行 hook 调用本文件。
+//
 // =============================================================================
 package service
 

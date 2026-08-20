@@ -301,9 +301,9 @@ func TestHealthVerdict_OTPSExcludedMin_BelowThreshold_Excluded(t *testing.T) {
 		cache.Record(7, CallSample{Success: true, TTFTMs: 2000, DurationMs: 30000, OutputTokens: 20})
 	}
 	cfg := HealthVerdictConfig{
-		MinSamples:      5,
+		MinSamples:        5,
 		OTPSStickyOnlyMin: 10,
-		OTPSExcludedMin: 1.0,
+		OTPSExcludedMin:   1.0,
 	}
 	require.Equal(t, HealthExcluded, cache.HealthVerdict(7, cfg))
 }

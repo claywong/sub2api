@@ -14,6 +14,7 @@
 //   - GatewayService 上新增的字段（requestLogRepo）和构造函数参数仍留在
 //     gateway_service.go，因为 Go 的 struct 定义和 NewGatewayService 必须放
 //     在一起。
+//
 // =============================================================================
 package service
 

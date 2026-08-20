@@ -50,7 +50,6 @@ func TestUpdateFromTest_FailurePath(t *testing.T) {
 	require.Equal(t, "success", c.Get(1).LastStatus)
 }
 
-
 func TestRecord_AccumulatesIntoSnapshot(t *testing.T) {
 	c := NewAccountTestHealthCache(nil)
 

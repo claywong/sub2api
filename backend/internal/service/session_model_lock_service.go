@@ -1,8 +1,9 @@
 // 私有扩展（不属于 upstream sub2api）。
 //
 // 文件作用：会话级模型锁定（Session Model Lock）核心业务逻辑。
-//   配合分组的 ProtectedModels 列表，对每个 Claude Code 会话首次出现的 model 做 SETNX 记录；
-//   后续若 model 切换到保护列表中的另一模型，则返回 *SessionModelLockError，由 Handler 翻译为 403。
+//
+//	配合分组的 ProtectedModels 列表，对每个 Claude Code 会话首次出现的 model 做 SETNX 记录；
+//	后续若 model 切换到保护列表中的另一模型，则返回 *SessionModelLockError，由 Handler 翻译为 403。
 //
 // 包含类型/方法：
 //   - SessionModelLockService（核心结构体与构造）
@@ -33,7 +34,8 @@ func (e *SessionModelLockError) Error() string {
 //
 // 调用入口：GatewayHandler.Messages（仅 Anthropic 协议）。
 // 失败语义：仅对"违反锁定语义"的请求返回 *SessionModelLockError；
-//          底层 Redis 故障或 session_id 缺失一律 fail-open（返回 nil 或 非业务 error）。
+//
+//	底层 Redis 故障或 session_id 缺失一律 fail-open（返回 nil 或 非业务 error）。
 type SessionModelLockService struct {
 	cache SessionModelLockCache
 }

@@ -46,13 +46,13 @@ const (
 // FeishuOffboardConfig 是「生效配置」。全部字段零值可用：
 // Enabled 默认 false，所以不配置时整个功能静默不跑。
 type FeishuOffboardConfig struct {
-	Enabled     bool     `json:"enabled"`
-	Schedule    string   `json:"schedule"`
-	AppID       string   `json:"app_id"`
-	AppSecret   string   `json:"-"` // 绝不出现在任何响应里
-	DryRun      bool     `json:"dry_run"`
-	Threshold   int      `json:"circuit_breaker_threshold"`
-	NotifyTo    []string `json:"notify_to"`
+	Enabled   bool     `json:"enabled"`
+	Schedule  string   `json:"schedule"`
+	AppID     string   `json:"app_id"`
+	AppSecret string   `json:"-"` // 绝不出现在任何响应里
+	DryRun    bool     `json:"dry_run"`
+	Threshold int      `json:"circuit_breaker_threshold"`
+	NotifyTo  []string `json:"notify_to"`
 }
 
 // FeishuOffboardConfigView 是给前端看的配置，密钥只回"是否已配置"。
@@ -148,20 +148,20 @@ const (
 
 // FeishuOffboardRun 是一次执行的完整记录，对应 feishu_offboard_runs 表。
 type FeishuOffboardRun struct {
-	ID                 int64              `json:"id"`
-	RunAt              time.Time          `json:"run_at"`
-	TriggerSource      string             `json:"trigger_source"`
-	DryRun             bool               `json:"dry_run"`
-	CheckedCount       int                `json:"checked_count"`
-	ResignedCount      int                `json:"resigned_count"`
-	DisabledCount      int                `json:"disabled_count"`
-	UnverifiableCount  int                `json:"unverifiable_count"`
-	SkippedCount       int                `json:"skipped_count"`
-	CircuitBroken      bool               `json:"circuit_broken"`
-	DurationMs         int64              `json:"duration_ms"`
-	ErrorMessage       string             `json:"error_message,omitempty"`
-	Decisions          []OffboardDecision `json:"decisions,omitempty"`
-	CreatedAt          time.Time          `json:"created_at"`
+	ID                int64              `json:"id"`
+	RunAt             time.Time          `json:"run_at"`
+	TriggerSource     string             `json:"trigger_source"`
+	DryRun            bool               `json:"dry_run"`
+	CheckedCount      int                `json:"checked_count"`
+	ResignedCount     int                `json:"resigned_count"`
+	DisabledCount     int                `json:"disabled_count"`
+	UnverifiableCount int                `json:"unverifiable_count"`
+	SkippedCount      int                `json:"skipped_count"`
+	CircuitBroken     bool               `json:"circuit_broken"`
+	DurationMs        int64              `json:"duration_ms"`
+	ErrorMessage      string             `json:"error_message,omitempty"`
+	Decisions         []OffboardDecision `json:"decisions,omitempty"`
+	CreatedAt         time.Time          `json:"created_at"`
 }
 
 // FeishuOffboardRunListFilter 执行历史查询条件。

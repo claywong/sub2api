@@ -3,9 +3,9 @@
 // 私有扩展（不属于 upstream sub2api）：账号健康感知调度相关方法。
 //
 // 这个文件聚合了两类附着在 GatewayService 上的私有逻辑：
-//   1. SchedulingHealthConfig 配置默认值的解析；
-//   2. 账号健康缓存（healthCache）相关的接口（HealthCache、RecordAnthropicCall、
-//      onHealthVerdictChange、isAccountSchedulableForHealth ...）。
+//  1. SchedulingHealthConfig 配置默认值的解析；
+//  2. 账号健康缓存（healthCache）相关的接口（HealthCache、RecordAnthropicCall、
+//     onHealthVerdictChange、isAccountSchedulableForHealth ...）。
 //
 // 还有一个零碎的 logSchedulerSelected 也在这里，便于后续如果上游引入类似日志我们可以
 // 集中替换。
@@ -16,6 +16,7 @@
 //     里几处内联调用（健康过滤）。这些是无法外迁的。
 //   - 真正定义 healthCache 的类型、CallSample、HealthVerdict 等都在
 //     account_test_health_cache.go，跟本文件解耦。
+//
 // =============================================================================
 package service
 

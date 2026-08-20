@@ -57,8 +57,8 @@ type fakeCacheInvalidator struct {
 	invalidated []int64
 }
 
-func (f *fakeCacheInvalidator) InvalidateAuthCacheByKey(context.Context, string)     {}
-func (f *fakeCacheInvalidator) InvalidateAuthCacheByGroupID(context.Context, int64)  {}
+func (f *fakeCacheInvalidator) InvalidateAuthCacheByKey(context.Context, string)    {}
+func (f *fakeCacheInvalidator) InvalidateAuthCacheByGroupID(context.Context, int64) {}
 func (f *fakeCacheInvalidator) InvalidateAuthCacheByUserID(_ context.Context, id int64) {
 	f.invalidated = append(f.invalidated, id)
 }
@@ -145,7 +145,7 @@ func TestApplyDecisions_OnlyUpdatesStatusColumn(t *testing.T) {
 	if f.Email || f.Username || f.Notes || f.Role || f.Concurrency ||
 		f.RPMLimit || f.AllowedGroups || f.PasswordHash ||
 		f.BalanceNotifySettings || f.BalanceNotifyExtraEmails {
-			t.Errorf("除 Status 外不得声明其他字段，实际掩码 %+v", f)
+		t.Errorf("除 Status 外不得声明其他字段，实际掩码 %+v", f)
 	}
 	// 不失效鉴权缓存的话，已签发的 API Key 在缓存 TTL 内仍可用，禁用就不是即时的。
 	if len(inv.invalidated) != 1 || inv.invalidated[0] != 7 {

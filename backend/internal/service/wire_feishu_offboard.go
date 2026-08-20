@@ -2,9 +2,12 @@
 //
 // 本文件：「飞书离职自动禁用」的 wire provider。
 // 所含内容：ProvideFeishuOffboardConfigStore、ProvideFeishuOffboardEmailNotifier、
-//           ProvideFeishuOffboardService。
+//
+//	ProvideFeishuOffboardService。
+//
 // merge 策略：纯新增文件。provider 单独放这里而不是塞进 upstream 的 wire.go，
-//           是为了把 provider set 的改动压到一行引用，减少 merge 冲突面。
+//
+//	是为了把 provider set 的改动压到一行引用，减少 merge 冲突面。
 //
 // @author wangzhong
 package service

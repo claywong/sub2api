@@ -9,6 +9,7 @@
 //   - 这个类型不依赖任何 upstream 类型，搬到 companion 文件后零冲突。
 //   - 实际使用点（return &ClientRequestError{...}）仍留在 gateway_service.go
 //     中，因为是包内 inline 修改。
+//
 // =============================================================================
 package service
 

@@ -12,6 +12,7 @@
 //     struct 必须整块定义）。
 //   - 这两个方法是纯增量，搬到 companion 文件后 openai_gateway_service.go 与
 //     upstream 的 diff 可以缩到几行 inline 修改。
+//
 // =============================================================================
 package service
 
