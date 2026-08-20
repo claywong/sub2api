@@ -1,21 +1,25 @@
 // prompt_guard_dlp.go
 // =============================================================================
-// 私有扩展（不属于 upstream sub2api）：DLP 前置检测在 GuardEvaluator 上的编排。
+// 私有扩展（不属于 upstream sub2api）：DLP 检测在 GuardEvaluator 上的编排。
 //
-// 在 GuardEvaluator.Evaluate 最前面插入一个前置阶段：
+// 检测链路：
 //  1. 正则扫描（μs 级、零网络调用）
-//  2. 未命中 → 返回 nil，流程照原样走 qwen3guard，行为与改动前完全一致
+//  2. 未命中 → 返回 nil，请求继续走 upstream 流程，行为与改动前完全一致
 //  3. 命中 → 查确认缓存 → 未缓存的送 luna 批量确认
 //  4. 确认为真敏感 → 按严重度处置（high/critical 拦截，medium 仅审计）
-//  5. 确认为误报 / 确认链路故障 → 放行（fail-open），继续走 qwen3guard
+//  5. 确认为误报 / 确认链路故障 → 放行（fail-open）
+//
+// 调用来源：Coordinator.Check 经 PromptService.EvaluateDLP 进入，跑在 upstream 的
+// 审计模式分发之前。刻意不挂在 GuardEvaluator.Evaluate 里面——那样会被 qwen3guard
+// 的模式开关绑死，ModeOff/ModeAsync 下 DLP 静默失效。详见 coordinator_dlp.go。
 //
 // 为什么 fail-open：DLP 依赖第三方中转模型，实测会出现 403/429/401 波动。若沿用
 // upstream qwen3guard 的 fail-closed（返回 DecisionUnavailable → HTTP 503），
 // 对方一抖动就会拖垮整个网关。正则层零外部依赖仍在工作，降级只是少了降误报那层。
 //
 // 与 upstream 合并策略：
-//   - 本文件是纯增量。upstream 侧仅需 3 处极小改动：
-//     GuardEvaluator 加 2 个字段、Evaluate 开头 3 行 hook、ActiveConfig 加 1 个字段。
+//   - 本文件是纯增量。upstream 侧仅需 4 处极小改动：GuardEvaluator 加 2 个字段、
+//     ActiveConfig 加 1 个字段、Coordinator 加 1 个字段 + Check 开头 4 行 hook。
 //
 // =============================================================================
 package securityaudit
@@ -74,11 +78,14 @@ func (g *GuardEvaluator) WithDLP(confirmer *DLPConfirmer, cache *DLPConfirmCache
 	return g
 }
 
-// evaluateDLP 执行 DLP 前置检测。
+// EvaluateDLP 执行 DLP 检测。
 //
 // 返回 nil 表示"不由 DLP 决定本次请求"，调用方应继续原有流程。
 // 只有确认为真实敏感信息且严重度达到拦截门槛时才返回非 nil 的拦截决策。
-func (g *GuardEvaluator) evaluateDLP(
+//
+// Enabled 与分组范围已由 PromptService.EvaluateDLP 判过，这里仍再判一次 Enabled，
+// 因为本方法是导出的，不能假定调用方一定做了门控。
+func (g *GuardEvaluator) EvaluateDLP(
 	ctx context.Context, cfg ActiveConfig, snapshot PromptSnapshot,
 ) *PromptDecision {
 	if g == nil {

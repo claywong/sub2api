@@ -20,6 +20,9 @@ type PromptEngine interface {
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
+
+	// 私有扩展：DLP 引擎，通过 WithDLP 注入，实现见 coordinator_dlp.go。
+	dlp DLPEngine
 }
 
 func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
@@ -29,6 +32,11 @@ func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
 func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
+	}
+	// 私有扩展：DLP 检测独立于审计模式，必须跑在 mode 分发之前，否则 ModeOff 与
+	// ModeAsync 下 DLP 会静默不生效。实现见 coordinator_dlp.go。
+	if decision := c.checkDLP(ctx, req); decision != nil {
+		return *decision
 	}
 	mode := ModeOff
 	if c.prompt != nil {

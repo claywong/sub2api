@@ -44,6 +44,8 @@ type PublicDLPConfig struct {
 	CacheSensitiveTTLHours int                 `json:"cache_sensitive_ttl_hours"`
 	CacheBenignTTLHours    int                 `json:"cache_benign_ttl_hours"`
 	BlockOnHighSeverity    bool                `json:"block_on_high_severity"`
+	AllGroups              bool                `json:"all_groups"`
+	GroupIDs               []int64             `json:"group_ids"`
 	Endpoints              []PublicDLPEndpoint `json:"endpoints"`
 	// AvailableScanners 让前端不必硬编码检测器清单。
 	AvailableScanners []ScannerDefinition `json:"available_scanners"`
@@ -71,6 +73,8 @@ type UpdateDLPRequest struct {
 	CacheSensitiveTTLHours int                 `json:"cache_sensitive_ttl_hours"`
 	CacheBenignTTLHours    int                 `json:"cache_benign_ttl_hours"`
 	BlockOnHighSeverity    bool                `json:"block_on_high_severity"`
+	AllGroups              bool                `json:"all_groups"`
+	GroupIDs               []int64             `json:"group_ids"`
 	Endpoints              []UpdateDLPEndpoint `json:"endpoints"`
 }
 
@@ -81,11 +85,18 @@ type UpdateDLPRequest struct {
 func publicDLPFromStorage(stored *DLPConfig, invalidTokenIDs map[string]struct{}) PublicDLPConfig {
 	public := PublicDLPConfig{
 		Scanners:          []string{},
+		GroupIDs:          []int64{},
 		Endpoints:         []PublicDLPEndpoint{},
 		AvailableScanners: dlpScannerDefinitionList(),
 	}
 	if stored == nil {
+		// 未配置过 DLP 时给「全部分组」作为表单默认，与 upstream 新建配置的默认一致。
+		public.AllGroups = true
 		return public
+	}
+	public.AllGroups = stored.AllGroups
+	if len(stored.GroupIDs) > 0 {
+		public.GroupIDs = append(public.GroupIDs, stored.GroupIDs...)
 	}
 	public.Enabled = stored.Enabled
 	public.ConfirmEnabled = stored.ConfirmEnabled
@@ -148,8 +159,11 @@ func dlpStorageFromUpdate(
 		CacheSensitiveTTLHours: req.CacheSensitiveTTLHours,
 		CacheBenignTTLHours:    req.CacheBenignTTLHours,
 		BlockOnHighSeverity:    req.BlockOnHighSeverity,
-		Scanners:               normalizeDLPScanners(req.Scanners),
-		Endpoints:              make([]StorageEndpoint, 0, len(req.Endpoints)),
+		AllGroups:              req.AllGroups,
+		// 落库即排序去重，让 ActiveDLPConfig.IncludesGroup 的二分查找有序前提成立。
+		GroupIDs:  sortedUniqueGroupIDs(req.GroupIDs),
+		Scanners:  normalizeDLPScanners(req.Scanners),
+		Endpoints: make([]StorageEndpoint, 0, len(req.Endpoints)),
 	}
 	currentByID := map[string]StorageEndpoint{}
 	if current != nil {

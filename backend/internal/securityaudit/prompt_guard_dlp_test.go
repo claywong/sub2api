@@ -138,7 +138,7 @@ func TestDLPGuardCleanTextSkipsConfirmNetwork(t *testing.T) {
 	scanner := &dlpStubScanner{}
 	evaluator := newDLPTestEvaluator(scanner, &dlpNoopRepo{})
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("帮我写一个快速排序的 Python 实现"))
 
@@ -155,7 +155,7 @@ func TestDLPGuardRegexExcludedSkipsConfirmNetwork(t *testing.T) {
 	confirmServer, confirmCalls := newDLPConfirmStub(t, true, http.StatusOK)
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot(`api_key = "your-api-key-here"`))
 
@@ -173,7 +173,7 @@ func TestDLPGuardDisabledSkipsEverything(t *testing.T) {
 	cfg := dlpTestConfig(confirmServer.URL, true)
 	cfg.DLP.Enabled = false
 
-	decision := evaluator.evaluateDLP(context.Background(), cfg,
+	decision := evaluator.EvaluateDLP(context.Background(), cfg,
 		dlpSnapshot("身份证 110101199003072316"))
 
 	if decision != nil {
@@ -191,7 +191,7 @@ func TestDLPGuardBlocksConfirmedHighSeverity(t *testing.T) {
 	repo := &dlpNoopRepo{}
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, repo)
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
@@ -223,7 +223,7 @@ func TestDLPGuardMediumSeverityFlagsOnly(t *testing.T) {
 	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusOK)
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("联系电话 13704251983 请回电"))
 
@@ -242,7 +242,7 @@ func TestDLPGuardBlockSwitchOff(t *testing.T) {
 	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusOK)
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, false), // BlockOnHighSeverity=false
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
@@ -260,7 +260,7 @@ func TestDLPGuardFalsePositiveAllows(t *testing.T) {
 	repo := &dlpNoopRepo{}
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, repo)
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
@@ -282,7 +282,7 @@ func TestDLPGuardConfirmFailureFailsOpen(t *testing.T) {
 	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusInternalServerError)
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
@@ -297,7 +297,7 @@ func TestDLPGuardNoConfirmEndpointFailsOpen(t *testing.T) {
 	cfg := dlpTestConfig("", true)
 	cfg.DLP.ConfirmEnabled = true // 无 endpoint
 
-	decision := evaluator.evaluateDLP(context.Background(), cfg,
+	decision := evaluator.EvaluateDLP(context.Background(), cfg,
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
 	if decision != nil {
@@ -311,7 +311,7 @@ func TestDLPGuardConfirmDisabledTrustsRegex(t *testing.T) {
 	cfg := dlpTestConfig("", true)
 	cfg.DLP.ConfirmEnabled = false
 
-	decision := evaluator.evaluateDLP(context.Background(), cfg,
+	decision := evaluator.EvaluateDLP(context.Background(), cfg,
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
 	if decision == nil {
@@ -324,41 +324,36 @@ func TestDLPGuardConfirmDisabledTrustsRegex(t *testing.T) {
 
 // ---------- 与 qwen3guard 的关系 ----------
 
-func TestDLPGuardBlockShortCircuitsQwen3Guard(t *testing.T) {
-	// DLP 拦截后不应再调 qwen3guard，省一次模型调用。
+func TestDLPGuardBlocksOnConfirmedSensitiveData(t *testing.T) {
+	// EvaluateDLP 自身的职责：确认为敏感的高危命中要给出拦截决策。
+	// 「拦截后不再调 qwen3guard」的短路语义已上移到 Coordinator 层，
+	// 由 TestCoordinatorDLPBlockShortCircuitsPromptEngine 覆盖。
 	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusOK)
-	scanner := &dlpStubScanner{}
-	evaluator := newDLPTestEvaluator(scanner, &dlpNoopRepo{})
+	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	decision, err := evaluator.Evaluate(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("身份证号 110101199003072316 已核验"))
 
-	if err != nil {
-		t.Fatalf("Evaluate 返回错误: %v", err)
-	}
 	if decision == nil || decision.Kind != DecisionBlock {
-		t.Fatalf("应由 DLP 直接拦截，实际 %+v", decision)
+		t.Fatalf("应由 DLP 拦截，实际 %+v", decision)
 	}
-	if got := atomic.LoadInt32(&scanner.calls); got != 0 {
-		t.Errorf("qwen3guard 调用次数 = %d, 期望 0（DLP 拦截应短路）", got)
+	if decision.ErrorCode != ErrorCodeDLPBlocked {
+		t.Errorf("错误码 = %q, 期望 %q", decision.ErrorCode, ErrorCodeDLPBlocked)
 	}
 }
 
-func TestDLPGuardCleanTextFallsThroughToQwen3Guard(t *testing.T) {
-	// DLP 放行后必须继续走 qwen3guard，不能吞掉内容安全审计。
-	scanner := &dlpStubScanner{}
-	evaluator := newDLPTestEvaluator(scanner, &dlpNoopRepo{})
+func TestDLPGuardCleanTextReturnsNilSoUpstreamContinues(t *testing.T) {
+	// DLP 未命中必须返回 nil，让请求继续走 upstream 的内容安全流程，
+	// 不能吞掉 qwen3guard。
+	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	_, err := evaluator.Evaluate(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig("", true),
 		dlpSnapshot("帮我写一个快速排序"))
 
-	if err != nil {
-		t.Fatalf("Evaluate 返回错误: %v", err)
-	}
-	if got := atomic.LoadInt32(&scanner.calls); got == 0 {
-		t.Error("DLP 放行后应继续调用 qwen3guard")
+	if decision != nil {
+		t.Errorf("正则未命中应返回 nil，实际 %+v", decision)
 	}
 }
 
@@ -434,7 +429,7 @@ func TestDLPGuardEvidenceExcludesPlaintext(t *testing.T) {
 	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusOK)
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
 
-	decision := evaluator.evaluateDLP(context.Background(),
+	decision := evaluator.EvaluateDLP(context.Background(),
 		dlpTestConfig(confirmServer.URL, true),
 		dlpSnapshot("身份证号 "+secret+" 已核验"))
 

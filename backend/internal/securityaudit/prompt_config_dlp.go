@@ -17,6 +17,7 @@
 package securityaudit
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -59,6 +60,16 @@ type DLPConfig struct {
 	// BlockOnHighSeverity 控制 high/critical 命中是否拦截请求。
 	// medium 命中（JWT、手机号）按 detection-rules.md 恒为仅审计，不受此开关影响。
 	BlockOnHighSeverity bool `json:"block_on_high_severity,omitempty"`
+	// AllGroups / GroupIDs 是 DLP 自己的生效范围，与 qwen3guard 的分组设置独立。
+	//
+	// 必须独立：DLP 与内容安全是两类检测，管理员完全可能只想对部分分组查敏感信息，
+	// 却对全部分组做内容安全（或反之）。共用一份分组会让两者互相牵连。
+	//
+	// 语义与 upstream 的 AllGroups/GroupIDs 一致。注意零值 false 表示"仅指定分组"
+	// 且列表为空，即不对任何分组生效——这是 Enabled=false 时的安全默认；一旦
+	// Enabled=true，ValidateDLPConfig 会要求必须给出范围。
+	AllGroups bool    `json:"all_groups,omitempty"`
+	GroupIDs  []int64 `json:"group_ids,omitempty"`
 }
 
 // ActiveDLPConfig 是运行时视图，token 已解密、endpoint 已归一化。
@@ -72,6 +83,47 @@ type ActiveDLPConfig struct {
 	CacheSensitiveTTL   time.Duration
 	CacheBenignTTL      time.Duration
 	BlockOnHighSeverity bool
+	AllGroups           bool
+	GroupIDs            []int64
+}
+
+// IncludesGroup 判断某分组是否在 DLP 的生效范围内。
+//
+// 语义与 upstream 的 ActiveConfig.IncludesGroup 完全一致（含 GroupIDs 已排序的
+// 前提，二分查找），但读的是 DLP 自己的分组字段。
+func (cfg ActiveDLPConfig) IncludesGroup(groupID *int64) bool {
+	if cfg.AllGroups {
+		return true
+	}
+	if groupID == nil {
+		return false
+	}
+	index := sort.Search(len(cfg.GroupIDs), func(i int) bool { return cfg.GroupIDs[i] >= *groupID })
+	return index < len(cfg.GroupIDs) && cfg.GroupIDs[index] == *groupID
+}
+
+// Clone 深拷贝运行时视图，避免多个配置 snapshot 共享 slice 底层数组。
+//
+// ActiveDLPConfig 是值类型，但内部两个 slice 在浅拷贝后仍共享底层数组。
+// ConfigManager 的 snapshot 会被并发读取，共享会让调用方的修改污染 snapshot。
+func (cfg ActiveDLPConfig) Clone() ActiveDLPConfig {
+	cfg.Scanners = append([]string(nil), cfg.Scanners...)
+	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
+	cfg.Endpoints = append([]ActiveEndpoint(nil), cfg.Endpoints...)
+	return cfg
+}
+
+// Clone 深拷贝持久化配置。storageConfig 里 DLP 是指针，浅拷贝会让新旧 snapshot
+// 共享同一个结构，buildNextStorage 原地改动就会改到已发布的旧配置。
+func (cfg *DLPConfig) Clone() *DLPConfig {
+	if cfg == nil {
+		return nil
+	}
+	copied := *cfg
+	copied.Scanners = append([]string(nil), cfg.Scanners...)
+	copied.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
+	copied.Endpoints = append([]StorageEndpoint(nil), cfg.Endpoints...)
+	return &copied
 }
 
 // EnabledEndpoints 返回可用于运行时的确认节点。
@@ -137,6 +189,17 @@ func (cfg DLPConfig) ToActiveDLPConfig(decryptToken func(string) (string, error)
 		ConfirmTimeout:      time.Duration(cfg.ConfirmTimeoutMS) * time.Millisecond,
 		CacheSensitiveTTL:   time.Duration(cfg.CacheSensitiveTTLHours) * time.Hour,
 		CacheBenignTTL:      time.Duration(cfg.CacheBenignTTLHours) * time.Hour,
+		AllGroups:           cfg.AllGroups,
+		// IncludesGroup 用二分查找，这里必须保证有序。持久化层已排序去重，
+		// 这里再排一次是为了容忍手工改过的配置行。
+		GroupIDs: sortedUniqueGroupIDs(cfg.GroupIDs),
+	}
+	// 向后兼容：分组字段是后加的，早先存下的 DLP 配置里没有 all_groups，
+	// 反序列化后是 false + 空列表，照新语义会变成"不对任何分组生效"，
+	// DLP 静默停摆。这类组合已被 ValidateDLPConfig 拒绝，能出现只可能是旧配置，
+	// 因此一律按"全部分组"解释，保住升级前的既有行为。
+	if active.Enabled && !active.AllGroups && len(active.GroupIDs) == 0 {
+		active.AllGroups = true
 	}
 	if active.ConfirmTimeout <= 0 {
 		active.ConfirmTimeout = DefaultTimeoutMS * time.Millisecond
@@ -195,6 +258,27 @@ func activeDLPFromStorage(stored *DLPConfig, encryptor SecretEncryptor) ActiveDL
 	return stored.ToActiveDLPConfig(decrypt)
 }
 
+// sortedUniqueGroupIDs 排序去重分组 ID，并丢掉非法的非正数 ID。
+func sortedUniqueGroupIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	result := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
 // ValidateDLPConfig 校验管理员提交的 DLP 配置。
 func ValidateDLPConfig(cfg DLPConfig) error {
 	if !cfg.Enabled {
@@ -205,6 +289,12 @@ func ValidateDLPConfig(cfg DLPConfig) error {
 		if !IsDLPScanner(scanner) {
 			return infraerrors.BadRequest("dlp_invalid_scanner", "DLP 检测器无效")
 		}
+	}
+	// 启用却没有任何生效范围时，DLP 会静默不工作。这类"开了但没效果"的配置
+	// 必须在保存时就拒掉，否则管理员只能靠观察日志才发现。
+	if !cfg.AllGroups && len(sortedUniqueGroupIDs(cfg.GroupIDs)) == 0 {
+		return infraerrors.BadRequest("dlp_group_scope_required",
+			"启用 DLP 检测时需选择全部分组或至少一个指定分组")
 	}
 	if cfg.ConfirmTimeoutMS != 0 &&
 		(cfg.ConfirmTimeoutMS < MinDLPConfirmTimeoutMS || cfg.ConfirmTimeoutMS > MaxDLPConfirmTimeoutMS) {

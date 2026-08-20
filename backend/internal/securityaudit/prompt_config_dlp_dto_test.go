@@ -25,6 +25,7 @@ func (e dlpFakeEncryptor) KeyConfigured() bool { return e.keyConfigured }
 func dlpUpdateRequest() *UpdateDLPRequest {
 	return &UpdateDLPRequest{
 		Enabled: true, ConfirmEnabled: true, BlockOnHighSeverity: true,
+		AllGroups:        true,
 		Scanners:         []string{DLPScannerPII, DLPScannerCredential},
 		ConfirmTimeoutMS: 5000,
 		Endpoints: []UpdateDLPEndpoint{{

@@ -366,7 +366,7 @@ func TestDLPConfigEffectiveScanners(t *testing.T) {
 func TestDLPConfigValidation(t *testing.T) {
 	base := func() DLPConfig {
 		return DLPConfig{
-			Enabled: true, ConfirmEnabled: true,
+			Enabled: true, ConfirmEnabled: true, AllGroups: true,
 			Endpoints: []StorageEndpoint{
 				{ID: "e1", BaseURL: "https://api.example.com", Model: DefaultDLPConfirmModel, Enabled: true},
 			},
@@ -374,6 +374,20 @@ func TestDLPConfigValidation(t *testing.T) {
 	}
 	if err := ValidateDLPConfig(base()); err != nil {
 		t.Fatalf("合法配置应校验通过: %v", err)
+	}
+
+	// 启用却没有任何生效范围时 DLP 会静默不工作，必须在保存时就拒掉。
+	noScope := base()
+	noScope.AllGroups = false
+	if err := ValidateDLPConfig(noScope); err == nil {
+		t.Error("启用 DLP 但未指定任何分组范围时应报错")
+	}
+
+	scopedToGroups := base()
+	scopedToGroups.AllGroups = false
+	scopedToGroups.GroupIDs = []int64{7}
+	if err := ValidateDLPConfig(scopedToGroups); err != nil {
+		t.Errorf("指定分组的配置应校验通过: %v", err)
 	}
 
 	noEndpoint := base()

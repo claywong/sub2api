@@ -39,10 +39,6 @@ func newGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metric
 }
 
 func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapshot PromptSnapshot) (*PromptDecision, error) {
-	// 私有扩展：DLP 前置检测。正则未命中或判定为误报时返回 nil，流程照原样继续。
-	if decision := g.evaluateDLP(ctx, cfg, snapshot); decision != nil {
-		return decision, nil
-	}
 	if g == nil || g.scanner == nil {
 		if g != nil && g.metrics != nil {
 			g.metrics.Observe(DecisionUnavailable, 0)

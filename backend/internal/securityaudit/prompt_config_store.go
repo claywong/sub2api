@@ -507,6 +507,8 @@ func cloneStorageConfig(cfg storageConfig) storageConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	cfg.Endpoints = append([]StorageEndpoint(nil), cfg.Endpoints...)
+	// 私有扩展：DLP 是指针字段，浅拷贝会让新旧 snapshot 共享同一结构。
+	cfg.DLP = cfg.DLP.Clone()
 	return cfg
 }
 
@@ -514,5 +516,7 @@ func cloneActiveConfig(cfg ActiveConfig) ActiveConfig {
 	cfg.Scanners = append([]string(nil), cfg.Scanners...)
 	cfg.GroupIDs = append([]int64(nil), cfg.GroupIDs...)
 	cfg.Endpoints = append([]ActiveEndpoint(nil), cfg.Endpoints...)
+	// 私有扩展：DLP 内部还有 slice，需要一并深拷贝。
+	cfg.DLP = cfg.DLP.Clone()
 	return cfg
 }
