@@ -135,6 +135,8 @@ type Group struct {
 	RpmLimit int `json:"rpm_limit,omitempty"`
 	// 订阅额度耗尽后是否允许自动回退到余额计费模式
 	AllowBalanceFallback bool `json:"allow_balance_fallback,omitempty"`
+	// 开启后 Anthropic 协议直通出站请求归一为账号级统一身份（GLM 等 CN 供应商分组使用）
+	FingerprintNormalizeEnabled bool `json:"fingerprint_normalize_enabled,omitempty"`
 	// 会话级模型锁定保护列表，支持 * 通配符；空表示不启用
 	ProtectedModels []string `json:"protected_models,omitempty"`
 	// per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}
@@ -257,7 +259,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldProtectedModels, group.FieldProtectedModelQuotas, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
-		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldAllowBalanceFallback, group.FieldProfitControlEnabled:
+		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldAllowBalanceFallback, group.FieldFingerprintNormalizeEnabled, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
 		case group.FieldRateMultiplier, group.FieldPeakRateMultiplier, group.FieldDailyLimitUsd, group.FieldWeeklyLimitUsd, group.FieldMonthlyLimitUsd, group.FieldImageRateMultiplier, group.FieldImagePrice1k, group.FieldImagePrice2k, group.FieldImagePrice4k, group.FieldBatchImageDiscountMultiplier, group.FieldBatchImageHoldMultiplier, group.FieldVideoRateMultiplier, group.FieldVideoPrice480p, group.FieldVideoPrice720p, group.FieldVideoPrice1080p, group.FieldWebSearchPricePerCall, group.FieldSearchPricePer1k, group.FieldAudioRealtimePricePerMin, group.FieldAudioTtsPricePerMillionChars, group.FieldAudioSttPricePerHour, group.FieldProfitMinMargin, group.FieldProfitSafetyBuffer:
 			values[i] = new(sql.NullFloat64)
@@ -667,6 +669,12 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.AllowBalanceFallback = value.Bool
 			}
+		case group.FieldFingerprintNormalizeEnabled:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field fingerprint_normalize_enabled", values[i])
+			} else if value.Valid {
+				_m.FingerprintNormalizeEnabled = value.Bool
+			}
 		case group.FieldProtectedModels:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field protected_models", values[i])
@@ -1002,6 +1010,9 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("allow_balance_fallback=")
 	builder.WriteString(fmt.Sprintf("%v", _m.AllowBalanceFallback))
+	builder.WriteString(", ")
+	builder.WriteString("fingerprint_normalize_enabled=")
+	builder.WriteString(fmt.Sprintf("%v", _m.FingerprintNormalizeEnabled))
 	builder.WriteString(", ")
 	builder.WriteString("protected_models=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ProtectedModels))

@@ -63,6 +63,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	body = StripEmptyTextBlocks(body)
 	body = FilterWebSearchHistoryBlocks(body, upstreamModel)
 
+	// 私有扩展：分组开关开启时做出站指纹归一化（companion 实现见
+	// openai_gateway_messages_anthropic_native_fingerprint.go）。
+	if anthropicFingerprintNormalizeEnabled(c) {
+		body = NormalizeNativeAnthropicRequestBody(account, body)
+	}
+
 	logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] account=%d(%s) platform=%s model=%s upstream=%s stream=%v",
 		account.ID, account.Name, account.Platform, originalModel, upstreamModel, clientStream)
 
@@ -180,6 +186,11 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
+
+	// 私有扩展：分组开关开启时做出站 header 归一化（UA 统一、剥 billing header）。
+	if anthropicFingerprintNormalizeEnabled(c) {
+		NormalizeNativeAnthropicRequestHeaders(account, req.Header)
+	}
 
 	return req, body, nil
 }

@@ -116,6 +116,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetPeakEnd(groupIn.PeakEnd).
 		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
 		SetAllowBalanceFallback(groupIn.AllowBalanceFallback).
+		SetFingerprintNormalizeEnabled(groupIn.FingerprintNormalizeEnabled).
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)
@@ -300,6 +301,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetPeakEnd(groupIn.PeakEnd).
 		SetPeakRateMultiplier(groupIn.PeakRateMultiplier).
 		SetAllowBalanceFallback(groupIn.AllowBalanceFallback).
+		SetFingerprintNormalizeEnabled(groupIn.FingerprintNormalizeEnabled).
 		SetProfitControlEnabled(groupIn.ProfitControlEnabled).
 		SetProfitMinMargin(groupIn.ProfitMinMargin).
 		SetProfitSafetyBuffer(groupIn.ProfitSafetyBuffer)

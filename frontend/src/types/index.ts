@@ -642,6 +642,9 @@ export interface AdminGroup extends Group {
   // 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
   allow_balance_fallback?: boolean
 
+  // Anthropic 直通出站指纹归一化开关（私有扩展）
+  fingerprint_normalize_enabled?: boolean
+
   // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议；支持 * 通配符）
   protected_models?: string[]
 }
@@ -826,6 +829,8 @@ export interface CreateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   allow_balance_fallback?: boolean
+  // Anthropic 直通出站指纹归一化开关（私有扩展）
+  fingerprint_normalize_enabled?: boolean
   // 会话级模型锁定保护列表（私有扩展）
   protected_models?: string[]
   // 受保护模型的共享日/周额度配置（私有扩展）；null 表示清空
@@ -893,6 +898,8 @@ export interface UpdateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   allow_balance_fallback?: boolean
+  // Anthropic 直通出站指纹归一化开关（私有扩展）；未传表示不改动
+  fingerprint_normalize_enabled?: boolean
   // 会话级模型锁定保护列表（私有扩展）；空数组表示清空，未传表示不改动
   protected_models?: string[]
   // 受保护模型的共享日/周额度配置（私有扩展）；null 表示清空，未传表示不改动

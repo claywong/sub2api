@@ -974,6 +974,12 @@ export default {
           description: '订阅配额耗尽后，是否允许回退到用户余额继续计费。',
           enabled: '已启用',
           disabled: '已禁用'
+        },
+        fingerprintNormalize: {
+          title: 'Anthropic 指纹归一化',
+          description: '开启后，经 Anthropic 协议直通（GLM 等国产供应商）的出站请求将归一为账号级统一身份（改写 device_id、剥离 billing header、统一 User-Agent），降低多用户共享账号的特征暴露。',
+          enabled: '已启用',
+          disabled: '已禁用'
         }
       },
       sessionModelLock: {

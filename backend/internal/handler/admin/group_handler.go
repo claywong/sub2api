@@ -156,6 +156,9 @@ type CreateGroupRequest struct {
 	RPMLimit int `json:"rpm_limit"`
 	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
 	AllowBalanceFallback bool `json:"allow_balance_fallback"`
+	// Anthropic 直通出站指纹归一化开关（私有扩展）；开启后 CN 供应商
+	// Anthropic 协议直通的出站请求归一为账号级统一身份
+	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	ProtectedModels []string `json:"protected_models"`
 	// 受保护模型的共享日/周额度配置（私有扩展）
@@ -231,6 +234,8 @@ type UpdateGroupRequest struct {
 	RPMLimit *int `json:"rpm_limit"`
 	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动
 	AllowBalanceFallback *bool `json:"allow_balance_fallback"`
+	// Anthropic 直通出站指纹归一化开关（私有扩展）；nil 表示未提供不改动
+	FingerprintNormalizeEnabled *bool `json:"anthropic_fingerprint_normalize_enabled"`
 	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空数组表示清空
 	ProtectedModels *[]string `json:"protected_models"`
 	// 受保护模型的共享日/周额度配置（私有扩展）；nil 表示未提供不改动
@@ -569,6 +574,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
+		FingerprintNormalizeEnabled:     req.FingerprintNormalizeEnabled,
 		ProtectedModels:                 req.ProtectedModels,
 		ProtectedModelQuota:             req.ProtectedModelQuota,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
@@ -701,6 +707,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ModelsListConfig:                req.ModelsListConfig,
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
+		FingerprintNormalizeEnabled:     req.FingerprintNormalizeEnabled,
 		ProtectedModels:                 req.ProtectedModels,
 		ProtectedModelQuota:             req.ProtectedModelQuota,
 		MaxReasoningEffort:              req.MaxReasoningEffort,

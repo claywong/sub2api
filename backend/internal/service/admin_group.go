@@ -507,6 +507,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
 		RPMLimit:                        input.RPMLimit,
 		AllowBalanceFallback:            input.AllowBalanceFallback,
+		FingerprintNormalizeEnabled:     input.FingerprintNormalizeEnabled,
 		ProtectedModels:                 input.ProtectedModels,
 		ProtectedModelQuota:             input.ProtectedModelQuota,
 		MaxReasoningEffort:              maxReasoningEffort,
@@ -880,6 +881,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.AllowBalanceFallback != nil {
 		group.AllowBalanceFallback = *input.AllowBalanceFallback
+	}
+	if input.FingerprintNormalizeEnabled != nil {
+		group.FingerprintNormalizeEnabled = *input.FingerprintNormalizeEnabled
 	}
 	if input.ProtectedModels != nil {
 		group.ProtectedModels = *input.ProtectedModels

@@ -271,6 +271,11 @@ func (Group) Fields() []ent.Field {
 			Default(false).
 			Comment("订阅额度耗尽后是否允许自动回退到余额计费模式"),
 
+		// Anthropic 直通出站指纹归一化开关（私有扩展，added by migration 907）
+		field.Bool("fingerprint_normalize_enabled").
+			Default(false).
+			Comment("开启后 Anthropic 协议直通出站请求归一为账号级统一身份（GLM 等 CN 供应商分组使用）"),
+
 		// 会话级模型锁定保护列表（私有扩展，added by migration 904）
 		field.JSON("protected_models", []string{}).
 			Default([]string{}).

@@ -800,6 +800,39 @@
                 </span>
               </div>
             </div>
+            <!-- Anthropic 指纹归一化开关（私有扩展） -->
+            <div>
+              <label class="input-label">{{ t("admin.groups.subscription.fingerprintNormalize.title") }}</label>
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.subscription.fingerprintNormalize.description") }}
+              </p>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  @click="createForm.fingerprint_normalize_enabled = !createForm.fingerprint_normalize_enabled"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    createForm.fingerprint_normalize_enabled
+                      ? 'bg-primary-500'
+                      : 'bg-gray-300 dark:bg-dark-600',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      createForm.fingerprint_normalize_enabled ? 'translate-x-6' : 'translate-x-1',
+                    ]"
+                  />
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    createForm.fingerprint_normalize_enabled
+                      ? t("admin.groups.subscription.fingerprintNormalize.enabled")
+                      : t("admin.groups.subscription.fingerprintNormalize.disabled")
+                  }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2653,6 +2686,39 @@
                     editForm.allow_balance_fallback
                       ? t("admin.groups.subscription.balanceFallback.enabled")
                       : t("admin.groups.subscription.balanceFallback.disabled")
+                  }}
+                </span>
+              </div>
+            </div>
+            <!-- Anthropic 指纹归一化开关（私有扩展） -->
+            <div>
+              <label class="input-label">{{ t("admin.groups.subscription.fingerprintNormalize.title") }}</label>
+              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+                {{ t("admin.groups.subscription.fingerprintNormalize.description") }}
+              </p>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  @click="editForm.fingerprint_normalize_enabled = !editForm.fingerprint_normalize_enabled"
+                  :class="[
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    editForm.fingerprint_normalize_enabled
+                      ? 'bg-primary-500'
+                      : 'bg-gray-300 dark:bg-dark-600',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                      editForm.fingerprint_normalize_enabled ? 'translate-x-6' : 'translate-x-1',
+                    ]"
+                  />
+                </button>
+                <span class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    editForm.fingerprint_normalize_enabled
+                      ? t("admin.groups.subscription.fingerprintNormalize.enabled")
+                      : t("admin.groups.subscription.fingerprintNormalize.disabled")
                   }}
                 </span>
               </div>
@@ -5357,6 +5423,8 @@ const createForm = reactive({
   rpm_limit: 0 as number,
   // 订阅额度耗尽后是否允许回退到余额计费
   allow_balance_fallback: false,
+  // Anthropic 直通出站指纹归一化开关（私有扩展）
+  fingerprint_normalize_enabled: false,
   // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
   protected_models: [] as string[],
   // 受保护模型的共享日/周额度配置（私有扩展，所有保护模型共用一个额度池）
@@ -5725,6 +5793,8 @@ const editForm = reactive({
   rpm_limit: 0 as number,
   // 订阅额度耗尽后是否允许回退到余额计费
   allow_balance_fallback: false,
+  // Anthropic 直通出站指纹归一化开关（私有扩展）
+  fingerprint_normalize_enabled: false,
   // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
   protected_models: [] as string[],
   // 受保护模型的共享日/周额度配置（私有扩展，所有保护模型共用一个额度池）
@@ -6170,6 +6240,7 @@ const closeCreateModal = () => {
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
   createForm.allow_balance_fallback = false;
+  createForm.fingerprint_normalize_enabled = false;
   createForm.protected_models = [];
   createForm.protected_model_quota = null;
   createForm.max_reasoning_effort = "";
@@ -6479,6 +6550,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.copy_accounts_from_group_ids = []; // 复制账号字段每次编辑时重置为空
   editForm.rpm_limit = group.rpm_limit ?? 0;
   editForm.allow_balance_fallback = group.allow_balance_fallback ?? false;
+  // Anthropic 直通出站指纹归一化开关（私有扩展）
+  editForm.fingerprint_normalize_enabled = group.fingerprint_normalize_enabled ?? false;
   // 会话级模型锁定保护列表（私有扩展）
   editForm.protected_models = [...(group.protected_models ?? [])];
   editForm.protected_model_quota = group.protected_model_quota

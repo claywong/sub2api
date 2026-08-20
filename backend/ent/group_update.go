@@ -1094,6 +1094,20 @@ func (_u *GroupUpdate) SetNillableAllowBalanceFallback(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
+func (_u *GroupUpdate) SetFingerprintNormalizeEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetFingerprintNormalizeEnabled(v)
+	return _u
+}
+
+// SetNillableFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableFingerprintNormalizeEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetFingerprintNormalizeEnabled(*v)
+	}
+	return _u
+}
+
 // SetProtectedModels sets the "protected_models" field.
 func (_u *GroupUpdate) SetProtectedModels(v []string) *GroupUpdate {
 	_u.mutation.SetProtectedModels(v)
@@ -1852,6 +1866,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AllowBalanceFallback(); ok {
 		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.FingerprintNormalizeEnabled(); ok {
+		_spec.SetField(group.FieldFingerprintNormalizeEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ProtectedModels(); ok {
 		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
@@ -3261,6 +3278,20 @@ func (_u *GroupUpdateOne) SetNillableAllowBalanceFallback(v *bool) *GroupUpdateO
 	return _u
 }
 
+// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
+func (_u *GroupUpdateOne) SetFingerprintNormalizeEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetFingerprintNormalizeEnabled(v)
+	return _u
+}
+
+// SetNillableFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableFingerprintNormalizeEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetFingerprintNormalizeEnabled(*v)
+	}
+	return _u
+}
+
 // SetProtectedModels sets the "protected_models" field.
 func (_u *GroupUpdateOne) SetProtectedModels(v []string) *GroupUpdateOne {
 	_u.mutation.SetProtectedModels(v)
@@ -4049,6 +4080,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AllowBalanceFallback(); ok {
 		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.FingerprintNormalizeEnabled(); ok {
+		_spec.SetField(group.FieldFingerprintNormalizeEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ProtectedModels(); ok {
 		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)

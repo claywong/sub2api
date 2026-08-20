@@ -273,6 +273,8 @@ type CreateGroupInput struct {
 	RPMLimit int
 	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
 	AllowBalanceFallback bool
+	// Anthropic 直通出站指纹归一化开关（私有扩展）
+	FingerprintNormalizeEnabled bool
 	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
 	ProtectedModels []string
 	// 受保护模型的共享日/周额度配置（私有扩展）
@@ -354,6 +356,8 @@ type UpdateGroupInput struct {
 	RPMLimit *int
 	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动。
 	AllowBalanceFallback *bool
+	// Anthropic 直通出站指纹归一化开关（私有扩展）；nil 表示未提供不改动
+	FingerprintNormalizeEnabled *bool
 	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空切片表示清空。
 	ProtectedModels *[]string
 	// 受保护模型的共享日/周额度配置（私有扩展）；nil 表示未提供不改动。

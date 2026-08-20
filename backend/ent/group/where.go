@@ -315,6 +315,11 @@ func AllowBalanceFallback(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldAllowBalanceFallback, v))
 }
 
+// FingerprintNormalizeEnabled applies equality check predicate on the "fingerprint_normalize_enabled" field. It's identical to FingerprintNormalizeEnabledEQ.
+func FingerprintNormalizeEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFingerprintNormalizeEnabled, v))
+}
+
 // MaxReasoningEffort applies equality check predicate on the "max_reasoning_effort" field. It's identical to MaxReasoningEffortEQ.
 func MaxReasoningEffort(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffort, v))
@@ -2408,6 +2413,16 @@ func AllowBalanceFallbackEQ(v bool) predicate.Group {
 // AllowBalanceFallbackNEQ applies the NEQ predicate on the "allow_balance_fallback" field.
 func AllowBalanceFallbackNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldAllowBalanceFallback, v))
+}
+
+// FingerprintNormalizeEnabledEQ applies the EQ predicate on the "fingerprint_normalize_enabled" field.
+func FingerprintNormalizeEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldFingerprintNormalizeEnabled, v))
+}
+
+// FingerprintNormalizeEnabledNEQ applies the NEQ predicate on the "fingerprint_normalize_enabled" field.
+func FingerprintNormalizeEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldFingerprintNormalizeEnabled, v))
 }
 
 // MaxReasoningEffortEQ applies the EQ predicate on the "max_reasoning_effort" field.

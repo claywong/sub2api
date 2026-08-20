@@ -222,6 +222,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldProtectedModels,
 				group.FieldProtectedModelQuotas,
 				group.FieldAllowBalanceFallback,
+				group.FieldFingerprintNormalizeEnabled,
 				// 分组利润控制：认证快照是调度门 enable 判定的直接来源，
 				// 漏选会让门静默失效；新增快照分组字段时必须同步本投影，
 				// 集成测试对账兜底。
@@ -1021,6 +1022,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		PeakEnd:                         g.PeakEnd,
 		PeakRateMultiplier:              g.PeakRateMultiplier,
 		AllowBalanceFallback:            g.AllowBalanceFallback,
+		FingerprintNormalizeEnabled:     g.FingerprintNormalizeEnabled,
 		ProtectedModels:                 g.ProtectedModels,
 		ProtectedModelQuota:             fromRawQuota(g.ProtectedModelQuotas),
 		ProfitControlEnabled:            g.ProfitControlEnabled,

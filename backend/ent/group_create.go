@@ -802,6 +802,20 @@ func (_c *GroupCreate) SetNillableAllowBalanceFallback(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
+func (_c *GroupCreate) SetFingerprintNormalizeEnabled(v bool) *GroupCreate {
+	_c.mutation.SetFingerprintNormalizeEnabled(v)
+	return _c
+}
+
+// SetNillableFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableFingerprintNormalizeEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetFingerprintNormalizeEnabled(*v)
+	}
+	return _c
+}
+
 // SetProtectedModels sets the "protected_models" field.
 func (_c *GroupCreate) SetProtectedModels(v []string) *GroupCreate {
 	_c.mutation.SetProtectedModels(v)
@@ -1149,6 +1163,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowBalanceFallback
 		_c.mutation.SetAllowBalanceFallback(v)
 	}
+	if _, ok := _c.mutation.FingerprintNormalizeEnabled(); !ok {
+		v := group.DefaultFingerprintNormalizeEnabled
+		_c.mutation.SetFingerprintNormalizeEnabled(v)
+	}
 	if _, ok := _c.mutation.ProtectedModels(); !ok {
 		v := group.DefaultProtectedModels
 		_c.mutation.SetProtectedModels(v)
@@ -1349,6 +1367,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.AllowBalanceFallback(); !ok {
 		return &ValidationError{Name: "allow_balance_fallback", err: errors.New(`ent: missing required field "Group.allow_balance_fallback"`)}
+	}
+	if _, ok := _c.mutation.FingerprintNormalizeEnabled(); !ok {
+		return &ValidationError{Name: "fingerprint_normalize_enabled", err: errors.New(`ent: missing required field "Group.fingerprint_normalize_enabled"`)}
 	}
 	if _, ok := _c.mutation.ProtectedModels(); !ok {
 		return &ValidationError{Name: "protected_models", err: errors.New(`ent: missing required field "Group.protected_models"`)}
@@ -1634,6 +1655,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowBalanceFallback(); ok {
 		_spec.SetField(group.FieldAllowBalanceFallback, field.TypeBool, value)
 		_node.AllowBalanceFallback = value
+	}
+	if value, ok := _c.mutation.FingerprintNormalizeEnabled(); ok {
+		_spec.SetField(group.FieldFingerprintNormalizeEnabled, field.TypeBool, value)
+		_node.FingerprintNormalizeEnabled = value
 	}
 	if value, ok := _c.mutation.ProtectedModels(); ok {
 		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
@@ -2764,6 +2789,18 @@ func (u *GroupUpsert) SetAllowBalanceFallback(v bool) *GroupUpsert {
 // UpdateAllowBalanceFallback sets the "allow_balance_fallback" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowBalanceFallback() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowBalanceFallback)
+	return u
+}
+
+// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
+func (u *GroupUpsert) SetFingerprintNormalizeEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldFingerprintNormalizeEnabled, v)
+	return u
+}
+
+// UpdateFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateFingerprintNormalizeEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldFingerprintNormalizeEnabled)
 	return u
 }
 
@@ -4014,6 +4051,20 @@ func (u *GroupUpsertOne) SetAllowBalanceFallback(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowBalanceFallback() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBalanceFallback()
+	})
+}
+
+// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
+func (u *GroupUpsertOne) SetFingerprintNormalizeEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFingerprintNormalizeEnabled(v)
+	})
+}
+
+// UpdateFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateFingerprintNormalizeEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFingerprintNormalizeEnabled()
 	})
 }
 
@@ -5446,6 +5497,20 @@ func (u *GroupUpsertBulk) SetAllowBalanceFallback(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateAllowBalanceFallback() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBalanceFallback()
+	})
+}
+
+// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
+func (u *GroupUpsertBulk) SetFingerprintNormalizeEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFingerprintNormalizeEnabled(v)
+	})
+}
+
+// UpdateFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateFingerprintNormalizeEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFingerprintNormalizeEnabled()
 	})
 }
 

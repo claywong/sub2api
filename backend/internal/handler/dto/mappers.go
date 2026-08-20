@@ -162,6 +162,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
 		SortOrder:                   g.SortOrder,
 		AllowBalanceFallback:        g.AllowBalanceFallback,
+		FingerprintNormalizeEnabled: g.FingerprintNormalizeEnabled,
 		ProtectedModels:             g.ProtectedModels,
 	}
 	if len(g.AccountGroups) > 0 {

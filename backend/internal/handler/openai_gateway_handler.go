@@ -1179,6 +1179,9 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		// 应用渠道模型映射到请求体
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
+		// 私有扩展：注入分组级 Anthropic 直通指纹归一化开关（companion 实现见
+		// openai_gateway_messages_anthropic_native_fingerprint.go）
+		service.SetAnthropicFingerprintNormalize(c, apiKey.Group != nil && apiKey.Group.FingerprintNormalizeEnabled)
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {
 				if accountReleaseFunc != nil {

@@ -132,6 +132,8 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// FieldAllowBalanceFallback holds the string denoting the allow_balance_fallback field in the database.
 	FieldAllowBalanceFallback = "allow_balance_fallback"
+	// FieldFingerprintNormalizeEnabled holds the string denoting the fingerprint_normalize_enabled field in the database.
+	FieldFingerprintNormalizeEnabled = "fingerprint_normalize_enabled"
 	// FieldProtectedModels holds the string denoting the protected_models field in the database.
 	FieldProtectedModels = "protected_models"
 	// FieldProtectedModelQuotas holds the string denoting the protected_model_quotas field in the database.
@@ -279,6 +281,7 @@ var Columns = []string{
 	FieldModelsListConfig,
 	FieldRpmLimit,
 	FieldAllowBalanceFallback,
+	FieldFingerprintNormalizeEnabled,
 	FieldProtectedModels,
 	FieldProtectedModelQuotas,
 	FieldMaxReasoningEffort,
@@ -411,6 +414,8 @@ var (
 	DefaultRpmLimit int
 	// DefaultAllowBalanceFallback holds the default value on creation for the "allow_balance_fallback" field.
 	DefaultAllowBalanceFallback bool
+	// DefaultFingerprintNormalizeEnabled holds the default value on creation for the "fingerprint_normalize_enabled" field.
+	DefaultFingerprintNormalizeEnabled bool
 	// DefaultProtectedModels holds the default value on creation for the "protected_models" field.
 	DefaultProtectedModels []string
 	// DefaultProtectedModelQuotas holds the default value on creation for the "protected_model_quotas" field.
@@ -695,6 +700,11 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowBalanceFallback orders the results by the allow_balance_fallback field.
 func ByAllowBalanceFallback(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowBalanceFallback, opts...).ToFunc()
+}
+
+// ByFingerprintNormalizeEnabled orders the results by the fingerprint_normalize_enabled field.
+func ByFingerprintNormalizeEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFingerprintNormalizeEnabled, opts...).ToFunc()
 }
 
 // ByMaxReasoningEffort orders the results by the max_reasoning_effort field.

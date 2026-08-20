@@ -977,6 +977,12 @@ export default {
           description: 'Allow billing to fall back to the user balance once the subscription quota is exhausted.',
           enabled: 'Enabled',
           disabled: 'Disabled'
+        },
+        fingerprintNormalize: {
+          title: 'Anthropic Fingerprint Normalize',
+          description: 'When enabled, outbound requests via the native Anthropic passthrough (GLM and other CN providers) are normalized to a per-account canonical identity (rewrite device_id, strip billing header, unify User-Agent) to reduce account-sharing signals.',
+          enabled: 'Enabled',
+          disabled: 'Disabled'
         }
       },
       sessionModelLock: {
