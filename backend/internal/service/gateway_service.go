@@ -619,6 +619,9 @@ type ForwardResult struct {
 	FirstTokenMs                  *int // 首字时间（流式请求）
 	ClientDisconnect              bool // 客户端是否在流式传输过程中断开
 	ReasoningEffort               *string
+	// ServiceTier records the billable request tier. OpenAI uses service_tier;
+	// Anthropic speed=fast is normalized to "fast".
+	ServiceTier *string
 
 	// 连接阶段性能指标（由 httptrace 采集；连接复用时 TCPConnMs=0）
 	TCPConnMs int // TCP 连接建立时间（ms）；utls 路径下含 TLS 握手
