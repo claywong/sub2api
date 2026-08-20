@@ -100,29 +100,62 @@
     </div>
 
     <!--
-      保存栏只放保存/重置：DLP 的启用开关与处置阈值都在 DlpPanel 内部，
-      不再像 prompt-audit 页面那样把 qwen3guard 的顶层开关摆在这里。
+      保存栏承载 DLP 自己的四个顶层开关，与 prompt-audit 页面的布局对齐：
+      它们是全局性的一句话开关，滚到页面底部也能改，不必回到面板里找。
+      注意这里全是 DLP 字段，与 qwen3guard 的同名开关无关。
     -->
     <div
       v-if="draft && activeTab === 'config'"
       class="fixed inset-x-0 bottom-0 z-30 border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur dark:border-dark-700/80 dark:bg-dark-900/95 dark:shadow-[0_-12px_35px_rgba(0,0,0,0.35)] lg:left-64"
     >
-      <div class="mx-auto flex max-w-[1600px] flex-wrap items-center justify-end gap-3">
-        <span class="text-sm" :class="dirty ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'">
-          {{ dirty ? t('admin.dlp.saveBar.dirty') : t('admin.dlp.saveBar.synced') }}
-        </span>
-        <button type="button" class="btn btn-secondary" :disabled="!dirty || loading.saving" @click="resetDraft">
-          {{ t('common.reset') }}
-        </button>
-        <button
-          type="button"
-          class="btn btn-primary"
-          :disabled="!dirty || loading.saving"
-          data-test="save-config"
-          @click="saveConfig"
-        >
-          {{ loading.saving ? t('common.saving') : t('common.save') }}
-        </button>
+      <div class="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <SaveToggle
+            :label="t('admin.dlp.enabled')"
+            :model-value="draft.dlp.enabled"
+            data-test="dlp-enabled-toggle"
+            @update:model-value="patchDlp({ enabled: $event })"
+          />
+          <SaveToggle
+            :label="t('admin.dlp.blockOnHigh')"
+            :model-value="draft.dlp.block_on_high_severity"
+            :disabled="!draft.dlp.enabled"
+            data-test="dlp-block-high-toggle"
+            @update:model-value="patchDlp({ block_on_high_severity: $event })"
+          />
+          <SaveToggle
+            :label="t('admin.dlp.confirmEnabled')"
+            :model-value="draft.dlp.confirm_enabled"
+            :disabled="!draft.dlp.enabled"
+            data-test="dlp-confirm-toggle"
+            @update:model-value="patchDlp({ confirm_enabled: $event })"
+          />
+          <!-- 缓存的是二次确认的结论，确认关掉时没有结论可缓存。 -->
+          <SaveToggle
+            :label="t('admin.dlp.cacheEnabled')"
+            :model-value="draft.dlp.cache_enabled"
+            :disabled="!draft.dlp.enabled || !draft.dlp.confirm_enabled"
+            data-test="dlp-cache-toggle"
+            @update:model-value="patchDlp({ cache_enabled: $event })"
+          />
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-sm" :class="dirty ? 'text-amber-700 dark:text-amber-300' : 'text-gray-500 dark:text-dark-400'">
+            {{ dirty ? t('admin.dlp.saveBar.dirty') : t('admin.dlp.saveBar.synced') }}
+          </span>
+          <button type="button" class="btn btn-secondary" :disabled="!dirty || loading.saving" @click="resetDraft">
+            {{ t('common.reset') }}
+          </button>
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="!dirty || loading.saving"
+            data-test="save-config"
+            @click="saveConfig"
+          >
+            {{ loading.saving ? t('common.saving') : t('common.save') }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -170,6 +203,7 @@ import type {
 } from '@/features/prompt-audit/types'
 import { cloneData, emptyEventFilters } from '@/features/prompt-audit/viewModel'
 import DlpPanel from './components/DlpPanel.vue'
+import SaveToggle from './components/SaveToggle.vue'
 import dlpAPI from './api'
 import type { DlpDraft, DlpLoadErrors, DlpPageDraft } from './types'
 import { buildConfigUpdateRequest, dlpDraftFingerprint, responseToPageDraft } from './viewModel'
@@ -267,6 +301,12 @@ async function loadInitial() {
 function replaceDlpDraft(value: DlpDraft) {
   if (!draft.value) return
   draft.value = { ...draft.value, dlp: cloneData(value) }
+}
+
+// patchDlp 供保存栏的开关使用：只改 dlp 子树的若干字段，其余原样保留。
+function patchDlp(value: Partial<DlpDraft>) {
+  if (!draft.value) return
+  replaceDlpDraft({ ...draft.value.dlp, ...value })
 }
 
 function resetDraft() {

@@ -11,27 +11,24 @@
   ============================================================================
 -->
 <template>
-  <section aria-labelledby="dlp-policy-title" class="border-t border-gray-100 py-6 dark:border-dark-800">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h2 id="dlp-policy-title" class="text-base font-semibold text-gray-950 dark:text-white">
-          {{ t('admin.dlp.title') }}
-        </h2>
-        <p class="mt-1 text-sm text-gray-500 dark:text-dark-300">{{ t('admin.dlp.description') }}</p>
-      </div>
-      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-200">
-        <input
-          type="checkbox"
-          :checked="dlp.enabled"
-          data-test="dlp-enabled"
-          :aria-label="t('admin.dlp.enabled')"
-          @change="patch({ enabled: ($event.target as HTMLInputElement).checked })"
-        />
-        <span>{{ t('admin.dlp.enabled') }}</span>
-      </label>
-    </div>
+  <section :aria-label="t('admin.dlp.title')" class="py-6">
+    <!--
+      启用开关移到了底部保存栏（与 qwen3guard 页面一致），所以关掉时不再隐藏整个面板：
+      隐藏会让管理员无法在启用前先配好节点与规则，只能"先开着扫再来调"。
+    -->
+    <p
+      v-if="!dlp.enabled"
+      role="status"
+      data-test="dlp-disabled-notice"
+      class="rounded-lg bg-gray-100 px-4 py-3 text-sm text-gray-600 dark:bg-dark-900/50 dark:text-dark-300"
+    >
+      {{ t('admin.dlp.disabledNotice') }}
+    </p>
 
-    <div v-if="dlp.enabled" class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.5fr)]">
+    <div
+      class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.5fr)]"
+      :class="{ 'mt-5': !dlp.enabled }"
+    >
       <div class="space-y-5 rounded-xl border border-gray-200 p-4 dark:border-dark-700/60 dark:bg-dark-900/20 sm:p-5">
         <fieldset>
           <legend class="text-sm font-medium text-gray-900 dark:text-white">
@@ -223,48 +220,26 @@
           </div>
         </fieldset>
 
-        <fieldset class="border-t border-gray-100 pt-5 dark:border-dark-800">
-          <legend class="text-sm font-medium text-gray-900 dark:text-white">
+        <!--
+          开关本身在保存栏，这里只留说明：哪几条算高危需要配合下面的规则表看，
+          规则行右侧的「会拦 / 仅记录」已经实时反映了开关与严重度的组合结果。
+        -->
+        <div class="border-t border-gray-100 pt-5 dark:border-dark-800">
+          <h3 class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('admin.dlp.disposition') }}
-          </legend>
-          <label class="mt-3 flex items-start gap-2 text-sm text-gray-700 dark:text-dark-200">
-            <input
-              type="checkbox"
-              class="mt-1"
-              :checked="dlp.block_on_high_severity"
-              data-test="dlp-block-high"
-              :aria-label="t('admin.dlp.blockOnHigh')"
-              @change="patch({ block_on_high_severity: ($event.target as HTMLInputElement).checked })"
-            />
-            <span>
-              {{ t('admin.dlp.blockOnHigh') }}
-              <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
-                {{ t('admin.dlp.blockOnHighHint') }}
-              </span>
-            </span>
-          </label>
-        </fieldset>
+          </h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400" data-test="dlp-block-high-hint">
+            {{ t('admin.dlp.blockOnHighHint') }}
+          </p>
+        </div>
 
         <fieldset class="border-t border-gray-100 pt-5 dark:border-dark-800">
           <legend class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('admin.dlp.confirm') }}
           </legend>
-          <label class="mt-3 flex items-start gap-2 text-sm text-gray-700 dark:text-dark-200">
-            <input
-              type="checkbox"
-              class="mt-1"
-              :checked="dlp.confirm_enabled"
-              data-test="dlp-confirm-enabled"
-              :aria-label="t('admin.dlp.confirmEnabled')"
-              @change="patch({ confirm_enabled: ($event.target as HTMLInputElement).checked })"
-            />
-            <span>
-              {{ t('admin.dlp.confirmEnabled') }}
-              <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
-                {{ t('admin.dlp.confirmEnabledHint') }}
-              </span>
-            </span>
-          </label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('admin.dlp.confirmEnabledHint') }}
+          </p>
 
           <div v-if="dlp.confirm_enabled" class="mt-4 space-y-3">
             <label class="block text-sm text-gray-700 dark:text-dark-200">
@@ -289,23 +264,10 @@
           <legend class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('admin.dlp.cache') }}
           </legend>
-          <label class="mt-3 flex items-start gap-2 text-sm text-gray-700 dark:text-dark-200">
-            <input
-              type="checkbox"
-              class="mt-1"
-              :checked="dlp.cache_enabled"
-              data-test="dlp-cache-enabled"
-              :aria-label="t('admin.dlp.cacheEnabled')"
-              @change="patch({ cache_enabled: ($event.target as HTMLInputElement).checked })"
-            />
-            <span>
-              {{ t('admin.dlp.cacheEnabled') }}
-              <span class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400">
-                {{ t('admin.dlp.cacheEnabledHint') }}
-              </span>
-            </span>
-          </label>
-          <div v-if="dlp.cache_enabled" class="mt-4 grid gap-3 sm:grid-cols-2">
+          <p class="mt-1 text-xs text-gray-500 dark:text-dark-400">
+            {{ t('admin.dlp.cacheEnabledHint') }}
+          </p>
+          <div v-if="dlp.cache_enabled && dlp.confirm_enabled" class="mt-4 grid gap-3 sm:grid-cols-2">
             <label class="block text-sm text-gray-700 dark:text-dark-200">
               <span>{{ t('admin.dlp.cacheSensitiveTtl') }}</span>
               <input

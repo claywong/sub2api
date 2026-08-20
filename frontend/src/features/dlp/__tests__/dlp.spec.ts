@@ -388,19 +388,42 @@ describe('rule severity and toggles', () => {
 })
 
 describe('DlpPanel', () => {
-  it('hides the configuration body while DLP is disabled', () => {
+  it('stays editable while DLP is disabled, with a notice explaining why', () => {
+    // 关掉时藏起整个面板的话，管理员就没法在启用前先配好节点和规则。
     const wrapper = mountPanel({ ...dlpConfig(), enabled: false })
-    expect(wrapper.find('[data-test="dlp-enabled"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="dlp-confirm-enabled"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="dlp-disabled-notice"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="dlp-scanner-dlp_pii"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="dlp-add-endpoint"]').exists()).toBe(true)
   })
 
-  it('renders every detector plus disposition and cache controls', () => {
+  it('does not show the disabled notice while DLP is on', () => {
+    const wrapper = mountPanel(dlpConfig())
+    expect(wrapper.find('[data-test="dlp-disabled-notice"]').exists()).toBe(false)
+  })
+
+  it('renders every detector plus the disposition explanation', () => {
     const wrapper = mountPanel(dlpConfig())
     for (const scanner of DLP_SCANNER_CATALOG) {
       expect(wrapper.text()).toContain(`admin.dlp.detectorLabels.${scanner.id}`)
     }
-    expect(wrapper.find('[data-test="dlp-block-high"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="dlp-cache-enabled"]').exists()).toBe(true)
+    // 开关本身在保存栏，面板只负责解释「哪条算高危」这件事。
+    expect(wrapper.find('[data-test="dlp-block-high-hint"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('admin.dlp.cacheSensitiveTtl')
+  })
+
+  it('leaves the four top-level switches to the save bar', () => {
+    // 与 qwen3guard 页面对齐：顶层开关只在底部保存栏出现一次，
+    // 面板里再放一份会出现两个真值来源。
+    const wrapper = mountPanel(dlpConfig())
+    for (const id of ['dlp-enabled', 'dlp-block-high', 'dlp-confirm-enabled', 'dlp-cache-enabled']) {
+      expect(wrapper.find(`[data-test="${id}"]`).exists()).toBe(false)
+    }
+  })
+
+  it('hides the cache TTLs when confirmation is off', () => {
+    // 缓存存的是二次确认的结论，确认关掉后这两个时长没有意义。
+    const wrapper = mountPanel({ ...dlpConfig(), confirm_enabled: false })
+    expect(wrapper.text()).not.toContain('admin.dlp.cacheSensitiveTtl')
   })
 
   it('lists each rule with its severity selector', () => {
@@ -574,14 +597,6 @@ describe('DlpPanel', () => {
     expect((tokenInput.element as HTMLInputElement).value).toBe('')
   })
 
-  it('emits an updated draft when toggling the master switch', async () => {
-    const wrapper = mountPanel(dlpConfig())
-    await wrapper.find('[data-test="dlp-enabled"]').setValue(false)
-    const emitted = wrapper.emitted('update:draft')
-    expect(emitted).toBeTruthy()
-    expect((emitted?.[0]?.[0] as { enabled: boolean }).enabled).toBe(false)
-  })
-
   it('adds a confirmation endpoint on demand', async () => {
     const wrapper = mountPanel({ ...dlpConfig(), endpoints: [] })
     await wrapper.find('[data-test="dlp-add-endpoint"]').trigger('click')
@@ -609,7 +624,7 @@ describe('DLP i18n coverage', () => {
 
   it('covers every key referenced by the panel', () => {
     const required = [
-      'title', 'description', 'enabled', 'detectors', 'detectorsHint',
+      'title', 'description', 'enabled', 'disabledNotice', 'detectors', 'detectorsHint',
       'disposition', 'blockOnHigh', 'blockOnHighHint',
       'scope', 'scopeHint', 'allGroups', 'selectedGroups', 'searchGroups', 'noGroups',
       'missingGroups', 'selectedCount', 'scopeEmptyWarning',

@@ -37,6 +37,8 @@ export default {
     },
 
     enabled: 'Enable DLP detection',
+    disabledNotice:
+      'DLP is currently off. You can set everything up here first, but nothing takes effect until "Enable DLP detection" in the bottom bar is switched on.',
     detectors: 'Detectors',
     detectorsHint:
       'Leaving every detector unchecked means all of them are enabled. Expand a detector to adjust each rule\'s severity, or switch off a single noisy rule.',

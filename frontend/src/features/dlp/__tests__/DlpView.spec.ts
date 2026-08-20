@@ -177,6 +177,73 @@ describe('DlpView', () => {
     expect(wrapper.find('[data-test="store-pass-toggle"]').exists()).toBe(false)
   })
 
+  it('puts the four DLP switches in the save bar', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+
+    for (const id of ['dlp-enabled-toggle', 'dlp-block-high-toggle', 'dlp-confirm-toggle', 'dlp-cache-toggle']) {
+      expect(wrapper.get(`[data-test="${id}"]`).attributes('role')).toBe('switch')
+    }
+  })
+
+  it('greys out the dependent switches when DLP is off', async () => {
+    // 关掉 DLP 后另外三个开关都不起作用，可点会让人以为改了有效。
+    mocks.getConfig.mockResolvedValue({ ...baseConfig(), dlp: { ...dlpConfig(), enabled: false } })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+
+    expect(wrapper.get('[data-test="dlp-enabled-toggle"]').attributes()).not.toHaveProperty('disabled')
+    for (const id of ['dlp-block-high-toggle', 'dlp-confirm-toggle', 'dlp-cache-toggle']) {
+      expect(wrapper.get(`[data-test="${id}"]`).attributes()).toHaveProperty('disabled')
+    }
+  })
+
+  it('greys out the cache switch when confirmation is off', async () => {
+    // 缓存的是二次确认的结论，确认关着就没有结论可缓存。
+    mocks.getConfig.mockResolvedValue({ ...baseConfig(), dlp: { ...dlpConfig(), confirm_enabled: false } })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+
+    expect(wrapper.get('[data-test="dlp-confirm-toggle"]').attributes()).not.toHaveProperty('disabled')
+    expect(wrapper.get('[data-test="dlp-cache-toggle"]').attributes()).toHaveProperty('disabled')
+  })
+
+  it('saves a switch flipped in the save bar', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+    await wrapper.get('[data-test="dlp-enabled-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('admin.dlp.saveBar.dirty')
+    await wrapper.get('[data-test="save-config"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      // guard 的 enabled 必须保持原样：这里改的是 dlp.enabled。
+      enabled: true,
+      dlp: expect.objectContaining({ enabled: false }),
+    }))
+  })
+
+  it('leaves the other DLP fields untouched when one switch is flipped', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+    await wrapper.get('[data-test="dlp-confirm-toggle"]').trigger('click')
+    await wrapper.get('[data-test="save-config"]').trigger('click')
+    await flushPromises()
+
+    const payload = mocks.updateConfig.mock.calls[0][0]
+    expect(payload.dlp.confirm_enabled).toBe(false)
+    expect(payload.dlp.block_on_high_severity).toBe(true)
+    expect(payload.dlp.scanners).toEqual(['dlp_pii'])
+    expect(payload.dlp.rules).toHaveLength(2)
+    expect(payload.dlp.endpoints).toHaveLength(1)
+  })
+
   it('carries the qwen3guard config back untouched when saving', async () => {
     const wrapper = mountView()
     await flushPromises()

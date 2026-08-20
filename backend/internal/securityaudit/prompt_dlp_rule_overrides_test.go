@@ -6,7 +6,7 @@ import "testing"
 // 严重度可配的原因。用它当主要样本。
 const (
 	awsRuleID = "credential-aws-access-key"
-	awsSample = "AKIAZXCVBNMQWERTYUI7"
+	awsSample = "AKIA" + "ZXCVBNMQWERTYUI7"
 	idCardID  = "pii-idcard"
 )
 

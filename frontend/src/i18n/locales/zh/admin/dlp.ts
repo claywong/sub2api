@@ -36,6 +36,7 @@ export default {
     },
 
     enabled: '启用 DLP 检测',
+    disabledNotice: 'DLP 当前未启用，下面的配置可以先调好，保存后要打开底部的「启用 DLP 检测」才会生效。',
     detectors: '检测器',
     detectorsHint:
       '未勾选任何检测器时视为全部启用。展开后可逐条调整规则的严重度，或单独关掉误报多的规则。',
