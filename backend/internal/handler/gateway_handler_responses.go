@@ -171,6 +171,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if requestCtx.Err() != nil {
 			return
 		}
+		// 私有扩展：failover attempt 标记，见 account_failover_sticky.go
+		requestCtx = service.WithFailoverAttempt(requestCtx, fs.SwitchCount > 0)
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(requestCtx, apiKey.GroupID, sessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {

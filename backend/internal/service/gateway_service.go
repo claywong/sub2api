@@ -971,11 +971,27 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 // behavior unless a profit gate is installed. Profit-controlled requests bind
 // only after the terminal post-slot check, otherwise a rejected candidate could
 // overwrite a healthy pre-existing sticky binding.
-func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+//
+// 私有扩展：形参为 account *Account（而非 accountID int64），以便在此判定
+// 「救火号」开关。签名刻意收紧，使全部调用点由编译器强制同步，
+// 详见 account_failover_sticky.go。
+func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, account *Account) error {
+	if account == nil {
+		return nil
+	}
 	if gatewayProfitControlGateActive(ctx) {
 		return nil
 	}
-	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
+	// 私有扩展：救火号被 failover 重试选中时不接管粘性会话，保留原绑定。
+	if skipStickyBindForFailover(ctx, account) {
+		slog.Info("sticky.skip_bind_failover_account",
+			"account_id", account.ID,
+			"group_id", derefGroupID(groupID),
+			"session", shortSessionHash(sessionHash),
+		)
+		return nil
+	}
+	return s.BindStickySession(ctx, groupID, sessionHash, account.ID)
 }
 
 // BindStickySessionAfterProfitAdmission records a terminally admitted
@@ -986,6 +1002,18 @@ func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Con
 // account rate recovers.
 func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+	}
+	// 私有扩展：救火号被 failover 重试选中时不接管粘性会话。此处只有 accountID，
+	// 需回查账号才能读开关；仅在已标记 failover 的 attempt 上回查，正常路径零开销。
+	// 见 account_failover_sticky.go。
+	if FailoverAttemptFromContext(ctx) && s.skipStickyBindForFailoverByID(ctx, accountID) {
+		slog.Info("sticky.skip_bind_failover_account",
+			"account_id", accountID,
+			"group_id", derefGroupID(groupID),
+			"session", shortSessionHash(sessionHash),
+			"path", "profit_admission",
+		)
 		return nil
 	}
 	if !gatewayProfitControlGateActive(ctx) {

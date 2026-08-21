@@ -2309,6 +2309,33 @@
         </template>
       </div>
 
+      <!-- Failover No Sticky (救火账号) -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between">
+          <div class="pr-4">
+            <label class="input-label mb-0">{{ t('admin.accounts.failoverNoSticky.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.failoverNoSticky.hint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="failoverNoSticky = !failoverNoSticky"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              failoverNoSticky ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                failoverNoSticky ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -4298,6 +4325,9 @@ const vertexProjectId = ref('')
 const vertexClientEmail = ref('')
 const vertexLocation = ref('global')
 const vertexServiceAccountDragActive = ref(false)
+// 私有扩展：救火账号开关（failover 重试命中后不接管粘性会话）
+const failoverNoSticky = ref(false)
+
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
@@ -4954,6 +4984,16 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   return true
 }
 
+// 私有扩展：救火账号开关。关闭时删除键而非写 false，保持 credentials 稀疏，
+// 与后端「键不存在即未开启」的读取语义一致。
+const applyFailoverNoStickyConfig = (credentials: Record<string, unknown>) => {
+  if (!failoverNoSticky.value) {
+    delete credentials.failover_no_sticky
+    return
+  }
+  credentials.failover_no_sticky = true
+}
+
 const splitTempUnschedKeywords = (value: string) => {
   return value
     .split(/[,;]/)
@@ -5169,6 +5209,7 @@ const resetForm = () => {
   vertexLocation.value = 'global'
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
+  failoverNoSticky.value = false
   geminiOAuthType.value = 'code_assist'
   geminiTierGoogleOne.value = 'google_one_free'
   geminiTierGcp.value = 'gcp_standard'
@@ -5619,6 +5660,7 @@ const handleSubmit = async () => {
   }
 
   applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
@@ -5688,6 +5730,7 @@ const createAccountAndFinish = async (
   credentials: Record<string, unknown>,
   extra?: Record<string, unknown>
 ) => {
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
@@ -5814,6 +5857,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
         if (modelMapping) {
           credentials.model_mapping = modelMapping
         }
+        applyFailoverNoStickyConfig(credentials)
         if (!applyTempUnschedConfig(credentials)) {
           return
         }
@@ -5881,6 +5925,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     grokOAuth.loading.value = false
     return
@@ -5991,6 +6036,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
         if (modelMapping) {
           credentials.model_mapping = modelMapping
         }
+        applyFailoverNoStickyConfig(credentials)
         if (!applyTempUnschedConfig(credentials)) {
           return
         }
@@ -6089,6 +6135,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     // 应用临时不可调度配置
+    applyFailoverNoStickyConfig(credentials)
     if (!applyTempUnschedConfig(credentials)) {
       return
     }
@@ -6141,6 +6188,7 @@ const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | nul
     credentials.compact_model_mapping = compactModelMapping
   }
 
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     return null
   }
@@ -6850,6 +6898,7 @@ const handleCookieAuth = async (sessionKey: string) => {
 
         const credentials: Record<string, unknown> = { ...tokenInfo }
         applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+        applyFailoverNoStickyConfig(credentials)
         if (tempUnschedEnabled.value) {
           credentials.temp_unschedulable_enabled = true
           credentials.temp_unschedulable_rules = tempUnschedPayload
