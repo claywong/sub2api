@@ -179,8 +179,11 @@ func TestDLPPassEventKeepsSensitiveHitsUnchanged(t *testing.T) {
 
 // ---------- 明文不落库 ----------
 
-func TestDLPPassEventEvidenceExcludesPlaintext(t *testing.T) {
-	// 这类事件量大且长期留存，写明文等于把敏感数据又落一份盘。
+// TestDLPPassEventEvidenceIncludesPlaintext 固化放行事件的证据同样含命中明文。
+//
+// 放行事件是分诊误报的主要素材——正是这类事件需要人工确认「判为误报对不对」，
+// 没有明文就无从判断。与拦截路径保持一致的策略，理由见 buildDLPEvidence 注释。
+func TestDLPPassEventEvidenceIncludesPlaintext(t *testing.T) {
 	const idCard = "110101199003072316"
 	confirmServer, _ := newDLPConfirmStub(t, false, http.StatusOK)
 	repo := &dlpCapturingRepo{}
@@ -193,9 +196,15 @@ func TestDLPPassEventEvidenceExcludesPlaintext(t *testing.T) {
 	if result == nil {
 		t.Fatal("应写入事件")
 	}
+	if len(result.ScannerEvidence) == 0 {
+		t.Fatal("证据不应为空")
+	}
 	for scannerID, evidence := range result.ScannerEvidence {
-		if strings.Contains(evidence, idCard) {
-			t.Errorf("检测器 %s 的证据里出现了命中明文: %q", scannerID, evidence)
+		if !strings.Contains(evidence, idCard) {
+			t.Errorf("检测器 %s 的证据缺少命中明文: %q", scannerID, evidence)
+		}
+		if strings.Contains(evidence, "***PHONE***") {
+			t.Errorf("检测器 %s 的证据里偏移量被脱敏: %q", scannerID, evidence)
 		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -426,7 +427,12 @@ func TestDLPClientMessageExcludesMatchedContent(t *testing.T) {
 
 // ---------- 证据脱敏 ----------
 
-func TestDLPGuardEvidenceExcludesPlaintext(t *testing.T) {
+// TestDLPGuardEvidenceIncludesPlaintext 固化「证据必须含命中明文」。
+//
+// 这条断言与早期的 TestDLPGuardEvidenceExcludesPlaintext 完全相反，是刻意的策略
+// 反转：脱敏后的证据只剩规则名，管理员无法判断误报，而 Broad 规则的误报率不低。
+// 明文不构成新暴露面——同一份原文本来就以 full_prompt 明文落在同一张表里。
+func TestDLPGuardEvidenceIncludesPlaintext(t *testing.T) {
 	const secret = "110101199003072316"
 	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusOK)
 	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
@@ -438,9 +444,45 @@ func TestDLPGuardEvidenceExcludesPlaintext(t *testing.T) {
 	if decision == nil || decision.Result == nil {
 		t.Fatal("应产出拦截决策")
 	}
+	if len(decision.Result.ScannerEvidence) == 0 {
+		t.Fatal("证据不应为空")
+	}
 	for scannerID, evidence := range decision.Result.ScannerEvidence {
-		if contains(evidence, secret) {
-			t.Errorf("scanner %s 的证据包含敏感明文：%q", scannerID, evidence)
+		if !contains(evidence, secret) {
+			t.Errorf("scanner %s 的证据缺少命中明文：%q", scannerID, evidence)
+		}
+		// 偏移量必须完整保留。曾经的 bug 是整条证据过 RedactPreview，
+		// 五位以上的偏移量被 phonePattern 吃成 ***PHONE***。
+		if contains(evidence, "***PHONE***") {
+			t.Errorf("scanner %s 的证据里偏移量被脱敏：%q", scannerID, evidence)
+		}
+		if !contains(evidence, "位置 ") {
+			t.Errorf("scanner %s 的证据缺少位置信息：%q", scannerID, evidence)
+		}
+		if !contains(evidence, "上下文 ") {
+			t.Errorf("scanner %s 的证据缺少上下文窗口：%q", scannerID, evidence)
+		}
+	}
+}
+
+// TestDLPEvidenceOffsetSurvivesLongPrompt 回归：长 prompt 下偏移量是五位以上数字，
+// 早期实现会被 phonePattern 整段吞掉，这是 8 条线上事件全部丢失定位信息的根因。
+func TestDLPEvidenceOffsetSurvivesLongPrompt(t *testing.T) {
+	const secret = "110101199003072316"
+	padding := strings.Repeat("代码上下文填充。", 3000)
+	confirmServer, _ := newDLPConfirmStub(t, true, http.StatusOK)
+	evaluator := newDLPTestEvaluator(&dlpStubScanner{}, &dlpNoopRepo{})
+
+	decision := evaluator.EvaluateDLP(context.Background(),
+		dlpTestConfig(confirmServer.URL, true),
+		dlpSnapshot(padding+"身份证号 "+secret+" 已核验"))
+
+	if decision == nil || decision.Result == nil {
+		t.Fatal("应产出拦截决策")
+	}
+	for scannerID, evidence := range decision.Result.ScannerEvidence {
+		if contains(evidence, "***PHONE***") {
+			t.Errorf("scanner %s 的长 prompt 证据里偏移量被脱敏：%q", scannerID, evidence)
 		}
 	}
 }
