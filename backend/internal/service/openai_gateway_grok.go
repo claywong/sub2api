@@ -901,7 +901,7 @@ func stripExplicitNullsFromGrokInput(value any) (any, bool) {
 				}
 				continue
 			}
-			if isOpenAICompactionType(stringValue(itemMap["type"])) {
+			if isOpenAICompactionType(grokStringValue(itemMap["type"])) {
 				continue
 			}
 			next, childChanged := stripExplicitNullsFromJSONObject(itemMap)
@@ -912,7 +912,7 @@ func stripExplicitNullsFromGrokInput(value any) (any, bool) {
 		}
 		return node, changed
 	case map[string]any:
-		if isOpenAICompactionType(stringValue(node["type"])) {
+		if isOpenAICompactionType(grokStringValue(node["type"])) {
 			return node, false
 		}
 		return stripExplicitNullsFromJSONObject(node)
