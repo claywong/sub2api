@@ -1290,6 +1290,19 @@ func (a *Account) IsOpenAIOAuth() bool {
 	return a.IsOpenAI() && a.Type == AccountTypeOAuth
 }
 
+// IsOpenAIOAuthLike reports OpenAI credentials that use the ChatGPT/Codex
+// inference protocol. Setup tokens share that forwarding contract but do not
+// participate in the refreshable OAuth credential lifecycle.
+func (a *Account) IsOpenAIOAuthLike() bool {
+	return a != nil && a.IsOpenAI() && (a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken)
+}
+
+// UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
+// accounts whose platform is implicit, while adding OpenAI SetupToken.
+func (a *Account) UsesOpenAICodexProtocol() bool {
+	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike())
+}
+
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
 	if !a.IsOpenAIOAuth() {
 		return false
@@ -1678,14 +1691,14 @@ func (a *Account) GetOpenAIUserAgent() string {
 }
 
 func (a *Account) GetChatGPTAccountID() string {
-	if !a.IsOpenAIOAuth() {
+	if !a.IsOpenAIOAuthLike() {
 		return ""
 	}
 	return a.GetCredential("chatgpt_account_id")
 }
 
 func (a *Account) IsChatGPTAccountFedRAMP() bool {
-	if !a.IsOpenAIOAuth() || a.Credentials == nil {
+	if !a.IsOpenAIOAuthLike() || a.Credentials == nil {
 		return false
 	}
 	v, ok := a.Credentials["chatgpt_account_is_fedramp"]
@@ -1897,7 +1910,7 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	}
 	switch capability {
 	case OpenAIImagesCapabilityBasic, OpenAIImagesCapabilityNative:
-		return a.Type == AccountTypeOAuth || a.Type == AccountTypeAPIKey
+		return a.Type == AccountTypeOAuth || a.Type == AccountTypeSetupToken || a.Type == AccountTypeAPIKey
 	default:
 		return true
 	}
@@ -2000,7 +2013,7 @@ func (a *Account) IsOpenAIResponsesWebSocketV2Enabled() bool {
 	if a == nil || !a.IsOpenAI() || a.Extra == nil {
 		return false
 	}
-	if a.IsOpenAIOAuth() {
+	if a.IsOpenAIOAuthLike() {
 		if enabled, ok := a.Extra["openai_oauth_responses_websockets_v2_enabled"].(bool); ok {
 			return enabled
 		}
@@ -2103,7 +2116,7 @@ func (a *Account) ResolveOpenAIResponsesWebSocketV2Mode(defaultMode string) stri
 		return OpenAIWSIngressModeOff, true
 	}
 
-	if a.IsOpenAIOAuth() {
+	if a.IsOpenAIOAuthLike() {
 		if mode, ok := resolveModeString("openai_oauth_responses_websockets_v2_mode"); ok {
 			return mode
 		}

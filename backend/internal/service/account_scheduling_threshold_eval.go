@@ -215,8 +215,7 @@ func firstStringValue(values map[string]any, keys ...string) string {
 				return v
 			}
 		default:
-			// fork 将 upstream 的单参 stringValue 改名为 grokStringValue，避开私有的双参同名函数。
-			if v := strings.TrimSpace(grokStringValue(raw)); v != "" {
+			if v := strings.TrimSpace(stringValue(raw)); v != "" {
 				return v
 			}
 		}
