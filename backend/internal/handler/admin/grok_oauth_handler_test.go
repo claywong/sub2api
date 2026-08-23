@@ -94,6 +94,7 @@ func (u *grokQuotaHandlerUpstream) DoWithTLS(
 	accountID int64,
 	accountConcurrency int,
 	_ *tlsfingerprint.Profile,
+	_ time.Duration,
 ) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }

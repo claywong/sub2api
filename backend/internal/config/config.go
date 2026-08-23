@@ -2788,6 +2788,9 @@ func setEnvReachableDefaults() {
 	viper.SetDefault("dingtalk_connect.sync_corp_email", false)
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_key", "")
 	viper.SetDefault("dingtalk_connect.sync_corp_email_attr_name", "")
+
+	// 私有扩展：fork 私有配置项的零值默认，见 config_private_defaults.go
+	setPrivateEnvReachableDefaults()
 }
 
 func (c *Config) Validate() error {

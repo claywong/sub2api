@@ -400,7 +400,12 @@ func TestSkippedErrorPolicyFailoverError(t *testing.T) {
 		expectFailover    bool
 		expectSameAccount bool
 	}{
-		{"pool_500_failover_no_same_account_retry", poolAccount(nil), 500, true, false},
+		// 私有扩展行为差异：fork 的 defaultPoolModeRetryableStatusCodes 是
+		// {401,403,429,500,502,520}（upstream 为 {401,403,429}），500 先同账号重试，
+		// 耗尽后再交由私有的上游错误阈值计数处理临时不可调度。
+		// 该默认值曾在 merge upstream 时被回退过一次（见 commit e2b0ea01c），
+		// 由 account_pool_retry_status_codes_test.go 锁定，勿改回 false。
+		{"pool_500_failover_with_same_account_retry", poolAccount(nil), 500, true, true},
 		{"pool_429_failover_with_same_account_retry", poolAccount(nil), 429, true, true},
 		{"pool_custom_retry_codes_500", poolAccount(map[string]any{
 			"pool_mode_retry_status_codes": []any{float64(500)},

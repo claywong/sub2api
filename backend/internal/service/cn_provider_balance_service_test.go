@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
@@ -35,6 +36,7 @@ func (u *cnBalanceResponseUpstream) DoWithTLS(
 	accountID int64,
 	accountConcurrency int,
 	_ *tlsfingerprint.Profile,
+	_ time.Duration,
 ) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
