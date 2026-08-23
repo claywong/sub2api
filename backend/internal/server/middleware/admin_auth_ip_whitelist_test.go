@@ -46,7 +46,7 @@ func buildAdminIPRouter(t *testing.T, whitelist []string, trustForwardedIP bool)
 
 	settingRepo := fakeSettingRepo{
 		values: map[string]string{
-			service.SettingKeyAdminAPIKey:           testAdminKey,
+			service.SettingKeyAdminAPIKey:            testAdminKey,
 			service.SettingKeyAdminAPIKeyIPWhitelist: whitelistJSON,
 		},
 	}
@@ -59,7 +59,7 @@ func buildAdminIPRouter(t *testing.T, whitelist []string, trustForwardedIP bool)
 
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, userService, settingService, cfg)))
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, userService, settingService, cfg, nil)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -80,7 +80,7 @@ func TestAdminAPIKeyIPWhitelistAllowsWhenNotConfigured(t *testing.T) {
 
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, userService, settingService, &config.Config{})))
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, userService, settingService, &config.Config{}, nil)))
 	router.GET("/t", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 
 	w := httptest.NewRecorder()
@@ -204,10 +204,10 @@ func TestAdminAPIKeyIPWhitelistDoesNotAffectJWTAuth(t *testing.T) {
 
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, settingService, cfg)))
+	router.Use(gin.HandlerFunc(NewAdminAuthMiddleware(authService, userService, settingService, cfg, nil)))
 	router.GET("/t", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true}) })
 
-	token, err := authService.GenerateToken(admin)
+	token, err := authService.GenerateToken(context.Background(), admin)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()

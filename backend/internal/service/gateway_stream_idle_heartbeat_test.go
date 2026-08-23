@@ -223,7 +223,7 @@ func TestNativeAnthropicStreaming_BlankLineHeartbeatDoesNotDeferIdleTimeout(t *t
 
 	result, err := svc.handleNativeAnthropicStreamingResponse(
 		context.Background(), resp, c, &Account{ID: 5},
-		"claude-opus-5", "claude-opus-5", "claude-opus-5", time.Now())
+		"claude-opus-5", "claude-opus-5", "claude-opus-5", nil, time.Now())
 	close(stop)
 	_ = pw.Close()
 	_ = pr.Close()
@@ -266,7 +266,7 @@ func TestNativeAnthropicStreaming_PingDataEventDefersIdleTimeout(t *testing.T) {
 
 	result, err := svc.handleNativeAnthropicStreamingResponse(
 		context.Background(), resp, c, &Account{ID: 6},
-		"claude-opus-5", "claude-opus-5", "claude-opus-5", time.Now())
+		"claude-opus-5", "claude-opus-5", "claude-opus-5", nil, time.Now())
 	_ = pr.Close()
 
 	require.NoError(t, err, "带负载的 ping 应续命，不应误判为空闲超时")

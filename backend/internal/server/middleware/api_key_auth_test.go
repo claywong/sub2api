@@ -37,7 +37,7 @@ func TestAPIKeyAuthRejectsOversizedCredentialsBeforeLookup(t *testing.T) {
 		{"Authorization": strings.Repeat("x", maxAPIKeyAuthorizationHeaderBytes+1)},
 	} {
 		r := gin.New()
-		r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+		r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, nil, cfg)))
 		r.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/t", nil)
@@ -662,7 +662,7 @@ func TestAPIKeyAuthMarksOnlyExpectedIngressRejections(t *testing.T) {
 				c.Next()
 				reason, rejected = GetIngressRejectReason(c)
 			})
-			router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+			router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, nil, cfg)))
 			router.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 			w := httptest.NewRecorder()
@@ -959,7 +959,7 @@ func TestAPIKeyAuthIPRestrictionIncludesClientIPForBlacklistDenial(t *testing.T)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies(nil))
-	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, nil, cfg)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
@@ -1059,7 +1059,7 @@ func TestAPIKeyAuthIPRestrictionUsesForwardedClientIPInDenialWhenTrusted(t *test
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, nil, nil, nil, nil, nil, cfg)
 	router := gin.New()
 	require.NoError(t, router.SetTrustedProxies([]string{"9.9.9.9"}))
-	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, cfg)))
+	router.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(apiKeyService, nil, nil, cfg)))
 	router.GET("/t", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})

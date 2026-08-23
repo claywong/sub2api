@@ -74,7 +74,7 @@ func TestBalanceFallbackOnSubscriptionQuotaExceeded(t *testing.T) {
 				return &clone, nil
 			},
 			updateStatus:   func(ctx context.Context, id int64, status string) error { return nil },
-			activateWindow: func(ctx context.Context, id int64, start time.Time) error { return nil },
+			activateWindow: func(ctx context.Context, id int64, dailyStart, periodicStart time.Time) error { return nil },
 			resetDaily:     func(ctx context.Context, id int64, start time.Time) error { return nil },
 			resetWeekly:    func(ctx context.Context, id int64, start time.Time) error { return nil },
 			resetMonthly:   func(ctx context.Context, id int64, start time.Time) error { return nil },
@@ -227,9 +227,21 @@ func TestWindowResetBypassesRedisFallbackCheck(t *testing.T) {
 
 	makeSubRepo := func(sub *service.UserSubscription) *stubUserSubscriptionRepo {
 		return &stubUserSubscriptionRepo{
-			getActive:      func(_ context.Context, _, _ int64) (*service.UserSubscription, error) { clone := *sub; return &clone, nil },
+			getActive: func(_ context.Context, _, _ int64) (*service.UserSubscription, error) {
+				clone := *sub
+				return &clone, nil
+			},
+			// EnsureWindowMaintenance 完成窗口推进后会绕过缓存回读 DB 快照，
+			// 这里返回"窗口已推进、日用量归零"的状态，对应真实 DB 在 CheckAndResetWindows 之后的结果。
+			getByID: func(_ context.Context, _ int64) (*service.UserSubscription, error) {
+				clone := *sub
+				resetStart := time.Now()
+				clone.DailyWindowStart = &resetStart
+				clone.DailyUsageUSD = 0
+				return &clone, nil
+			},
 			updateStatus:   func(_ context.Context, _ int64, _ string) error { return nil },
-			activateWindow: func(_ context.Context, _ int64, _ time.Time) error { return nil },
+			activateWindow: func(_ context.Context, _ int64, _ time.Time, _ time.Time) error { return nil },
 			resetDaily:     func(_ context.Context, _ int64, _ time.Time) error { return nil },
 			resetWeekly:    func(_ context.Context, _ int64, _ time.Time) error { return nil },
 			resetMonthly:   func(_ context.Context, _ int64, _ time.Time) error { return nil },

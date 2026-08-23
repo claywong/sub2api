@@ -198,7 +198,7 @@ func mergeRule(base config.MetricCooldownRule, raw any) config.MetricCooldownRul
 	if v, ok := boolValue(m, "enabled"); ok {
 		base.Enabled = v
 	}
-	if v, ok := stringValue(m, "op"); ok && (v == ">" || v == "<") {
+	if v, ok := mapStringValue(m, "op"); ok && (v == ">" || v == "<") {
 		base.Op = v
 	}
 	if v, ok := floatValue(m, "threshold"); ok {
@@ -248,7 +248,9 @@ func floatValue(m map[string]any, key string) (float64, bool) {
 	return 0, false
 }
 
-func stringValue(m map[string]any, key string) (string, bool) {
+// mapStringValue 从 map 中取字符串字段。
+// 命名带 map 前缀以避开 upstream grok 相关文件里的单参 stringValue（避免 rename upstream 函数）。
+func mapStringValue(m map[string]any, key string) (string, bool) {
 	v, ok := m[key]
 	if !ok {
 		return "", false
