@@ -170,6 +170,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
+		// 私有扩展：failover attempt 标记，见 account_failover_sticky.go
+		c.Request = c.Request.WithContext(service.WithFailoverAttempt(c.Request.Context(), fs.SwitchCount > 0))
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {

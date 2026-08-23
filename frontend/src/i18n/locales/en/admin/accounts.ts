@@ -343,6 +343,10 @@ export default {
           normal: 'Quota normal'
         },
       },
+      failoverNoSticky: {
+        title: 'Standby account (no session takeover)',
+        hint: 'When this account is picked by a failover retry, it will not take over the sticky session even if the request succeeds. The session stays bound to the original account and returns to it once it recovers. Selection on the first attempt still binds normally.'
+      },
       tempUnschedulable: {
         title: 'Temp Unschedulable',
         statusTitle: 'Temp Unschedulable Status',

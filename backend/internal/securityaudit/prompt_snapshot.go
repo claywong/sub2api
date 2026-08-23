@@ -27,6 +27,10 @@ type promptSegment struct {
 	text string
 	user bool
 	role string
+	// toolInput 标记该片段来自工具「入参」而非工具「输出」。两者原先都打
+	// role="tool"，无法区分；DLP 的收窄范围只要工具输出，故需要这个标记。
+	// 私有扩展字段，仅 prompt_snapshot_dlpscope.go 消费。
+	toolInput bool
 }
 
 func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {
@@ -160,7 +164,7 @@ func extractMessages(value any, wantedRoles ...string) []promptSegment {
 		// 若沿用 content 的 assistant 角色，后置的工具调用会被收窄逻辑丢弃。
 		// 实现见 prompt_snapshot_toolresult.go。
 		for _, text := range messageToolArgumentTexts(message) {
-			result = append(result, promptSegment{text: text, role: "tool"})
+			result = append(result, promptSegment{text: text, role: "tool", toolInput: true})
 		}
 	}
 	return result
@@ -219,7 +223,7 @@ func extractResponses(value any) []promptSegment {
 				}
 				if texts := responsesFunctionCallTexts(entry); len(texts) > 0 {
 					for _, text := range texts {
-						result = append(result, promptSegment{text: text, role: "tool"})
+						result = append(result, promptSegment{text: text, role: "tool", toolInput: true})
 					}
 					continue
 				}
@@ -285,7 +289,7 @@ func extractGemini(value any) []promptSegment {
 					result = append(result, promptSegment{text: text, role: "tool"})
 				}
 				for _, text := range geminiFunctionCallTexts(object) {
-					result = append(result, promptSegment{text: text, role: "tool"})
+					result = append(result, promptSegment{text: text, role: "tool", toolInput: true})
 				}
 			}
 		}

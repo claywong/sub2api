@@ -331,6 +331,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 
 		for {
+			// 私有扩展：failover attempt 标记，见 account_failover_sticky.go
+			c.Request = c.Request.WithContext(service.WithFailoverAttempt(c.Request.Context(), fs.SwitchCount > 0))
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
@@ -638,12 +640,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				return
 			}
 
+			// 私有扩展：标记本次 attempt 是否由 failover 重试触发，供调度层判定
+			// 救火号是否接管粘性。必须在选号之前写入，见 account_failover_sticky.go。
+			// 用 fs.SwitchCount 而非 len(fs.FailedAccountIDs)：503 退避分支会清空
+			// FailedAccountIDs 但不重置 SwitchCount。
+			c.Request = c.Request.WithContext(service.WithFailoverAttempt(c.Request.Context(), fs.SwitchCount > 0))
+
 			// 选择支持该模型的账号
 			reqLog.Info("sticky.selecting_account",
 				zap.String("session_key", sessionKey),
 				zap.Int64("sticky_bound_account_id", sessionBoundAccountID),
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
+				zap.Int("switch_count", fs.SwitchCount),
 			)
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
@@ -1083,8 +1092,16 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// - 选中账号与粘性账号一致：刷新 TTL
 			// - 粘性账号因负载/RPM 被跳过、选中了其他账号：不覆盖原绑定，
 			//   下次请求粘性账号恢复后仍可命中
+			//
+			// 私有扩展：救火号（credentials.failover_no_sticky）被 failover 重试
+			// 选中时，即使成功也不接管粘性会话，见 account_failover_sticky.go。
 			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if service.FailoverAttemptFromContext(c.Request.Context()) && account.SkipsStickyBindOnFailover() {
+					reqLog.Info("sticky.skip_bind_failover_account",
+						zap.Int64("account_id", account.ID),
+						zap.String("session_key", sessionKey),
+					)
+				} else if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}

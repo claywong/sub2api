@@ -340,7 +340,8 @@ func insertEvent(ctx context.Context, queryer sqlQueryer, jobID int64, snapshot 
 	scores, _ := json.Marshal(result.ScannerScores)
 	evidence := make(map[string]string, len(result.ScannerEvidence))
 	for key, value := range result.ScannerEvidence {
-		evidence[key] = RedactPreview(value, 160)
+		// 私有扩展：DLP 证据透传不脱敏，见 prompt_dlp_evidence_passthrough.go。
+		evidence[key] = redactEvidenceForBackend(value, result.ScannerBackend, 160)
 	}
 	evidenceJSON, _ := json.Marshal(evidence)
 	row := queryer.QueryRowContext(ctx, `

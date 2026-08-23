@@ -391,6 +391,10 @@ export default {
         healthVerdictReason: '触发原因：{reason}',
         tempUnschedulableUntil: '预计 {time} 恢复'
       },
+      failoverNoSticky: {
+        title: '救火账号（不接管会话）',
+        hint: '该账号被 failover 重试选中时，即使请求成功也不接管粘性会话：会话仍绑在原账号，原账号恢复后自动回归。首次选中仍正常绑定。'
+      },
       tempUnschedulable: {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',

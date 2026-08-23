@@ -1292,6 +1292,33 @@
         </div>
       </div>
 
+      <!-- Failover No Sticky (救火账号) -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between">
+          <div class="pr-4">
+            <label class="input-label mb-0">{{ t('admin.accounts.failoverNoSticky.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.failoverNoSticky.hint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="failoverNoSticky = !failoverNoSticky"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              failoverNoSticky ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                failoverNoSticky ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -3297,6 +3324,9 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
+// 私有扩展：救火账号开关（failover 重试命中后不接管粘性会话）
+const failoverNoSticky = ref(false)
+
 const tempUnschedEnabled = ref(false)
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
@@ -3997,6 +4027,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
+  // 私有扩展：救火账号开关回填
+  failoverNoSticky.value = credentials?.failover_no_sticky === true
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state for eligible account platforms/types
@@ -4432,6 +4464,16 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   credentials.temp_unschedulable_enabled = true
   credentials.temp_unschedulable_rules = rules
   return true
+}
+
+// 私有扩展：救火账号开关。关闭时删除键而非写 false，保持 credentials 稀疏，
+// 与后端「键不存在即未开启」的读取语义一致。
+const applyFailoverNoStickyConfig = (credentials: Record<string, unknown>) => {
+  if (!failoverNoSticky.value) {
+    delete credentials.failover_no_sticky
+    return
+  }
+  credentials.failover_no_sticky = true
 }
 
 
@@ -4882,6 +4924,7 @@ const handleSubmit = async () => {
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
+      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -4901,6 +4944,7 @@ const handleSubmit = async () => {
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
 
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
+      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -4950,6 +4994,7 @@ const handleSubmit = async () => {
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
+      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5008,6 +5053,7 @@ const handleSubmit = async () => {
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
+      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5020,6 +5066,7 @@ const handleSubmit = async () => {
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
+      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }

@@ -28,6 +28,7 @@ import (
 	"context"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // DLP 相关的错误码与后端标识。
@@ -248,7 +249,8 @@ func (g *GuardEvaluator) buildDLPDecision(
 	severity := HighestSeverity(sensitive)
 	shouldBlock := dlpShouldBlock(cfg.DLP, severity)
 
-	result := buildDLPNormalizedResult(sensitive, verdicts, allFindings, severity, shouldBlock, latency)
+	result := buildDLPNormalizedResult(
+		sensitive, verdicts, allFindings, severity, shouldBlock, latency, snapshot.ScanText)
 	g.recordDLPEvent(ctx, cfg, snapshot, result)
 
 	fields := mergeLogFields(snapshotLogFields(snapshot), map[string]any{
@@ -284,7 +286,7 @@ func dlpShouldBlock(dlpCfg ActiveDLPConfig, severity RiskLevel) bool {
 // 这样它能直接复用既有的持久化、IssueSummary 渲染与前端展示。
 func buildDLPNormalizedResult(
 	sensitive []DLPFinding, verdicts []DLPConfirmVerdict, allFindings []DLPFinding,
-	severity RiskLevel, shouldBlock bool, latency int,
+	severity RiskLevel, shouldBlock bool, latency int, scanText string,
 ) *NormalizedResult {
 	decision, action := EventFlag, ActionWarn
 	if shouldBlock {
@@ -310,26 +312,85 @@ func buildDLPNormalizedResult(
 		if finding.Score > result.ScannerScores[finding.ScannerID] {
 			result.ScannerScores[finding.ScannerID] = finding.Score
 		}
-		// 证据只写规则标题与理由，绝不写命中的敏感明文。
+		// 证据写规则标题、确认理由、命中明文与周边上下文，供管理员分诊误报。
 		if _, exists := result.ScannerEvidence[finding.ScannerID]; !exists {
-			result.ScannerEvidence[finding.ScannerID] = buildDLPEvidence(finding, verdicts, allFindings)
+			result.ScannerEvidence[finding.ScannerID] =
+				buildDLPEvidence(finding, verdicts, allFindings, scanText)
 		}
 	}
 	return result
 }
 
-// buildDLPEvidence 生成脱敏后的证据文本。
+// buildDLPEvidence 生成证据文本，含命中的明文值与周边上下文。
 //
-// 刻意不包含命中的原始值：审计事件会长期留存，写入明文等于把敏感数据又落一份盘。
+// 为什么改为写明文（原先刻意脱敏）：
+//
+//	脱敏后的证据无法用于分诊。实测 8 条事件全部只剩「手机号 | 疑似真实手机号」，
+//	管理员既看不到命中什么值，也无法判断是不是误报——而 credential-generic-api-key
+//	这类 Broad 规则的误报率不低，判断误报恰恰是审计的主要用途。
+//
+//	明文不构成新的暴露面：同一份原文本来就以 full_prompt 明文落在
+//	prompt_audit_events 里，证据里再写一遍并未扩大暴露范围，只是省去人工比对。
+//	真正的收敛手段是范围收窄（见 prompt_snapshot_dlpscope.go），不是脱敏证据。
+//
+// 全程不脱敏。证据只在管理员可见的审计页面展示，而同一张表的 full_prompt 本来
+// 就是明文；把标题、模型理由、命中值任一处遮掉，都会让管理员失去判断误报的依据。
+//
+// 读写路径上 upstream 还有两道 RedactPreview（insertEvent 与 BuildIssueSummaries），
+// 由 prompt_dlp_evidence_passthrough.go 按后端标识跳过——只改这里是无效的。
 func buildDLPEvidence(
-	finding DLPFinding, verdicts []DLPConfirmVerdict, allFindings []DLPFinding,
+	finding DLPFinding, verdicts []DLPConfirmVerdict, allFindings []DLPFinding, scanText string,
 ) string {
 	parts := []string{finding.Title}
 	if reason := findDLPVerdictReason(finding, verdicts, allFindings); reason != "" {
 		parts = append(parts, reason)
 	}
+	parts = append(parts, "命中值 "+TrimRunes(finding.Value, dlpEvidenceValueMaxRunes))
 	parts = append(parts, "位置 "+itoaDLP(finding.StartRune)+"-"+itoaDLP(finding.EndRune))
-	return RedactPreview(strings.Join(parts, " | "), 160)
+	if context := dlpEvidenceContext(scanText, finding); context != "" {
+		parts = append(parts, "上下文 "+context)
+	}
+	return strings.Join(parts, " | ")
+}
+
+// dlpEvidenceValueMaxRunes 限制证据里命中值的长度。
+// 私钥块这类命中可能很长，全量写入会把审计行撑大，头部足够辨识。
+const dlpEvidenceValueMaxRunes = 128
+
+// dlpEvidenceContextRunes 是命中值前后各保留的上下文字符数。
+// 判断误报靠的就是语境——「order_no=139...」和「联系电话：139...」的区别全在这里。
+const dlpEvidenceContextRunes = 48
+
+// dlpEvidenceContext 截取命中值周边的上下文窗口。
+//
+// 按字节下标切片后再校正到 rune 边界：finding 的 startByte/endByte 是字节下标，
+// 直接按 rune 重新计数要扫全文，长 prompt 上是无谓开销。
+// 换行统一替换为 ⏎，避免多行上下文把审计行撑开。
+func dlpEvidenceContext(scanText string, finding DLPFinding) string {
+	if scanText == "" || finding.startByte < 0 || finding.endByte > len(scanText) ||
+		finding.startByte >= finding.endByte {
+		return ""
+	}
+	low := finding.startByte - dlpEvidenceContextRunes*4
+	if low < 0 {
+		low = 0
+	}
+	high := finding.endByte + dlpEvidenceContextRunes*4
+	if high > len(scanText) {
+		high = len(scanText)
+	}
+	for low > 0 && !utf8.RuneStart(scanText[low]) {
+		low--
+	}
+	for high < len(scanText) && !utf8.RuneStart(scanText[high]) {
+		high++
+	}
+	before := TrimRunesLeft(scanText[low:finding.startByte], dlpEvidenceContextRunes)
+	after := TrimRunes(scanText[finding.endByte:high], dlpEvidenceContextRunes)
+	// 优先级分隔符含 NUL，PostgreSQL 的 TEXT 不接受，且对人无意义。
+	window := strings.ReplaceAll(before+"⟦命中⟧"+after, promptAuditPrioritySeparator, " ")
+	window = strings.ReplaceAll(window, "\x00", "")
+	return strings.ReplaceAll(strings.ReplaceAll(window, "\r\n", "⏎"), "\n", "⏎")
 }
 
 // findDLPVerdictReason 找出某个 finding 对应的确认理由。

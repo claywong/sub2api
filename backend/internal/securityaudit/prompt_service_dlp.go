@@ -8,12 +8,16 @@
 //	审计模式               必须 ModeBlocking        不看，DLP 有自己的开关
 //	prompt 审计总开关      必须 Enabled             不看
 //	分组范围               cfg.IncludesGroup        cfg.DLP.IncludesGroup（独立）
-//	扫描范围               受 BlockingLatestTurnOnly 恒全量，不受收窄影响
+//	扫描范围               全部角色的全部轮次      仅用户输入 + 工具输出
 //	配置不可用             ModeBlocking 时报错      恒 fail-open 放行
 //
-// 为什么扫描范围恒全量：BlockingLatestTurnOnly 是 qwen3guard 为了省 token 才收窄到
-// 最后一轮的。敏感信息可能出现在任何一轮的输入、工具结果或工具入参里，收窄会直接
-// 造成漏检；而 DLP 的正则是本地执行，扫全量的成本是 μs 级，没有省的必要。
+// 为什么扫描范围不同：DLP 防的是「本地环境的敏感数据流出去」，数据只可能从用户
+// 输入和工具输出两个口子进来。system prompt 来自上游服务商、assistant 文本由模型
+// 生成、工具入参也是模型生成的，都不是本地数据源。完整推导见
+// prompt_snapshot_dlpscope.go 文件头。
+//
+// 收窄不影响轮次覆盖：仍然扫全部历史轮次的用户输入与工具输出，只是剔除了非数据源
+// 的角色。敏感信息出现在任何一轮的这两类片段里都能检出。
 //
 // 为什么恒 fail-open：与 prompt_guard_dlp.go 的降级策略一致。配置读不到时放行而
 // 不是报 503，避免 DLP 把网关整体拖挂。
@@ -51,8 +55,8 @@ func (s *PromptService) EvaluateDLP(ctx context.Context, req Request) *PromptDec
 	if !cfg.DLP.IncludesGroup(req.GroupID) {
 		return nil
 	}
-	// 恒传 false：DLP 必须看全量对话，理由见文件头。
-	snapshot, err := ExtractBlockingPromptSnapshot(req, false)
+	// 范围收窄到「用户输入 + 工具输出」，理由见 prompt_snapshot_dlpscope.go 文件头。
+	snapshot, err := ExtractDLPSnapshot(req)
 	if errors.Is(err, ErrNoPromptText) {
 		return nil
 	}

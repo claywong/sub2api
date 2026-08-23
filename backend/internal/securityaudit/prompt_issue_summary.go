@@ -16,7 +16,8 @@ func BuildIssueSummaries(result NormalizedResult) []IssueSummary {
 		if !ok {
 			continue
 		}
-		evidence := RedactPreview(result.ScannerEvidence[category], 160)
+		// 私有扩展：DLP 证据透传不脱敏，见 prompt_dlp_evidence_passthrough.go。
+		evidence := redactEvidenceForBackend(result.ScannerEvidence[category], result.ScannerBackend, 160)
 		if evidence == "" {
 			evidence = definition.Label
 		}
