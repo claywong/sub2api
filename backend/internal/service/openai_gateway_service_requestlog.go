@@ -18,6 +18,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
@@ -27,6 +28,44 @@ import (
 // 用于在 handler 同步路径上提前固定 ID，确保 usage_logs 与 request_logs 使用同一 ID。
 func (s *OpenAIGatewayService) ResolveRequestID(ctx context.Context, upstreamRequestID string) string {
 	return resolveUsageBillingRequestID(ctx, upstreamRequestID)
+}
+
+// finalizeResponsesCollector 安全地从可空 collector 取出聚合结果。
+// 与 finalizeRespCollector（Anthropic）对应，服务于 OpenAI Responses 协议。
+func finalizeResponsesCollector(c *requestlog.ResponsesCollector) string {
+	if c == nil {
+		return ""
+	}
+	return c.Finalize()
+}
+
+// captureAlphaSearchResponseBody 采集 /v1/alpha/search 响应体，供写入 request_logs。
+// alpha/search 返回的是搜索结果 schema（无 Responses 的 output 字段），套用
+// SimplifyResponsesNonStream 会把内容剥成 "{}"，因此原样保留，超长交由
+// WriteRequestLog 按 MaxBodyBytes 截断。开关关闭时返回空串。
+func (s *OpenAIGatewayService) captureAlphaSearchResponseBody(body []byte) string {
+	if s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled || len(body) == 0 {
+		return ""
+	}
+	return string(body)
+}
+
+// captureResponsesNonStreamBody 采集非流式 Responses 响应体，供写入 request_logs。
+// 上游在 stream=false 时仍可能回 SSE 文本（handleSSEToJSON 分支），因此这里按形态分流：
+// 带 SSE 帧的走 ResponsesCollector 逐行聚合，纯 JSON 走 SimplifyResponsesNonStream。
+// 开关关闭时返回空串，不做任何解析开销。
+func (s *OpenAIGatewayService) captureResponsesNonStreamBody(body []byte) string {
+	if s.cfg == nil || !s.cfg.Gateway.RequestLog.Enabled || len(body) == 0 {
+		return ""
+	}
+	if !bodyHasSSEFraming(body) {
+		return requestlog.SimplifyResponsesNonStream(body)
+	}
+	collector := requestlog.NewResponsesCollector()
+	for _, line := range strings.Split(string(body), "\n") {
+		collector.OnLine(line)
+	}
+	return collector.Finalize()
 }
 
 // WriteRequestLog 异步写入请求内容日志，仅当 gateway.request_log.enabled=true 时生效。

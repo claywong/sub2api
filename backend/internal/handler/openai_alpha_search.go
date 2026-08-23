@@ -188,7 +188,13 @@ func (h *OpenAIGatewayHandler) AlphaSearch(c *gin.Context) {
 		if err == nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(requestedModel), true, nil)
 			if result != nil {
+				// 私有扩展（request_log）：先固定 request_id，确保 usage_logs 与
+				// request_logs 使用同一 ID，必须在提交记账任务之前完成。
+				result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
 				h.recordAlphaSearchUsage(c, apiKey, account, subscription, channelMapping, requestedModel, body, result, subject.UserID)
+				// 私有扩展（request_log）：写入请求内容日志。
+				clientSessionID := h.gatewayService.ExtractSessionID(c, body)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 			}
 			return
 		}

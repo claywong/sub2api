@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,8 @@ type openaiStreamingResult struct {
 	imageCount       int
 	imageOutputSizes []string
 	searchCount      int
+	// capturedBody 仅当 gateway.request_log.enabled=true 时填充，供上层写入 request_logs。
+	capturedBody string
 }
 
 type openaiNonStreamingResult struct {
@@ -39,6 +42,8 @@ type openaiNonStreamingResult struct {
 	imageCount       int
 	imageOutputSizes []string
 	searchCount      int
+	// capturedBody 仅当 gateway.request_log.enabled=true 时填充，供上层写入 request_logs。
+	capturedBody string
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
@@ -156,6 +161,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	responseID := ""
+	// 私有扩展（request_log）：边转发边采集 Responses 输出，供上层写入 request_logs。
+	var respCollector *requestlog.ResponsesCollector
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		respCollector = requestlog.NewResponsesCollector()
+	}
 	var firstOutputScanGuard atomic.Bool
 	firstOutputScanGuard.Store(stageFirstOutput)
 	scanner := bufio.NewScanner(resp.Body)
@@ -338,6 +348,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
 			searchCount:      searchCounter,
+			capturedBody:     finalizeResponsesCollector(respCollector),
 		}
 	}
 	flushPending := func(disconnectMessage string) {
@@ -586,6 +597,12 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			// Fast path: most events do not contain model field values.
 			if needModelReplace && mappedModel != "" && strings.Contains(line, mappedModel) {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
+			}
+			// 私有扩展（request_log）：把最终下发的 data 事件喂给采集器。
+			// 显式补一个空行触发 flushEvent，不依赖上游是否按行发送空行分隔。
+			if respCollector != nil {
+				respCollector.OnLine("data: " + data)
+				respCollector.OnLine("")
 			}
 			startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 			startsVisibleOutput := openAIStreamDataStartsVisibleOutput(data, eventType)
@@ -1345,6 +1362,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 		searchCount:      countGrokNativeSearchCallsFromJSONBytes(body),
+		capturedBody:     s.captureResponsesNonStreamBody(body),
 	}, nil
 }
 
@@ -1441,6 +1459,7 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 		searchCount:      countGrokNativeSearchCallsFromSSEBody(bodyText),
+		capturedBody:     s.captureResponsesNonStreamBody(body),
 	}, nil
 }
 

@@ -1112,7 +1112,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			submitForwardUsage(result)
 			// 私有扩展：request log 落库（upstream helper 不含此步）
-			if result != nil && result.CapturedResponseBody != "" {
+			// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+			if result != nil {
 				clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
 				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, currentAPIKey.User.ID, string(body), result.CapturedResponseBody)
 			}
