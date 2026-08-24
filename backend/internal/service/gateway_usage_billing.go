@@ -54,10 +54,6 @@ type RecordUsageInput struct {
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
-
-	// PostBillingHook 订阅计费成功后的可选回调（私有扩展）。
-	// 参数：ctx, userID, groupID, 实际模型名, 实际费用(USD)。
-	PostBillingHook func(ctx context.Context, userID, groupID int64, model string, cost float64)
 }
 
 // APIKeyQuotaUpdater defines the interface for updating API Key quota and rate limit usage
@@ -626,7 +622,6 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
 		ChannelUsageFields: input.ChannelUsageFields,
-		PostBillingHook:    input.PostBillingHook, // 私有扩展
 	}, &recordUsageOpts{})
 }
 
@@ -696,7 +691,6 @@ type recordUsageCoreInput struct {
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
 	ChannelUsageFields
-	PostBillingHook func(ctx context.Context, userID, groupID int64, model string, cost float64) // 私有扩展
 }
 
 // responseModelBillingCostEpsilon 吸收两次成本计算之间的浮点末位误差，
@@ -934,12 +928,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		return billingErr
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
-	// 私有扩展：订阅计费成功后触发 hook（如模型额度更新）
-	// 使用独立 ctx 避免 worker pool defer cancel() 竞态导致 Redis 写入失败
-	if input.PostBillingHook != nil && isSubscriptionBilling && cost != nil && cost.ActualCost > 0 && user != nil && apiKey != nil && apiKey.GroupID != nil {
-		hookCtx := context.WithoutCancel(ctx)
-		go input.PostBillingHook(hookCtx, user.ID, *apiKey.GroupID, usageLog.Model, cost.ActualCost)
-	}
 
 	return nil
 }

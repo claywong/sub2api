@@ -984,18 +984,6 @@ export default {
           disabled: '已禁用'
         }
       },
-      sessionModelLock: {
-        title: '会话级模型锁定',
-        tooltip: '指定受保护模型后，同一会话中途将无法切换到这些模型，避免绕过其独立额度限制。',
-        listLabel: '受保护模型',
-        listHint: '在此列出的模型将受会话级锁定与独立额度限制约束。',
-        listPlaceholder: '选择或输入受保护的模型名称',
-        quotaTitle: '受保护模型共享额度',
-        quotaHint: '所有受保护模型共用一个日/周限额（USD），留空表示不限制。',
-        quotaDailyLabel: '每日限额（USD）',
-        quotaWeeklyLabel: '每周限额（USD）',
-        quotaPlaceholder: '无限制'
-      },
       imagePricing: {
         title: '图片生成计费',
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',

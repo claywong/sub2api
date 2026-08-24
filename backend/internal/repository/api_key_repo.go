@@ -219,8 +219,6 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldPeakStart,
 				group.FieldPeakEnd,
 				group.FieldPeakRateMultiplier,
-				group.FieldProtectedModels,
-				group.FieldProtectedModelQuotas,
 				group.FieldAllowBalanceFallback,
 				group.FieldFingerprintNormalizeEnabled,
 				// 分组利润控制：认证快照是调度门 enable 判定的直接来源，
@@ -1023,8 +1021,6 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		PeakRateMultiplier:              g.PeakRateMultiplier,
 		AllowBalanceFallback:            g.AllowBalanceFallback,
 		FingerprintNormalizeEnabled:     g.FingerprintNormalizeEnabled,
-		ProtectedModels:                 g.ProtectedModels,
-		ProtectedModelQuota:             fromRawQuota(g.ProtectedModelQuotas),
 		ProfitControlEnabled:            g.ProfitControlEnabled,
 		ProfitMinMargin:                 g.ProfitMinMargin,
 		ProfitSafetyBuffer:              g.ProfitSafetyBuffer,

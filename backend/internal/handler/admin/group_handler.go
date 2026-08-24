@@ -159,10 +159,6 @@ type CreateGroupRequest struct {
 	// Anthropic 直通出站指纹归一化开关（私有扩展）；开启后 CN 供应商
 	// Anthropic 协议直通的出站请求归一为账号级统一身份
 	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
-	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
-	ProtectedModels []string `json:"protected_models"`
-	// 受保护模型的共享日/周额度配置（私有扩展）
-	ProtectedModelQuota *service.ProtectedModelQuota `json:"protected_model_quota"`
 	// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// OpenAI/Codex 推理强度精确映射。
@@ -236,10 +232,6 @@ type UpdateGroupRequest struct {
 	AllowBalanceFallback *bool `json:"allow_balance_fallback"`
 	// Anthropic 直通出站指纹归一化开关（私有扩展）；nil 表示未提供不改动
 	FingerprintNormalizeEnabled *bool `json:"anthropic_fingerprint_normalize_enabled"`
-	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空数组表示清空
-	ProtectedModels *[]string `json:"protected_models"`
-	// 受保护模型的共享日/周额度配置（私有扩展）；nil 表示未提供不改动
-	ProtectedModelQuota **service.ProtectedModelQuota `json:"protected_model_quota"`
 	// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
 	// nil 不修改，空数组清空，非空数组替换。
@@ -575,8 +567,6 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
 		FingerprintNormalizeEnabled:     req.FingerprintNormalizeEnabled,
-		ProtectedModels:                 req.ProtectedModels,
-		ProtectedModelQuota:             req.ProtectedModelQuota,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
@@ -708,8 +698,6 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
 		FingerprintNormalizeEnabled:     req.FingerprintNormalizeEnabled,
-		ProtectedModels:                 req.ProtectedModels,
-		ProtectedModelQuota:             req.ProtectedModelQuota,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,

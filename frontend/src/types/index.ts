@@ -603,8 +603,6 @@ export interface Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   require_oauth_only: boolean
   require_privacy_set: boolean
-  // 受保护模型的共享日/周额度配置（私有扩展，用户侧只读）
-  protected_model_quota?: { daily_limit_usd?: number | null; weekly_limit_usd?: number | null } | null
   created_at: string
   updated_at: string
 }
@@ -645,9 +643,6 @@ export interface AdminGroup extends Group {
 
   // Anthropic 直通出站指纹归一化开关（私有扩展）
   fingerprint_normalize_enabled?: boolean
-
-  // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议；支持 * 通配符）
-  protected_models?: string[]
 }
 
 export interface ModelsListConfig {
@@ -832,10 +827,6 @@ export interface CreateGroupRequest {
   allow_balance_fallback?: boolean
   // Anthropic 直通出站指纹归一化开关（私有扩展）
   fingerprint_normalize_enabled?: boolean
-  // 会话级模型锁定保护列表（私有扩展）
-  protected_models?: string[]
-  // 受保护模型的共享日/周额度配置（私有扩展）；null 表示清空
-  protected_model_quota?: { daily_limit_usd?: number | null; weekly_limit_usd?: number | null } | null
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -901,10 +892,6 @@ export interface UpdateGroupRequest {
   allow_balance_fallback?: boolean
   // Anthropic 直通出站指纹归一化开关（私有扩展）；未传表示不改动
   fingerprint_normalize_enabled?: boolean
-  // 会话级模型锁定保护列表（私有扩展）；空数组表示清空，未传表示不改动
-  protected_models?: string[]
-  // 受保护模型的共享日/周额度配置（私有扩展）；null 表示清空，未传表示不改动
-  protected_model_quota?: { daily_limit_usd?: number | null; weekly_limit_usd?: number | null } | null
   copy_accounts_from_group_ids?: number[]
 }
 
@@ -2038,9 +2025,6 @@ export interface UserSubscription {
   daily_usage_usd: number
   weekly_usage_usd: number
   monthly_usage_usd: number
-  // 受保护模型共享额度的实时用量（私有扩展；未配置或无用量时为 0/undefined）
-  protected_model_daily_usage_usd?: number
-  protected_model_weekly_usage_usd?: number
   daily_window_start: string | null
   weekly_window_start: string | null
   monthly_window_start: string | null

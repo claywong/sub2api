@@ -1530,104 +1530,6 @@
           </div>
         </div>
 
-        <!-- 会话级模型锁定（仅 anthropic 平台，私有扩展） -->
-        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
-          <div class="mb-1.5 flex items-center gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.sessionModelLock.title") }}
-            </label>
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.sessionModelLock.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <label class="input-label">{{
-            t("admin.groups.sessionModelLock.listLabel")
-          }}</label>
-          <ModelTagInput
-            :models="createForm.protected_models"
-            platform="anthropic"
-            :placeholder="t('admin.groups.sessionModelLock.listPlaceholder')"
-            @update:models="createForm.protected_models = $event"
-          />
-          <p class="input-hint">
-            {{ t("admin.groups.sessionModelLock.listHint") }}
-          </p>
-
-          <!-- 受保护模型共享额度配置（所有保护模型共用一个日/周限额） -->
-          <div v-if="createForm.protected_models?.length" class="mt-3">
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-400 dark:bg-dark-700">
-              <div class="flex items-center justify-between">
-                <p class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {{ t("admin.groups.sessionModelLock.quotaTitle") }}
-                </p>
-                <button
-                  type="button"
-                  @click="setCreateQuotaEnabled(!createForm.protected_model_quota)"
-                  class="relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                  :class="createForm.protected_model_quota ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
-                >
-                  <span
-                    class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                    :class="createForm.protected_model_quota ? 'translate-x-5' : 'translate-x-0.5'"
-                  />
-                </button>
-              </div>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.sessionModelLock.quotaHint") }}
-              </p>
-              <div v-if="createForm.protected_model_quota" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label class="mb-1 block text-xs text-gray-600 dark:text-gray-400">
-                    {{ t("admin.groups.sessionModelLock.quotaDailyLabel") }}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    class="input-field w-full"
-                    :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
-                    :value="createForm.protected_model_quota.daily_limit_usd ?? ''"
-                    @input="setCreateQuotaValue('daily', ($event.target as HTMLInputElement).value)"
-                  />
-                </div>
-                <div>
-                  <label class="mb-1 block text-xs text-gray-600 dark:text-gray-400">
-                    {{ t("admin.groups.sessionModelLock.quotaWeeklyLabel") }}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    class="input-field w-full"
-                    :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
-                    :value="createForm.protected_model_quota.weekly_limit_usd ?? ''"
-                    @input="setCreateQuotaValue('weekly', ($event.target as HTMLInputElement).value)"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
           v-if="createForm.platform === 'openai'"
@@ -3422,104 +3324,6 @@
           </div>
         </div>
 
-        <!-- 会话级模型锁定（仅 anthropic 平台，私有扩展） -->
-        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
-          <div class="mb-1.5 flex items-center gap-1">
-            <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t("admin.groups.sessionModelLock.title") }}
-            </label>
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.sessionModelLock.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <label class="input-label">{{
-            t("admin.groups.sessionModelLock.listLabel")
-          }}</label>
-          <ModelTagInput
-            :models="editForm.protected_models"
-            platform="anthropic"
-            :placeholder="t('admin.groups.sessionModelLock.listPlaceholder')"
-            @update:models="editForm.protected_models = $event"
-          />
-          <p class="input-hint">
-            {{ t("admin.groups.sessionModelLock.listHint") }}
-          </p>
-
-          <!-- 受保护模型共享额度配置（所有保护模型共用一个日/周限额） -->
-          <div v-if="editForm.protected_models?.length" class="mt-3">
-            <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-400 dark:bg-dark-700">
-              <div class="flex items-center justify-between">
-                <p class="text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {{ t("admin.groups.sessionModelLock.quotaTitle") }}
-                </p>
-                <button
-                  type="button"
-                  @click="setEditQuotaEnabled(!editForm.protected_model_quota)"
-                  class="relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none"
-                  :class="editForm.protected_model_quota ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'"
-                >
-                  <span
-                    class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                    :class="editForm.protected_model_quota ? 'translate-x-5' : 'translate-x-0.5'"
-                  />
-                </button>
-              </div>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.sessionModelLock.quotaHint") }}
-              </p>
-              <div v-if="editForm.protected_model_quota" class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <label class="mb-1 block text-xs text-gray-600 dark:text-gray-400">
-                    {{ t("admin.groups.sessionModelLock.quotaDailyLabel") }}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    class="input-field w-full"
-                    :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
-                    :value="editForm.protected_model_quota.daily_limit_usd ?? ''"
-                    @input="setEditQuotaValue('daily', ($event.target as HTMLInputElement).value)"
-                  />
-                </div>
-                <div>
-                  <label class="mb-1 block text-xs text-gray-600 dark:text-gray-400">
-                    {{ t("admin.groups.sessionModelLock.quotaWeeklyLabel") }}
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    class="input-field w-full"
-                    :placeholder="t('admin.groups.sessionModelLock.quotaPlaceholder')"
-                    :value="editForm.protected_model_quota.weekly_limit_usd ?? ''"
-                    @input="setEditQuotaValue('weekly', ($event.target as HTMLInputElement).value)"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Codex 网页搜索按次计费（仅 openai 平台） -->
         <div
           v-if="editForm.platform === 'openai'"
@@ -4778,7 +4582,6 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import Icon from "@/components/icons/Icon.vue";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
-import ModelTagInput from "@/components/admin/channel/ModelTagInput.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
@@ -5437,10 +5240,6 @@ const createForm = reactive({
   allow_balance_fallback: false,
   // Anthropic 直通出站指纹归一化开关（私有扩展）
   fingerprint_normalize_enabled: false,
-  // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
-  protected_models: [] as string[],
-  // 受保护模型的共享日/周额度配置（私有扩展，所有保护模型共用一个额度池）
-  protected_model_quota: null as { daily_limit_usd: number | null; weekly_limit_usd: number | null } | null,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
@@ -5807,10 +5606,6 @@ const editForm = reactive({
   allow_balance_fallback: false,
   // Anthropic 直通出站指纹归一化开关（私有扩展）
   fingerprint_normalize_enabled: false,
-  // 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
-  protected_models: [] as string[],
-  // 受保护模型的共享日/周额度配置（私有扩展，所有保护模型共用一个额度池）
-  protected_model_quota: null as { daily_limit_usd: number | null; weekly_limit_usd: number | null } | null,
   max_reasoning_effort: "",
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
 });
@@ -6253,52 +6048,11 @@ const closeCreateModal = () => {
   createForm.rpm_limit = 0;
   createForm.allow_balance_fallback = false;
   createForm.fingerprint_normalize_enabled = false;
-  createForm.protected_models = [];
-  createForm.protected_model_quota = null;
   createForm.max_reasoning_effort = "";
   createForm.reasoning_effort_mappings = [];
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelsListState(createModelsListState);
   createModelRoutingRules.value = [];
-};
-
-// 切换共享额度配置开关（开启 → 初始化为全空对象；关闭 → 置 null 清空）
-const setCreateQuotaEnabled = (enabled: boolean) => {
-  createForm.protected_model_quota = enabled
-    ? { daily_limit_usd: null, weekly_limit_usd: null }
-    : null;
-};
-
-const setEditQuotaEnabled = (enabled: boolean) => {
-  editForm.protected_model_quota = enabled
-    ? { daily_limit_usd: null, weekly_limit_usd: null }
-    : null;
-};
-
-// 将输入框 raw string 写入 createForm 共享额度（空字符串 → null）
-const setCreateQuotaValue = (field: 'daily' | 'weekly', raw: string) => {
-  if (!createForm.protected_model_quota) {
-    createForm.protected_model_quota = { daily_limit_usd: null, weekly_limit_usd: null };
-  }
-  const val = raw === '' ? null : parseFloat(raw);
-  if (field === 'daily') {
-    createForm.protected_model_quota.daily_limit_usd = val;
-  } else {
-    createForm.protected_model_quota.weekly_limit_usd = val;
-  }
-};
-
-// 将输入框 raw string 写入 editForm 共享额度（空字符串 → null）
-const setEditQuotaValue = (field: 'daily' | 'weekly', raw: string) => {
-  if (!editForm.protected_model_quota) {
-    editForm.protected_model_quota = { daily_limit_usd: null, weekly_limit_usd: null };
-  }
-  const val = raw === '' ? null : parseFloat(raw);
-  if (field === 'daily') {
-    editForm.protected_model_quota.daily_limit_usd = val;
-  } else {
-    editForm.protected_model_quota.weekly_limit_usd = val;
-  }
 };
 
 const normalizeOptionalLimit = (
@@ -6564,11 +6318,6 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.allow_balance_fallback = group.allow_balance_fallback ?? false;
   // Anthropic 直通出站指纹归一化开关（私有扩展）
   editForm.fingerprint_normalize_enabled = group.fingerprint_normalize_enabled ?? false;
-  // 会话级模型锁定保护列表（私有扩展）
-  editForm.protected_models = [...(group.protected_models ?? [])];
-  editForm.protected_model_quota = group.protected_model_quota
-    ? { ...group.protected_model_quota } as { daily_limit_usd: number | null; weekly_limit_usd: number | null }
-    : null;
   editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
     group.platform,
     group.max_reasoning_effort,

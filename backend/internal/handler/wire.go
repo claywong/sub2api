@@ -114,14 +114,11 @@ func ProvideGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
-	sessionModelLockService *service.SessionModelLockService,
-	modelQuotaCacheService *service.ModelQuotaCacheService,
 	coordinator *securityaudit.Coordinator,
 ) *GatewayHandler {
 	h := NewGatewayHandler(gatewayService, openAIGatewayService, geminiCompatService, antigravityGatewayService,
 		userService, concurrencyService, billingCacheService, usageService, apiKeyService, usageRecordWorkerPool,
-		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService,
-		sessionModelLockService, modelQuotaCacheService)
+		errorPassthroughService, contentModerationService, userMsgQueueService, cfg, settingService)
 	h.securityAuditCoordinator = coordinator
 	return h
 }

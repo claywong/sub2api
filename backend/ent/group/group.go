@@ -134,10 +134,6 @@ const (
 	FieldAllowBalanceFallback = "allow_balance_fallback"
 	// FieldFingerprintNormalizeEnabled holds the string denoting the fingerprint_normalize_enabled field in the database.
 	FieldFingerprintNormalizeEnabled = "fingerprint_normalize_enabled"
-	// FieldProtectedModels holds the string denoting the protected_models field in the database.
-	FieldProtectedModels = "protected_models"
-	// FieldProtectedModelQuotas holds the string denoting the protected_model_quotas field in the database.
-	FieldProtectedModelQuotas = "protected_model_quotas"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
 	FieldMaxReasoningEffort = "max_reasoning_effort"
 	// FieldReasoningEffortMappings holds the string denoting the reasoning_effort_mappings field in the database.
@@ -282,8 +278,6 @@ var Columns = []string{
 	FieldRpmLimit,
 	FieldAllowBalanceFallback,
 	FieldFingerprintNormalizeEnabled,
-	FieldProtectedModels,
-	FieldProtectedModelQuotas,
 	FieldMaxReasoningEffort,
 	FieldReasoningEffortMappings,
 	FieldProfitControlEnabled,
@@ -416,10 +410,6 @@ var (
 	DefaultAllowBalanceFallback bool
 	// DefaultFingerprintNormalizeEnabled holds the default value on creation for the "fingerprint_normalize_enabled" field.
 	DefaultFingerprintNormalizeEnabled bool
-	// DefaultProtectedModels holds the default value on creation for the "protected_models" field.
-	DefaultProtectedModels []string
-	// DefaultProtectedModelQuotas holds the default value on creation for the "protected_model_quotas" field.
-	DefaultProtectedModelQuotas map[string]interface{}
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
 	DefaultMaxReasoningEffort string
 	// MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.

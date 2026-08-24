@@ -112,8 +112,6 @@ var ProviderSet = wire.NewSet(
 
 	// Cache implementations
 	NewGatewayCache,
-	NewSessionModelLockCache, // 私有扩展：会话级模型锁缓存
-	NewModelQuotaCache,       // 私有扩展：受保护模型独立额度缓存
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,

@@ -508,8 +508,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 		AllowBalanceFallback:            input.AllowBalanceFallback,
 		FingerprintNormalizeEnabled:     input.FingerprintNormalizeEnabled,
-		ProtectedModels:                 input.ProtectedModels,
-		ProtectedModelQuota:             input.ProtectedModelQuota,
 		MaxReasoningEffort:              maxReasoningEffort,
 		ReasoningEffortMappings:         reasoningEffortMappings,
 	}
@@ -884,12 +882,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.FingerprintNormalizeEnabled != nil {
 		group.FingerprintNormalizeEnabled = *input.FingerprintNormalizeEnabled
-	}
-	if input.ProtectedModels != nil {
-		group.ProtectedModels = *input.ProtectedModels
-	}
-	if input.ProtectedModelQuota != nil {
-		group.ProtectedModelQuota = *input.ProtectedModelQuota
 	}
 	if input.MaxReasoningEffort != nil {
 		maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(group.Platform, *input.MaxReasoningEffort)

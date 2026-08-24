@@ -132,13 +132,6 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 	// 设置支持的模型系列（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
-	// 会话级模型锁定保护列表（私有扩展，始终设置；nil 与空数组等价）
-	builder = builder.SetProtectedModels(groupIn.ProtectedModels)
-	// 受保护模型共享额度配置（私有扩展）
-	if groupIn.ProtectedModelQuota != nil {
-		builder = builder.SetProtectedModelQuotas(toRawQuota(groupIn.ProtectedModelQuota))
-	}
-
 	created, err := builder.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrGroupExists)
@@ -401,10 +394,6 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 	// 处理 SupportedModelScopes（始终设置，空数组表示不限制）
 	builder = builder.SetSupportedModelScopes(groupIn.SupportedModelScopes)
 
-	// 会话级模型锁定保护列表（私有扩展，始终设置；nil 与空数组等价）
-	builder = builder.SetProtectedModels(groupIn.ProtectedModels)
-	// 受保护模型共享额度配置（私有扩展）
-	builder = builder.SetProtectedModelQuotas(toRawQuota(groupIn.ProtectedModelQuota))
 
 	updated, err := builder.Save(ctx)
 	if err != nil {

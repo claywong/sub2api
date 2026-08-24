@@ -962,8 +962,6 @@ var (
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
 		{Name: "allow_balance_fallback", Type: field.TypeBool, Default: false},
 		{Name: "fingerprint_normalize_enabled", Type: field.TypeBool, Default: false},
-		{Name: "protected_models", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "protected_model_quotas", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "max_reasoning_effort", Type: field.TypeString, Size: 20, Default: ""},
 		{Name: "reasoning_effort_mappings", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "profit_control_enabled", Type: field.TypeBool, Default: false},

@@ -136,7 +136,6 @@ export default {
     quotaEndsIn: 'Quota ends in {time}',
     windowNotActive: 'Awaiting first use',
     usageOf: '{used} of {limit}',
-    protectedModels: 'Protected Model Shared Quota'
   },
 
   // Group Usage (monitor page, private extension)

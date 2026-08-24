@@ -816,18 +816,6 @@ func (_c *GroupCreate) SetNillableFingerprintNormalizeEnabled(v *bool) *GroupCre
 	return _c
 }
 
-// SetProtectedModels sets the "protected_models" field.
-func (_c *GroupCreate) SetProtectedModels(v []string) *GroupCreate {
-	_c.mutation.SetProtectedModels(v)
-	return _c
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (_c *GroupCreate) SetProtectedModelQuotas(v map[string]interface{}) *GroupCreate {
-	_c.mutation.SetProtectedModelQuotas(v)
-	return _c
-}
-
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
 	_c.mutation.SetMaxReasoningEffort(v)
@@ -1167,14 +1155,6 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultFingerprintNormalizeEnabled
 		_c.mutation.SetFingerprintNormalizeEnabled(v)
 	}
-	if _, ok := _c.mutation.ProtectedModels(); !ok {
-		v := group.DefaultProtectedModels
-		_c.mutation.SetProtectedModels(v)
-	}
-	if _, ok := _c.mutation.ProtectedModelQuotas(); !ok {
-		v := group.DefaultProtectedModelQuotas
-		_c.mutation.SetProtectedModelQuotas(v)
-	}
 	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
 		v := group.DefaultMaxReasoningEffort
 		_c.mutation.SetMaxReasoningEffort(v)
@@ -1370,12 +1350,6 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.FingerprintNormalizeEnabled(); !ok {
 		return &ValidationError{Name: "fingerprint_normalize_enabled", err: errors.New(`ent: missing required field "Group.fingerprint_normalize_enabled"`)}
-	}
-	if _, ok := _c.mutation.ProtectedModels(); !ok {
-		return &ValidationError{Name: "protected_models", err: errors.New(`ent: missing required field "Group.protected_models"`)}
-	}
-	if _, ok := _c.mutation.ProtectedModelQuotas(); !ok {
-		return &ValidationError{Name: "protected_model_quotas", err: errors.New(`ent: missing required field "Group.protected_model_quotas"`)}
 	}
 	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
 		return &ValidationError{Name: "max_reasoning_effort", err: errors.New(`ent: missing required field "Group.max_reasoning_effort"`)}
@@ -1659,14 +1633,6 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FingerprintNormalizeEnabled(); ok {
 		_spec.SetField(group.FieldFingerprintNormalizeEnabled, field.TypeBool, value)
 		_node.FingerprintNormalizeEnabled = value
-	}
-	if value, ok := _c.mutation.ProtectedModels(); ok {
-		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
-		_node.ProtectedModels = value
-	}
-	if value, ok := _c.mutation.ProtectedModelQuotas(); ok {
-		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
-		_node.ProtectedModelQuotas = value
 	}
 	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
@@ -2801,30 +2767,6 @@ func (u *GroupUpsert) SetFingerprintNormalizeEnabled(v bool) *GroupUpsert {
 // UpdateFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateFingerprintNormalizeEnabled() *GroupUpsert {
 	u.SetExcluded(group.FieldFingerprintNormalizeEnabled)
-	return u
-}
-
-// SetProtectedModels sets the "protected_models" field.
-func (u *GroupUpsert) SetProtectedModels(v []string) *GroupUpsert {
-	u.Set(group.FieldProtectedModels, v)
-	return u
-}
-
-// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateProtectedModels() *GroupUpsert {
-	u.SetExcluded(group.FieldProtectedModels)
-	return u
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (u *GroupUpsert) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsert {
-	u.Set(group.FieldProtectedModelQuotas, v)
-	return u
-}
-
-// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateProtectedModelQuotas() *GroupUpsert {
-	u.SetExcluded(group.FieldProtectedModelQuotas)
 	return u
 }
 
@@ -4065,34 +4007,6 @@ func (u *GroupUpsertOne) SetFingerprintNormalizeEnabled(v bool) *GroupUpsertOne 
 func (u *GroupUpsertOne) UpdateFingerprintNormalizeEnabled() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFingerprintNormalizeEnabled()
-	})
-}
-
-// SetProtectedModels sets the "protected_models" field.
-func (u *GroupUpsertOne) SetProtectedModels(v []string) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetProtectedModels(v)
-	})
-}
-
-// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateProtectedModels() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateProtectedModels()
-	})
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (u *GroupUpsertOne) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetProtectedModelQuotas(v)
-	})
-}
-
-// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateProtectedModelQuotas() *GroupUpsertOne {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateProtectedModelQuotas()
 	})
 }
 
@@ -5511,34 +5425,6 @@ func (u *GroupUpsertBulk) SetFingerprintNormalizeEnabled(v bool) *GroupUpsertBul
 func (u *GroupUpsertBulk) UpdateFingerprintNormalizeEnabled() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateFingerprintNormalizeEnabled()
-	})
-}
-
-// SetProtectedModels sets the "protected_models" field.
-func (u *GroupUpsertBulk) SetProtectedModels(v []string) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetProtectedModels(v)
-	})
-}
-
-// UpdateProtectedModels sets the "protected_models" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateProtectedModels() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateProtectedModels()
-	})
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (u *GroupUpsertBulk) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.SetProtectedModelQuotas(v)
-	})
-}
-
-// UpdateProtectedModelQuotas sets the "protected_model_quotas" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateProtectedModelQuotas() *GroupUpsertBulk {
-	return u.Update(func(s *GroupUpsert) {
-		s.UpdateProtectedModelQuotas()
 	})
 }
 

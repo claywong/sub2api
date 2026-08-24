@@ -138,10 +138,6 @@ type Group struct {
 	AllowBalanceFallback bool `json:"allow_balance_fallback,omitempty"`
 	// 开启后 Anthropic 协议直通出站请求归一为账号级统一身份（GLM 等 CN 供应商分组使用）
 	FingerprintNormalizeEnabled bool `json:"fingerprint_normalize_enabled,omitempty"`
-	// 会话级模型锁定保护列表，支持 * 通配符；空表示不启用
-	ProtectedModels []string `json:"protected_models,omitempty"`
-	// per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}
-	ProtectedModelQuotas map[string]interface{} `json:"protected_model_quotas,omitempty"`
 	// OpenAI reasoning effort 上限；可选 minimal/low/medium/high/xhigh/max
 	MaxReasoningEffort string `json:"max_reasoning_effort,omitempty"`
 	// OpenAI reasoning effort 自定义精确映射；先映射再应用上限
@@ -258,7 +254,7 @@ func (*Group) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldProtectedModels, group.FieldProtectedModelQuotas, group.FieldReasoningEffortMappings:
+		case group.FieldVideoModelPrices, group.FieldModelPricing, group.FieldModelRouting, group.FieldSupportedModelScopes, group.FieldMessagesDispatchModelConfig, group.FieldModelsListConfig, group.FieldReasoningEffortMappings:
 			values[i] = new([]byte)
 		case group.FieldPeakRateEnabled, group.FieldIsExclusive, group.FieldAllowImageGeneration, group.FieldAllowBatchImageGeneration, group.FieldImageRateIndependent, group.FieldVideoRateIndependent, group.FieldLongContextPricingEnabled, group.FieldClaudeCodeOnly, group.FieldModelRoutingEnabled, group.FieldMcpXMLInject, group.FieldAllowMessagesDispatch, group.FieldAllowLive, group.FieldRequireOauthOnly, group.FieldRequirePrivacySet, group.FieldAllowBalanceFallback, group.FieldFingerprintNormalizeEnabled, group.FieldProfitControlEnabled:
 			values[i] = new(sql.NullBool)
@@ -676,22 +672,6 @@ func (_m *Group) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.FingerprintNormalizeEnabled = value.Bool
 			}
-		case group.FieldProtectedModels:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field protected_models", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.ProtectedModels); err != nil {
-					return fmt.Errorf("unmarshal field protected_models: %w", err)
-				}
-			}
-		case group.FieldProtectedModelQuotas:
-			if value, ok := values[i].(*[]byte); !ok {
-				return fmt.Errorf("unexpected type %T for field protected_model_quotas", values[i])
-			} else if value != nil && len(*value) > 0 {
-				if err := json.Unmarshal(*value, &_m.ProtectedModelQuotas); err != nil {
-					return fmt.Errorf("unmarshal field protected_model_quotas: %w", err)
-				}
-			}
 		case group.FieldMaxReasoningEffort:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field max_reasoning_effort", values[i])
@@ -1014,12 +994,6 @@ func (_m *Group) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("fingerprint_normalize_enabled=")
 	builder.WriteString(fmt.Sprintf("%v", _m.FingerprintNormalizeEnabled))
-	builder.WriteString(", ")
-	builder.WriteString("protected_models=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ProtectedModels))
-	builder.WriteString(", ")
-	builder.WriteString("protected_model_quotas=")
-	builder.WriteString(fmt.Sprintf("%v", _m.ProtectedModelQuotas))
 	builder.WriteString(", ")
 	builder.WriteString("max_reasoning_effort=")
 	builder.WriteString(_m.MaxReasoningEffort)

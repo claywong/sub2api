@@ -275,10 +275,6 @@ type CreateGroupInput struct {
 	AllowBalanceFallback bool
 	// Anthropic 直通出站指纹归一化开关（私有扩展）
 	FingerprintNormalizeEnabled bool
-	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
-	ProtectedModels []string
-	// 受保护模型的共享日/周额度配置（私有扩展）
-	ProtectedModelQuota *ProtectedModelQuota
 	// MaxReasoningEffort OpenAI/Codex 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
@@ -358,10 +354,6 @@ type UpdateGroupInput struct {
 	AllowBalanceFallback *bool
 	// Anthropic 直通出站指纹归一化开关（私有扩展）；nil 表示未提供不改动
 	FingerprintNormalizeEnabled *bool
-	// 会话级模型锁定保护列表（私有扩展）；nil 表示未提供不改动，空切片表示清空。
-	ProtectedModels *[]string
-	// 受保护模型的共享日/周额度配置（私有扩展）；nil 表示未提供不改动。
-	ProtectedModelQuota **ProtectedModelQuota
 	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
 	MaxReasoningEffort *string
 	// ReasoningEffortMappings nil 表示不修改，空数组表示清空，非空数组表示替换。

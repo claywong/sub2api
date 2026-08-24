@@ -22167,9 +22167,6 @@ type GroupMutation struct {
 	addrpm_limit                            *int
 	allow_balance_fallback                  *bool
 	fingerprint_normalize_enabled           *bool
-	protected_models                        *[]string
-	appendprotected_models                  []string
-	protected_model_quotas                  *map[string]interface{}
 	max_reasoning_effort                    *string
 	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
 	appendreasoning_effort_mappings         []domain.ReasoningEffortMapping
@@ -25257,93 +25254,6 @@ func (m *GroupMutation) ResetFingerprintNormalizeEnabled() {
 	m.fingerprint_normalize_enabled = nil
 }
 
-// SetProtectedModels sets the "protected_models" field.
-func (m *GroupMutation) SetProtectedModels(s []string) {
-	m.protected_models = &s
-	m.appendprotected_models = nil
-}
-
-// ProtectedModels returns the value of the "protected_models" field in the mutation.
-func (m *GroupMutation) ProtectedModels() (r []string, exists bool) {
-	v := m.protected_models
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProtectedModels returns the old "protected_models" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldProtectedModels(ctx context.Context) (v []string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProtectedModels is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProtectedModels requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProtectedModels: %w", err)
-	}
-	return oldValue.ProtectedModels, nil
-}
-
-// AppendProtectedModels adds s to the "protected_models" field.
-func (m *GroupMutation) AppendProtectedModels(s []string) {
-	m.appendprotected_models = append(m.appendprotected_models, s...)
-}
-
-// AppendedProtectedModels returns the list of values that were appended to the "protected_models" field in this mutation.
-func (m *GroupMutation) AppendedProtectedModels() ([]string, bool) {
-	if len(m.appendprotected_models) == 0 {
-		return nil, false
-	}
-	return m.appendprotected_models, true
-}
-
-// ResetProtectedModels resets all changes to the "protected_models" field.
-func (m *GroupMutation) ResetProtectedModels() {
-	m.protected_models = nil
-	m.appendprotected_models = nil
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (m *GroupMutation) SetProtectedModelQuotas(value map[string]interface{}) {
-	m.protected_model_quotas = &value
-}
-
-// ProtectedModelQuotas returns the value of the "protected_model_quotas" field in the mutation.
-func (m *GroupMutation) ProtectedModelQuotas() (r map[string]interface{}, exists bool) {
-	v := m.protected_model_quotas
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldProtectedModelQuotas returns the old "protected_model_quotas" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldProtectedModelQuotas(ctx context.Context) (v map[string]interface{}, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldProtectedModelQuotas is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldProtectedModelQuotas requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldProtectedModelQuotas: %w", err)
-	}
-	return oldValue.ProtectedModelQuotas, nil
-}
-
-// ResetProtectedModelQuotas resets all changes to the "protected_model_quotas" field.
-func (m *GroupMutation) ResetProtectedModelQuotas() {
-	m.protected_model_quotas = nil
-}
-
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (m *GroupMutation) SetMaxReasoningEffort(s string) {
 	m.max_reasoning_effort = &s
@@ -25937,7 +25847,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 66)
+	fields := make([]string, 0, 64)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26115,12 +26025,6 @@ func (m *GroupMutation) Fields() []string {
 	if m.fingerprint_normalize_enabled != nil {
 		fields = append(fields, group.FieldFingerprintNormalizeEnabled)
 	}
-	if m.protected_models != nil {
-		fields = append(fields, group.FieldProtectedModels)
-	}
-	if m.protected_model_quotas != nil {
-		fields = append(fields, group.FieldProtectedModelQuotas)
-	}
 	if m.max_reasoning_effort != nil {
 		fields = append(fields, group.FieldMaxReasoningEffort)
 	}
@@ -26262,10 +26166,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowBalanceFallback()
 	case group.FieldFingerprintNormalizeEnabled:
 		return m.FingerprintNormalizeEnabled()
-	case group.FieldProtectedModels:
-		return m.ProtectedModels()
-	case group.FieldProtectedModelQuotas:
-		return m.ProtectedModelQuotas()
 	case group.FieldMaxReasoningEffort:
 		return m.MaxReasoningEffort()
 	case group.FieldReasoningEffortMappings:
@@ -26403,10 +26303,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowBalanceFallback(ctx)
 	case group.FieldFingerprintNormalizeEnabled:
 		return m.OldFingerprintNormalizeEnabled(ctx)
-	case group.FieldProtectedModels:
-		return m.OldProtectedModels(ctx)
-	case group.FieldProtectedModelQuotas:
-		return m.OldProtectedModelQuotas(ctx)
 	case group.FieldMaxReasoningEffort:
 		return m.OldMaxReasoningEffort(ctx)
 	case group.FieldReasoningEffortMappings:
@@ -26838,20 +26734,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetFingerprintNormalizeEnabled(v)
-		return nil
-	case group.FieldProtectedModels:
-		v, ok := value.([]string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProtectedModels(v)
-		return nil
-	case group.FieldProtectedModelQuotas:
-		v, ok := value.(map[string]interface{})
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetProtectedModelQuotas(v)
 		return nil
 	case group.FieldMaxReasoningEffort:
 		v, ok := value.(string)
@@ -27575,12 +27457,6 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldFingerprintNormalizeEnabled:
 		m.ResetFingerprintNormalizeEnabled()
-		return nil
-	case group.FieldProtectedModels:
-		m.ResetProtectedModels()
-		return nil
-	case group.FieldProtectedModelQuotas:
-		m.ResetProtectedModelQuotas()
 		return nil
 	case group.FieldMaxReasoningEffort:
 		m.ResetMaxReasoningEffort()

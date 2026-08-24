@@ -133,7 +133,6 @@ export default {
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
     usageOf: '已用 {used} / {limit}',
-    protectedModels: '受保护模型共享额度'
   },
 
   // Group Usage (monitor page, private extension)

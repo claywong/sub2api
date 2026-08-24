@@ -153,9 +153,6 @@ type Group struct {
 	// ReasoningEffortMappings OpenAI/Codex 推理强度精确映射。
 	ReasoningEffortMappings []domain.ReasoningEffortMapping `json:"reasoning_effort_mappings"`
 
-	// 受保护模型的共享日/周额度配置（私有扩展，用户侧只读）
-	ProtectedModelQuota *service.ProtectedModelQuota `json:"protected_model_quota,omitempty"`
-
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -200,9 +197,6 @@ type AdminGroup struct {
 
 	// Anthropic 直通出站指纹归一化开关（私有扩展）
 	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
-
-	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
-	ProtectedModels []string `json:"protected_models"`
 }
 
 type Account struct {
@@ -664,9 +658,6 @@ type UserSubscription struct {
 	WeeklyUsageUSD  float64 `json:"weekly_usage_usd"`
 	MonthlyUsageUSD float64 `json:"monthly_usage_usd"`
 
-	// 受保护模型共享额度的实时用量（从 Redis 缓存读取；未配置或无用量时为 0）
-	ProtectedModelDailyUsageUSD  float64 `json:"protected_model_daily_usage_usd,omitempty"`
-	ProtectedModelWeeklyUsageUSD float64 `json:"protected_model_weekly_usage_usd,omitempty"`
 
 	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`

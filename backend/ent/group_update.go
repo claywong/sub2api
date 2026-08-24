@@ -1108,24 +1108,6 @@ func (_u *GroupUpdate) SetNillableFingerprintNormalizeEnabled(v *bool) *GroupUpd
 	return _u
 }
 
-// SetProtectedModels sets the "protected_models" field.
-func (_u *GroupUpdate) SetProtectedModels(v []string) *GroupUpdate {
-	_u.mutation.SetProtectedModels(v)
-	return _u
-}
-
-// AppendProtectedModels appends value to the "protected_models" field.
-func (_u *GroupUpdate) AppendProtectedModels(v []string) *GroupUpdate {
-	_u.mutation.AppendProtectedModels(v)
-	return _u
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (_u *GroupUpdate) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpdate {
-	_u.mutation.SetProtectedModelQuotas(v)
-	return _u
-}
-
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdate) SetMaxReasoningEffort(v string) *GroupUpdate {
 	_u.mutation.SetMaxReasoningEffort(v)
@@ -1869,17 +1851,6 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FingerprintNormalizeEnabled(); ok {
 		_spec.SetField(group.FieldFingerprintNormalizeEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.ProtectedModels(); ok {
-		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedProtectedModels(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, group.FieldProtectedModels, value)
-		})
-	}
-	if value, ok := _u.mutation.ProtectedModelQuotas(); ok {
-		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
@@ -3292,24 +3263,6 @@ func (_u *GroupUpdateOne) SetNillableFingerprintNormalizeEnabled(v *bool) *Group
 	return _u
 }
 
-// SetProtectedModels sets the "protected_models" field.
-func (_u *GroupUpdateOne) SetProtectedModels(v []string) *GroupUpdateOne {
-	_u.mutation.SetProtectedModels(v)
-	return _u
-}
-
-// AppendProtectedModels appends value to the "protected_models" field.
-func (_u *GroupUpdateOne) AppendProtectedModels(v []string) *GroupUpdateOne {
-	_u.mutation.AppendProtectedModels(v)
-	return _u
-}
-
-// SetProtectedModelQuotas sets the "protected_model_quotas" field.
-func (_u *GroupUpdateOne) SetProtectedModelQuotas(v map[string]interface{}) *GroupUpdateOne {
-	_u.mutation.SetProtectedModelQuotas(v)
-	return _u
-}
-
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (_u *GroupUpdateOne) SetMaxReasoningEffort(v string) *GroupUpdateOne {
 	_u.mutation.SetMaxReasoningEffort(v)
@@ -4083,17 +4036,6 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.FingerprintNormalizeEnabled(); ok {
 		_spec.SetField(group.FieldFingerprintNormalizeEnabled, field.TypeBool, value)
-	}
-	if value, ok := _u.mutation.ProtectedModels(); ok {
-		_spec.SetField(group.FieldProtectedModels, field.TypeJSON, value)
-	}
-	if value, ok := _u.mutation.AppendedProtectedModels(); ok {
-		_spec.AddModifier(func(u *sql.UpdateBuilder) {
-			sqljson.Append(u, group.FieldProtectedModels, value)
-		})
-	}
-	if value, ok := _u.mutation.ProtectedModelQuotas(); ok {
-		_spec.SetField(group.FieldProtectedModelQuotas, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)

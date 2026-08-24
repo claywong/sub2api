@@ -987,18 +987,6 @@ export default {
           disabled: 'Disabled'
         }
       },
-      sessionModelLock: {
-        title: 'Session Model Lock',
-        tooltip: 'Once protected models are specified, a session cannot switch to them midway, preventing bypass of their independent quota limits.',
-        listLabel: 'Protected Models',
-        listHint: 'Models listed here are subject to session-level locking and independent quota limits.',
-        listPlaceholder: 'Select or enter protected model names',
-        quotaTitle: 'Shared Quota for Protected Models',
-        quotaHint: 'All protected models share a single daily/weekly limit (USD). Leave empty for no limit.',
-        quotaDailyLabel: 'Daily Limit (USD)',
-        quotaWeeklyLabel: 'Weekly Limit (USD)',
-        quotaPlaceholder: 'No limit'
-      },
       imagePricing: {
         title: 'Image Generation Pricing',
         description: 'Configure image generation access and base image prices. Leave empty to use default prices.',

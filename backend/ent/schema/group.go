@@ -276,17 +276,6 @@ func (Group) Fields() []ent.Field {
 			Default(false).
 			Comment("开启后 Anthropic 协议直通出站请求归一为账号级统一身份（GLM 等 CN 供应商分组使用）"),
 
-		// 会话级模型锁定保护列表（私有扩展，added by migration 904）
-		field.JSON("protected_models", []string{}).
-			Default([]string{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("会话级模型锁定保护列表，支持 * 通配符；空表示不启用"),
-
-		// 受保护模型的独立额度配置（私有扩展，added by migration 905）
-		field.JSON("protected_model_quotas", map[string]any{}).
-			Default(map[string]any{}).
-			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
-			Comment("per-model 日/周额度配置，key 为模型匹配模式，value 为 {daily_limit_usd, weekly_limit_usd}"),
 
 		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
 		field.String("max_reasoning_effort").

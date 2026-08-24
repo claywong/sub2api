@@ -128,12 +128,6 @@ type APIKeyAuthGroupSnapshot struct {
 	// Anthropic 直通出站指纹归一化开关（私有扩展）
 	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
 
-	// 会话级模型锁定保护列表（私有扩展，仅 Anthropic 协议）
-	ProtectedModels []string `json:"protected_models,omitempty"`
-
-	// 受保护模型的共享日/周额度配置（私有扩展）
-	ProtectedModelQuota *ProtectedModelQuota `json:"protected_model_quota,omitempty"`
-
 	// 分组利润控制：调度准入门在直连热路径上读的就是这份快照——门解析
 	// （resolveOpenAIProfitControlGate / resolveProfitControlGroup）优先取
 	// 认证中间件放入 ctx 的 Group，而它正是本快照物化出来的对象，生产绝大
