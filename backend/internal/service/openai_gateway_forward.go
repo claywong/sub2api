@@ -1108,6 +1108,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		imageCount := 0
 		searchCount := 0
 		var imageOutputSizes []string
+		// 私有扩展（request_log）：响应内容采集结果，开关关闭时为空串。
+		capturedResponseBody := ""
 		if reqStream {
 			streamResult, err := s.handleStreamingResponseWithReasoning(ctx, resp, c, account, startTime, originalModel, upstreamModel, reasoningEffortValue)
 			if err != nil {
@@ -1153,6 +1155,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
 			searchCount = streamResult.searchCount
+			capturedResponseBody = streamResult.capturedBody
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -1175,6 +1178,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
 			searchCount = nonStreamResult.searchCount
+			capturedResponseBody = nonStreamResult.capturedBody
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 
@@ -1208,6 +1212,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			OpenAIWSMode:                  false,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			CapturedResponseBody:          capturedResponseBody,
 		}
 		if imageCount > 0 {
 			forwardResult.ImageCount = imageCount

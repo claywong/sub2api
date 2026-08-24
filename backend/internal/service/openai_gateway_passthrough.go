@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestlog"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -359,6 +360,8 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
+	// 私有扩展（request_log）：响应内容采集结果，开关关闭时为空串。
+	capturedResponseBody := ""
 	for {
 		actualModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 		if actualModel == "" {
@@ -470,6 +473,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
 			imageOutputSizes = result.imageOutputSizes
+			capturedResponseBody = result.capturedBody
 		} else {
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
 			if handleErr != nil {
@@ -496,6 +500,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
 			imageOutputSizes = result.imageOutputSizes
+			capturedResponseBody = result.capturedBody
 		}
 		break
 	}
@@ -531,6 +536,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		OpenAIWSMode:                  false,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		CapturedResponseBody:          capturedResponseBody,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -1027,6 +1033,8 @@ type openaiStreamingResultPassthrough struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	// capturedBody 仅当 gateway.request_log.enabled=true 时填充，供上层写入 request_logs。
+	capturedBody string
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -1035,6 +1043,8 @@ type openaiNonStreamingResultPassthrough struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	// capturedBody 仅当 gateway.request_log.enabled=true 时填充，供上层写入 request_logs。
+	capturedBody string
 }
 
 const openAIStreamKeepaliveBytesKey = "openai_stream_keepalive_bytes"
@@ -1721,6 +1731,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
 	responseID := ""
+	// 私有扩展（request_log）：边转发边采集 Responses 输出，供上层写入 request_logs。
+	var respCollector *requestlog.ResponsesCollector
+	if s.cfg != nil && s.cfg.Gateway.RequestLog.Enabled {
+		respCollector = requestlog.NewResponsesCollector()
+	}
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
@@ -1802,6 +1817,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
+			capturedBody:     finalizeResponsesCollector(respCollector),
 		}
 	}
 
@@ -1959,6 +1975,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				dataBytes = sanitizedData
 				trimmedData = strings.TrimSpace(string(sanitizedData))
 				line = "data: " + string(sanitizedData)
+			}
+			// 私有扩展（request_log）：把最终下发的 data 事件喂给采集器。
+			// 显式补一个空行触发 flushEvent，不依赖上游是否按行发送空行分隔。
+			if respCollector != nil {
+				respCollector.OnLine("data: " + trimmedData)
+				respCollector.OnLine("")
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
@@ -2145,6 +2167,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
+		capturedBody:     s.captureResponsesNonStreamBody(body),
 	}, nil
 }
 
@@ -2221,6 +2244,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
+		capturedBody:     s.captureResponsesNonStreamBody(body),
 	}, nil
 }
 

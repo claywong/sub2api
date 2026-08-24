@@ -247,10 +247,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		}()
 		if err == nil && result != nil {
 			result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
-			if result.CapturedResponseBody != "" {
-				clientSessionID := h.gatewayService.ExtractSessionID(c, body)
-				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
-			}
+			// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+			clientSessionID := h.gatewayService.ExtractSessionID(c, body)
+			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 		}
 		var cyberBlockBodyChat []byte
 		if service.GetOpsCyberPolicy(c) != nil {

@@ -365,7 +365,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				)
 			}
 		})
-		if result != nil && result.CapturedResponseBody != "" {
+		// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+		if result != nil {
 			clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
 			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 		}

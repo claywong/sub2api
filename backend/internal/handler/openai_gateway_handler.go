@@ -870,7 +870,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 		submitResponsesUsage(result)
 		// 私有扩展（request_log）：写入请求内容日志。
-		if result != nil && result.CapturedResponseBody != "" {
+		// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+		if result != nil {
 			clientSessionID := h.gatewayService.ExtractSessionID(c, body)
 			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 		}
@@ -1423,7 +1424,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		}
 		submitMessagesUsage(result)
 		// 私有扩展（request_log）：写入请求内容日志。
-		if result != nil && result.CapturedResponseBody != "" {
+		// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+		if result != nil {
 			clientSessionID := h.gatewayService.ExtractSessionID(c, body)
 			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
 		}
