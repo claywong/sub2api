@@ -513,6 +513,8 @@ export default {
         statusLabel: 'Status',
         selectStatus: 'Select status',
         rpmLimit: 'Requests Per Minute (RPM)',
+        concurrencyPlaceholder: '0 = unlimited',
+        concurrencyHint: 'Max concurrent requests for this user; 0 = unlimited.',
         rpmLimitPlaceholder: '0 = unlimited',
         rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
       },
@@ -578,7 +580,7 @@ export default {
       failedToLoadApiKeys: 'Failed to load user API keys',
       passwordCopied: 'Password copied to clipboard',
       emailRequired: 'Please enter email',
-      concurrencyMin: 'Concurrency must be at least 1',
+      concurrencyNonNegative: 'Concurrency cannot be negative; 0 = unlimited',
       amountRequired: 'Please enter a valid amount',
       insufficientBalance: 'Insufficient balance',
       adjustBalance: 'Adjust Balance',
