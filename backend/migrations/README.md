@@ -42,6 +42,16 @@ Example: `017_add_gemini_tier_id.sql`
 - 早期私有迁移曾位于 `134_add_first_token_ms_to_scheduled_test_results.sql`、
   `136_ops_alert_notify_feishu.sql`、`137_request_logs.sql`，已统一迁移到
   `900`/`901`/`902`。
+- `904`/`905` 曾为「会话级模型锁定 / 受保护模型共享额度」新增
+  `groups.protected_models` 与 `groups.protected_model_quotas` 两列。该功能已下线，
+  两个迁移文件被删除，但**两列仍留在已部署的库中**（ent schema 已不再声明它们，
+  runner 只遍历现存文件，故不会报错）。保留死列是为了留出回滚到旧二进制的余地。
+  确认不再需要回滚后，可新增 `9XX` 迁移执行：
+
+      ALTER TABLE groups DROP COLUMN IF EXISTS protected_models;
+      ALTER TABLE groups DROP COLUMN IF EXISTS protected_model_quotas;
+
+  `904`/`905` 两个号不要复用。
 
 ### `_notx.sql` 命名与执行语义（并发索引专用）
 
