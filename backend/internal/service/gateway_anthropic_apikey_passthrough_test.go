@@ -1239,6 +1239,9 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_UpstreamRequest
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	// 传输层错误交给 handler failover，service 不得写响应。
+	require.False(t, c.Writer.Written())
 	rawBody, ok := c.Get(OpsUpstreamRequestBodyKey)
 	require.True(t, ok)
 	_, ok = rawBody.([]byte)
