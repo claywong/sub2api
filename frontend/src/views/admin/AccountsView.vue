@@ -1399,10 +1399,7 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
     buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
-    buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next) ||
-    JSON.stringify(current.account_health ?? null) !== JSON.stringify(next.account_health ?? null) ||
-    current.health_verdict !== next.health_verdict ||
-    current.health_verdict_reason !== next.health_verdict_reason
+    buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
 }
 
@@ -2215,10 +2212,7 @@ const mergeRuntimeFields = (oldAccount: Account, updatedAccount: Account): Accou
   ...updatedAccount,
   current_concurrency: updatedAccount.current_concurrency ?? oldAccount.current_concurrency,
   current_window_cost: updatedAccount.current_window_cost ?? oldAccount.current_window_cost,
-  active_sessions: updatedAccount.active_sessions ?? oldAccount.active_sessions,
-  account_health: updatedAccount.account_health ?? oldAccount.account_health,
-  health_verdict: updatedAccount.health_verdict ?? oldAccount.health_verdict,
-  health_verdict_reason: updatedAccount.health_verdict_reason ?? oldAccount.health_verdict_reason
+  active_sessions: updatedAccount.active_sessions ?? oldAccount.active_sessions
 })
 
 const syncPaginationAfterLocalRemoval = () => {

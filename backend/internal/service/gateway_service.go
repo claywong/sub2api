@@ -806,7 +806,6 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
-	healthCache           *AccountTestHealthCache
 	modelQualityCache     *AccountModelQualityCache
 	requestLogRepo        RequestLogRepository
 	userPlatformQuotaRepo UserPlatformQuotaRepository
@@ -841,7 +840,6 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	compositeResolver *CompositeRouteResolver,
 	balanceNotifyService *BalanceNotifyService,
-	healthCache *AccountTestHealthCache,
 	requestLogRepo RequestLogRepository,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *GatewayService {
@@ -880,14 +878,9 @@ func NewGatewayService(
 		resolver:              resolver,
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
-		healthCache:           healthCache,
 		modelQualityCache:     NewAccountModelQualityCache(),
 		requestLogRepo:        requestLogRepo,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
-	}
-	if healthCache != nil && rateLimitService != nil {
-		healthCache.OnVerdictChange = svc.onHealthVerdictChange
-		healthCache.SetVerdictConfig(svc.healthVerdictConfig())
 	}
 	if compositeResolver != nil {
 		compositeResolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)
@@ -1734,3 +1727,9 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 	// 写入文件（调试用，并发写入可能交错但不影响可读性）
 	_, _ = f.WriteString(buf.String())
 }
+
+// ModelQualityCache 返回模型质量缓存，供 admin handler 访问
+func (s *GatewayService) ModelQualityCache() *AccountModelQualityCache {
+	return s.modelQualityCache
+}
+

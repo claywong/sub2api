@@ -45,7 +45,6 @@ func ProvideAdminHandlers(
 	promptAuditHandler *securityaudit.PromptAdminHandler,
 	paymentHandler *admin.PaymentHandler,
 	affiliateHandler *admin.AffiliateHandler,
-	schedulerHandler *admin.SchedulerAdminHandler,
 	complianceHandler *admin.ComplianceHandler,
 	auditLogHandler *admin.AuditLogHandler,
 	feishuOffboardHandler *admin.FeishuOffboardHandler, // 私有扩展
@@ -91,7 +90,6 @@ func ProvideAdminHandlers(
 		PromptAudit:            promptAuditHandler,
 		Payment:                paymentHandler,
 		Affiliate:              affiliateHandler,
-		Scheduler:              schedulerHandler,
 		Compliance:             complianceHandler,
 		AuditLog:               auditLogHandler,
 		FeishuOffboard:         feishuOffboardHandler, // 私有扩展
@@ -290,7 +288,6 @@ var ProviderSet = wire.NewSet(
 	admin.NewContentModerationHandler,
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
-	admin.NewSchedulerAdminHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
 	admin.NewFeishuOffboardHandler, // 私有扩展

@@ -91,19 +91,7 @@ func (s *ScheduledTestRunnerService) launchRetryIfNeeded(plan *ScheduledTestPlan
 }
 
 func (s *ScheduledTestRunnerService) retryMaxAttempts() int {
-	maxAttempts := defaultRetryMaxAttempts
-	if s == nil || s.cfg == nil {
-		return maxAttempts
-	}
-	health := s.cfg.Gateway.Scheduling.Health
-	requiredSamples := max(health.MinSamples, health.ErrCountHard)
-	if requiredSamples <= 0 {
-		return maxAttempts
-	}
-	if requiredSamples > maxAttempts {
-		maxAttempts = requiredSamples
-	}
-	return maxAttempts
+	return defaultRetryMaxAttempts
 }
 
 // runRetryTest 等待退避时长后执行一次补测，结果写入滑动窗口以积累 MinSamples。
@@ -140,10 +128,6 @@ func (s *ScheduledTestRunnerService) runRetryTest(plan *ScheduledTestPlan, attem
 		logger.LegacyPrintf("service.scheduled_test_runner",
 			"[WARN] [RetryTest] plan=%d account=%d account_name=%s attempt=%d failed: %s",
 			plan.ID, plan.AccountID, plan.AccountName, attempt+1, result.ErrorMessage)
-	}
-
-	if s.healthCache != nil {
-		s.healthCache.UpdateFromTest(plan.AccountID, result)
 	}
 
 	s.launchRetryIfNeeded(plan, result)
