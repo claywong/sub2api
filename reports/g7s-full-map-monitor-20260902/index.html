@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>G7S 全图监控测试报告 - 2026-09-02</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f5f7;
+      --surface: #ffffff;
+      --ink: #17212b;
+      --muted: #66717d;
+      --line: #dce1e6;
+      --brand: #2157a6;
+      --pass: #16784a;
+      --pass-bg: #e9f7ef;
+      --fail: #b42318;
+      --fail-bg: #fff0ee;
+      --warn: #8a4b08;
+      --warn-bg: #fff6e6;
+      --radius: 6px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 15px;
+      line-height: 1.65;
+      letter-spacing: 0;
+    }
+
+    header {
+      background: #182238;
+      color: #fff;
+      border-bottom: 4px solid #4f77bd;
+    }
+
+    .header-inner,
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .header-inner { padding: 34px 0 30px; }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 30px;
+      line-height: 1.25;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .subtitle { margin: 0; color: #cbd5e4; }
+
+    main { padding: 28px 0 48px; }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 21px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.4;
+      letter-spacing: 0;
+    }
+
+    .section {
+      margin-top: 24px;
+      padding: 22px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      min-height: 96px;
+      padding: 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 27px;
+      line-height: 1.2;
+    }
+
+    .metric span { color: var(--muted); font-size: 13px; }
+    .metric.pass strong { color: var(--pass); }
+    .metric.fail strong { color: var(--fail); }
+
+    .meta {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 7px 16px;
+      margin: 0;
+    }
+
+    .meta dt { color: var(--muted); }
+    .meta dd { margin: 0; overflow-wrap: anywhere; }
+
+    .case {
+      margin-top: 18px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line);
+    }
+
+    .case:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+
+    .case-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .status {
+      flex: 0 0 auto;
+      min-width: 66px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .status.pass { color: var(--pass); background: var(--pass-bg); }
+    .status.fail { color: var(--fail); background: var(--fail-bg); }
+
+    .case-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px 22px;
+      margin-bottom: 16px;
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    ol, ul { margin: 5px 0 0; padding-left: 20px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .finding {
+      margin: 18px 0 0;
+      padding: 14px 16px;
+      background: var(--fail-bg);
+      border-left: 4px solid var(--fail);
+      color: #651d17;
+    }
+
+    .note {
+      margin: 14px 0 0;
+      padding: 12px 14px;
+      background: var(--warn-bg);
+      border-left: 4px solid #d58a1f;
+      color: var(--warn);
+    }
+
+    figure {
+      margin: 18px 0 0;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: #fff;
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    figcaption {
+      padding: 10px 13px;
+      color: var(--muted);
+      background: #f8f9fa;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .recommendations { margin-bottom: 0; }
+
+    footer {
+      margin-top: 26px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 760px) {
+      .header-inner, main { width: min(100% - 20px, 1180px); }
+      h1 { font-size: 24px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .case-grid { grid-template-columns: 1fr; }
+      .meta { grid-template-columns: 1fr; gap: 1px; }
+      .meta dd { margin-bottom: 8px; }
+      .section { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>G7S 全图监控测试报告</h1>
+      <p class="subtitle">真实 Chrome 会话执行 · 核心页面、车牌检索与状态筛选</p>
+    </div>
+  </header>
+
+  <main>
+    <section class="summary-grid" aria-label="测试摘要">
+      <div class="metric"><span>测试用例</span><strong>3</strong></div>
+      <div class="metric pass"><span>通过</span><strong>2</strong></div>
+      <div class="metric fail"><span>失败</span><strong>1</strong></div>
+      <div class="metric"><span>通过率</span><strong>66.7%</strong></div>
+    </section>
+
+    <section class="section">
+      <h2>执行信息</h2>
+      <dl class="meta">
+        <dt>目标系统</dt><dd>G7S 全图监控</dd>
+        <dt>环境地址</dt><dd><code>https://g7s.huoyunren.com/gscc/#/gscc/map/v3/monitor</code></dd>
+        <dt>执行日期</dt><dd>2026-09-02（Asia/Shanghai）</dd>
+        <dt>执行方式</dt><dd>Chrome 真实浏览器，基于可见页面状态自主探索并执行</dd>
+        <dt>测试账号</dt><dd>已脱敏，不在报告中保存用户名或密码</dd>
+        <dt>数据边界</dt><dd>仅执行登录、查询、筛选和地图查看；未修改、删除或下发业务数据</dd>
+      </dl>
+      <p class="note">页面数据会实时变化，车辆状态数量在执行期间发生波动。用例断言以交互后的页面状态和截图证据为准。</p>
+    </section>
+
+    <section class="section">
+      <h2>测试用例与结果</h2>
+
+      <article class="case">
+        <div class="case-heading">
+          <h3>TC01 · 全图监控首屏与地图数据加载</h3>
+          <span class="status pass">PASS</span>
+        </div>
+        <div class="case-grid">
+          <div>
+            <span class="field-label">测试目标</span>
+            验证进入全图监控后，地图、车辆树、状态统计和右侧监控面板能够完成加载。
+          </div>
+          <div>
+            <span class="field-label">前置条件</span>
+            用户已成功登录 G7S。
+          </div>
+          <div>
+            <span class="field-label">步骤</span>
+            <ol>
+              <li>从首页进入“全图监控”。</li>
+              <li>等待地图及车辆数据完成加载。</li>
+              <li>检查地图标记、车辆树、状态计数和 AI 副驾监控列表。</li>
+            </ol>
+          </div>
+          <div>
+            <span class="field-label">预期与实际</span>
+            页面标题为“全图监控”；地图出现车辆点位与聚合点；车辆树显示 1,376 辆；底部展示全部、行驶、静止、离线、其他状态统计；右侧监控列表正常显示。实际结果符合预期。
+          </div>
+        </div>
+        <figure>
+          <img src="evidence/TC01-map-overview.jpg" alt="全图监控地图、车辆树和监控列表加载完成">
+          <figcaption>证据 TC01：地图、车辆聚合点、车辆树、状态统计和右侧监控列表均已加载。</figcaption>
+        </figure>
+      </article>
+
+      <article class="case">
+        <div class="case-heading">
+          <h3>TC02 · 按车牌精确检索并打开车辆详情</h3>
+          <span class="status pass">PASS</span>
+        </div>
+        <div class="case-grid">
+          <div>
+            <span class="field-label">测试目标</span>
+            验证车牌搜索能够返回精确候选，并在选择后定位车辆、打开对应详情卡。
+          </div>
+          <div>
+            <span class="field-label">测试数据</span>
+            车牌：<code>粤YW1234</code>
+          </div>
+          <div>
+            <span class="field-label">步骤</span>
+            <ol>
+              <li>在车牌搜索框输入 <code>粤YW1234</code>。</li>
+              <li>确认下拉候选出现完全匹配车辆。</li>
+              <li>选择候选并检查地图定位与车辆详情卡。</li>
+            </ol>
+          </div>
+          <div>
+            <span class="field-label">预期与实际</span>
+            系统返回精确匹配并打开同车牌详情。实际显示设备号、所属机构、服务状态、司机和车辆操作入口；服务已到期、定位数据为空时也给出明确提示，符合预期。
+          </div>
+        </div>
+        <figure>
+          <img src="evidence/TC02-plate-search.jpg" alt="粤YW1234 车辆详情卡">
+          <figcaption>证据 TC02：选择精确候选后，地图定位到车辆并打开“粤YW1234”详情卡。</figcaption>
+        </figure>
+      </article>
+
+      <article class="case">
+        <div class="case-heading">
+          <h3>TC03 · “行驶”状态筛选结果一致性</h3>
+          <span class="status fail">FAIL</span>
+        </div>
+        <div class="case-grid">
+          <div>
+            <span class="field-label">测试目标</span>
+            验证点击“行驶”状态后，结果表仅展示可识别为行驶中的车辆。
+          </div>
+          <div>
+            <span class="field-label">判定标准</span>
+            筛选项应激活；结果表应有数据；每条记录应展示明确行驶状态或实时速度，不应同时缺少状态、定位时间和位置。
+          </div>
+          <div>
+            <span class="field-label">步骤</span>
+            <ol>
+              <li>点击底部“行驶”状态统计。</li>
+              <li>检查结果表是否展开并返回对应车辆。</li>
+              <li>等待 5.5 秒刷新后再次检查全部结果。</li>
+            </ol>
+          </div>
+          <div>
+            <span class="field-label">实际结果</span>
+            复测时表内共 13 条记录，6 条显示速度，7 条未显示明确行驶状态；示例包括 <code>沪AAZ1553</code>、<code>沪CS1022</code>、<code>沪CS1020</code>、<code>沪CS1021</code>，其定位时间和位置也为 <code>--</code>。
+          </div>
+        </div>
+        <p class="finding"><strong>失败原因：</strong>“行驶”筛选结果包含无法从当前行数据确认处于行驶状态的车辆。状态计数实时波动本身不是失败原因，筛选结果与行状态展示不一致才是本次失败判定依据。</p>
+        <figure>
+          <img src="evidence/TC03-driving-filter.jpg" alt="行驶筛选结果表">
+          <figcaption>证据 TC03-A：行驶筛选已激活并展开结果表，部分车辆显示实时速度。</figcaption>
+        </figure>
+        <figure>
+          <img src="evidence/TC03-driving-filter-detail.jpg" alt="行驶筛选中状态为空的车辆记录">
+          <figcaption>证据 TC03-B：同一“行驶”列表中，序号 10、11 的定位时间、状态和位置为空或为“--”。</figcaption>
+        </figure>
+      </article>
+    </section>
+
+    <section class="section">
+      <h2>结论与建议</h2>
+      <ul class="recommendations">
+        <li>全图监控主流程可用：页面加载、地图数据展示和车牌精确检索均通过。</li>
+        <li>建议核查“行驶”筛选的后端状态条件，以及前端对无定位、服务到期或状态缺失车辆的归类与渲染逻辑。</li>
+        <li>修复后使用同一账号复测：筛选后逐条校验状态字段，并观察一次实时刷新前后的集合变化。</li>
+      </ul>
+    </section>
+
+    <footer>报告生成于 2026-09-02 · 凭据未写入报告或证据文件</footer>
+  </main>
+</body>
+</html>

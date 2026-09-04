@@ -1537,11 +1537,6 @@ type GatewaySchedulingConfig struct {
 	// 全量重建周期（秒），0 表示禁用
 	FullRebuildIntervalSeconds int `mapstructure:"full_rebuild_interval_seconds"`
 
-	// Anthropic 账号健康感知调度参数
-	AccountHealth AccountHealthConfig `mapstructure:"account_health"`
-
-	// Health HealthVerdict 三态阈值。
-	Health SchedulingHealthConfig `mapstructure:"health"`
 	// Debug 调度调试观测开关。
 	Debug SchedulingDebugConfig `mapstructure:"debug"`
 
@@ -1557,8 +1552,6 @@ type GatewaySchedulingConfig struct {
 //	quality = 0.6 × ttftScore + 0.4 × otpsScore                // 0~1，体验加权和
 //	effRate = rate × (1 - 0.9 × shrunkHit)                     // 期望单 token 成本
 //
-// 成功率（successRate）不进 quality：账号可靠性由 HealthVerdict 门禁（10min 窗口）
-// 前置硬过滤，评分只负责"活着的账号之间按性价比优选"。
 // 无样本时 ttftScore/otpsScore 取 1（乐观，鼓励冷启动探索）；
 // 缓存命中率不进 quality（避免自增强污染），只折进 effRate；
 // 冷启动账号无缓存样本时，用候选集平均缓存率乐观估计，避免"无缓存显贵"被饿死。
@@ -1566,7 +1559,7 @@ type GatewaySchedulingConfig struct {
 type WeightedSelectionConfig struct {
 	// 总开关，默认 false（走原 Priority → 分桶 → LoadRate → LRU 漏斗）
 	Enabled bool `mapstructure:"enabled"`
-	// 质量打分滑动窗口长度（分钟），默认 60；HealthVerdict 的 10min 窗口不受影响
+	// 质量打分滑动窗口长度（分钟），默认 60
 	QualityWindowMinutes int `mapstructure:"quality_window_minutes"`
 	// CostAggressiveness 成本敏感度 β：score = quality / effRate^β，默认 1.0
 	// β>1 更偏好便宜账号；β<1 更平均；β=0 完全不看成本。
@@ -1577,21 +1570,6 @@ type WeightedSelectionConfig struct {
 	CostTolerance float64 `mapstructure:"cost_tolerance"`
 }
 
-// SchedulingHealthConfig HealthVerdict 三态判定阈值。
-type SchedulingHealthConfig struct {
-	WindowMinutes              int     `mapstructure:"window_minutes"`                // 滑动窗口长度（分钟），默认 10
-	MinSamples                 int     `mapstructure:"min_samples"`                   // 触发判定的最小样本数，默认 5
-	ErrCountSoft               int     `mapstructure:"err_count_soft"`                // 错误数软阈值 → StickyOnly，默认 5
-	ErrCountHard               int     `mapstructure:"err_count_hard"`                // 错误数硬阈值 → Excluded，默认 10
-	ErrRateSoft                float64 `mapstructure:"err_rate_soft"`                 // 错误率软阈值，默认 0.3
-	ErrRateHard                float64 `mapstructure:"err_rate_hard"`                 // 错误率硬阈值，默认 0.5
-	TTFTStickyOnlyMs           int     `mapstructure:"ttft_sticky_only_ms"`           // TTFT 进入 StickyOnly 的阈值，默认 10000
-	TTFTExcludedMs             int     `mapstructure:"ttft_excluded_ms"`              // TTFT 进入 Excluded 的阈值，0 表示禁用
-	OTPSStickyOnlyMin          float64 `mapstructure:"otps_sticky_only_min"`          // OTPS 进入 StickyOnly 的下限，默认 10
-	OTPSExcludedMin            float64 `mapstructure:"otps_excluded_min"`             // OTPS 进入 Excluded 的下限，0 表示禁用
-	ExcludedTempUnschedMinutes int     `mapstructure:"excluded_temp_unsched_minutes"` // 进入 Excluded 时触发临时不可用的时长（分钟），默认 30
-}
-
 // SchedulingDebugConfig 调度调试观测开关。
 type SchedulingDebugConfig struct {
 	LogDecisions    bool    `mapstructure:"log_decisions"`     // 是否打详细决策日志
@@ -1599,16 +1577,6 @@ type SchedulingDebugConfig struct {
 	LogSampleRate   float64 `mapstructure:"log_sample_rate"`   // 全局采样率（0~1），默认 0.05
 	LogScoreDetails bool    `mapstructure:"log_score_details"` // 是否展开每候选因子明细
 	CompareMode     bool    `mapstructure:"compare_mode"`      // 比对模式：同跑 legacy + weighted
-}
-
-// AccountHealthConfig Anthropic 账号健康感知调度阈值，0 表示使用内置默认值。
-//
-// 滑动窗口与三态判定的阈值见 GatewaySchedulingConfig.Health（SchedulingHealthConfig）。
-type AccountHealthConfig struct {
-	// 是否启用账号健康感知调度（HealthVerdict 三态），默认 false。
-	Enabled bool `mapstructure:"enabled"`
-	// 慢请求判定阈值（ms），默认 20000；用于 HealthSnapshot.SlowRate 统计
-	SlowThresholdMs int `mapstructure:"slow_threshold_ms"`
 }
 
 func (s *ServerConfig) Address() string {
