@@ -32,6 +32,60 @@ const (
 	qualityBucketMaxTTFTSamples = 64
 )
 
+// HealthSnapshot 质量指标快照（仅用于 account+model 维度的质量统计）
+type HealthSnapshot struct {
+	ttftSumMs           int64
+	TTFTSampleCount     int
+	otpsSum             float64
+	OTPSSampleCount     int
+	cacheHitRateSum     float64
+	CacheHitSampleCount int
+}
+
+// HasTTFT 返回是否有 TTFT 样本
+func (s HealthSnapshot) HasTTFT() bool {
+	return s.TTFTSampleCount > 0
+}
+
+// HasOTPS 返回是否有 OTPS 样本
+func (s HealthSnapshot) HasOTPS() bool {
+	return s.OTPSSampleCount > 0
+}
+
+// HasCacheHit 返回是否有缓存命中率样本
+func (s HealthSnapshot) HasCacheHit() bool {
+	return s.CacheHitSampleCount > 0
+}
+
+// TTFTAvgMs 返回平均 TTFT（毫秒）
+func (s HealthSnapshot) TTFTAvgMs() float64 {
+	if s.TTFTSampleCount == 0 {
+		return 0
+	}
+	return float64(s.ttftSumMs) / float64(s.TTFTSampleCount)
+}
+
+// TTFTAvg 返回平均 TTFT（毫秒） - 别名方法
+func (s HealthSnapshot) TTFTAvg() float64 {
+	return s.TTFTAvgMs()
+}
+
+// OTPSAvg 返回平均 OTPS
+func (s HealthSnapshot) OTPSAvg() float64 {
+	if s.OTPSSampleCount == 0 {
+		return 0
+	}
+	return s.otpsSum / float64(s.OTPSSampleCount)
+}
+
+// CacheHitRateAvg 返回平均缓存命中率
+func (s HealthSnapshot) CacheHitRateAvg() float64 {
+	if s.CacheHitSampleCount == 0 {
+		return 0
+	}
+	return s.cacheHitRateSum / float64(s.CacheHitSampleCount)
+}
+
 // AccountModelCacheKey 是 account+model 维度的缓存键（供 admin 接口枚举使用）。
 type AccountModelCacheKey struct {
 	accountID int64
@@ -43,6 +97,38 @@ func (k AccountModelCacheKey) Model() string    { return k.model }
 
 // accountModelKey sync.Map 的 key，按账号+模型维度隔离质量指标。
 type accountModelKey = AccountModelCacheKey
+
+// metricBucket 单个时间桶的累计指标
+type metricBucket struct {
+	startSec        int64
+	ttftSum         int64
+	ttftN           int
+	otpsSum         float64
+	otpsN           int
+	cacheHitRateSum float64
+	cacheHitN       int
+}
+
+func (b *metricBucket) reset(startSec int64) {
+	b.startSec = startSec
+	b.ttftSum = 0
+	b.ttftN = 0
+	b.otpsSum = 0
+	b.otpsN = 0
+	b.cacheHitRateSum = 0
+	b.cacheHitN = 0
+}
+
+// CallSample 单次调用的质量样本
+type CallSample struct {
+	TTFTMs               int32
+	DurationMs           int32
+	OutputTokens         int
+	InputTokens          int
+	CacheReadTokens      int
+	CacheCreationTokens  int
+	CacheHitRate         float64
+}
 
 // qualityBucket 质量窗口的单个时间桶：复用 metricBucket 的累计字段，
 // 额外保留有限 TTFT 原始样本用于 P90 估计。

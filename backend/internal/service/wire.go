@@ -636,15 +636,6 @@ func ProvideScheduledTestService(
 	return NewScheduledTestService(planRepo, resultRepo)
 }
 
-// ProvideAccountTestHealthCache creates an AccountTestHealthCache singleton.
-func ProvideAccountTestHealthCache(cfg *config.Config) *AccountTestHealthCache {
-	var healthCfg *config.AccountHealthConfig
-	if cfg != nil {
-		healthCfg = &cfg.Gateway.Scheduling.AccountHealth
-	}
-	return NewAccountTestHealthCache(healthCfg)
-}
-
 // ProvideScheduledTestRunnerService creates and starts ScheduledTestRunnerService.
 func ProvideScheduledTestRunnerService(
 	planRepo ScheduledTestPlanRepository,
@@ -652,9 +643,8 @@ func ProvideScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
-	healthCache *AccountTestHealthCache,
 ) *ScheduledTestRunnerService {
-	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg, healthCache)
+	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
 	svc.Start()
 	return svc
 }
@@ -967,7 +957,6 @@ var ProviderSet = wire.NewSet(
 	ProvideSystemOperationLockService,
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
-	ProvideAccountTestHealthCache,
 	ProvideScheduledTestRunnerService,
 	ProvideMetricCooldownService,
 	NewGroupCapacityService,

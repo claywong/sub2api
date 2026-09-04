@@ -25,12 +25,7 @@ var OTPSBucket = otpsBucket
 var CacheHitBucket = cacheHitBucket
 
 // qualityBucketCache 返回用于质量分桶的模型质量缓存。
-// account_health 未启用时返回 nil，使三个 filter 函数退化为透传，
-// 完全保留 Priority → LoadRate → LRU 的原始行为。
 func (s *GatewayService) qualityBucketCache() *AccountModelQualityCache {
-	if !s.isAccountHealthEnabled() {
-		return nil
-	}
 	return s.modelQualityCache
 }
 

@@ -18,7 +18,6 @@ type ScheduledTestRunnerService struct {
 	scheduledSvc   *ScheduledTestService
 	accountTestSvc *AccountTestService
 	rateLimitSvc   *RateLimitService
-	healthCache    *AccountTestHealthCache
 	cfg            *config.Config
 
 	cron        *cron.Cron
@@ -34,14 +33,12 @@ func NewScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
-	healthCache *AccountTestHealthCache,
 ) *ScheduledTestRunnerService {
 	return &ScheduledTestRunnerService{
 		planRepo:       planRepo,
 		scheduledSvc:   scheduledSvc,
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
-		healthCache:    healthCache,
 		cfg:            cfg,
 		retryStates:    newRetryStateMap(),
 	}
@@ -151,11 +148,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 			plan.ID, plan.AccountID, plan.AccountName, result.ErrorMessage)
 	}
 
-	// 更新健康缓存
-	if s.healthCache != nil {
-		s.healthCache.UpdateFromTest(plan.AccountID, result)
-		s.launchRetryIfNeeded(plan, result)
-	}
+	s.launchRetryIfNeeded(plan, result)
 
 	// Auto-recover account if test succeeded and auto_recover is enabled.
 	if result.Status == "success" && plan.AutoRecover {
@@ -214,10 +207,6 @@ func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, acco
 	if err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover failed: %v", planID, err)
 		return
-	}
-	if s.healthCache != nil {
-		s.healthCache.Reset(accountID)
-		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover: account=%d cleared health verdict state", planID, accountID)
 	}
 	if recovery == nil {
 		return

@@ -41,7 +41,6 @@ type AdminHandlers struct {
 	PromptAudit            *securityaudit.PromptAdminHandler
 	Payment                *admin.PaymentHandler
 	Affiliate              *admin.AffiliateHandler
-	Scheduler              *admin.SchedulerAdminHandler
 	Compliance             *admin.ComplianceHandler
 	AuditLog               *admin.AuditLogHandler
 	// 私有扩展（不属于 upstream）：飞书离职自动禁用。

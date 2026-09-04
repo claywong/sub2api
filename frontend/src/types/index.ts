@@ -1277,9 +1277,6 @@ export interface Account {
   current_window_cost?: number | null // 当前窗口费用
   active_sessions?: number | null // 当前活跃会话数
   current_rpm?: number | null // 当前分钟 RPM 计数
-  account_health?: AccountHealthRuntime | null // Anthropic 账号健康滑动窗口快照
-  health_verdict?: 'StickyOnly' | 'Excluded' | null // 健康三态降级状态，OK 时不返回
-  health_verdict_reason?: string | null // 触发原因，如 err_rate=45.0%(≥30%)
 
   // 影子账号关系（spark 维度影子）
   parent_account_id?: number | null
@@ -1290,22 +1287,6 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
-}
-
-export interface AccountHealthRuntime {
-  available: boolean
-  window_seconds: number
-  req_count: number
-  err_count: number
-  err_rate: number
-  slow_count: number
-  slow_rate: number
-  ttft_avg_ms: number
-  otps_avg: number
-  tcp_conn_avg_ms: number // TCP 连接平均时间（ms）
-  ttfb_avg_ms: number     // TTFB（首字节时间）平均（ms）
-  verdict: 'OK' | 'StickyOnly' | 'Excluded' | 'Unknown'
-  verdict_reason: string
 }
 
 export interface AccountSchedulerGroupScore {
