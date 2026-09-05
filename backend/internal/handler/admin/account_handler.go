@@ -90,7 +90,7 @@ func NewAccountHandler(
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
-	tokenCacheInvalidator service.TokenCacheInvalidator,
+	tokenCacheInvalidator service.TokenCacheInvalidator, _ ...any,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -194,11 +194,10 @@ type AccountWithConcurrency struct {
 	SchedulerScore     *AccountSchedulerScore       `json:"scheduler_score,omitempty"`
 	SchedulerScores    []AccountSchedulerGroupScore `json:"scheduler_scores,omitempty"`
 	// 以下字段仅对 Anthropic OAuth/SetupToken 账号有效，且仅在启用相应功能时返回
-	CurrentWindowCost   *float64              `json:"current_window_cost,omitempty"`   // 当前窗口费用
-	ActiveSessions      *int                  `json:"active_sessions,omitempty"`       // 当前活跃会话数
-	CurrentRPM          *int                  `json:"current_rpm,omitempty"`           // 当前分钟 RPM 计数
-	}
-
+	CurrentWindowCost *float64 `json:"current_window_cost,omitempty"` // 当前窗口费用
+	ActiveSessions    *int     `json:"active_sessions,omitempty"`     // 当前活跃会话数
+	CurrentRPM        *int     `json:"current_rpm,omitempty"`         // 当前分钟 RPM 计数
+}
 
 type AccountSchedulerScore struct {
 	BaseScore             float64 `json:"base_score"`
@@ -1159,7 +1158,6 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {

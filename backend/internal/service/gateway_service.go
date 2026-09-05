@@ -840,7 +840,7 @@ func NewGatewayService(
 	compositeResolver *CompositeRouteResolver,
 	balanceNotifyService *BalanceNotifyService,
 	requestLogRepo RequestLogRepository,
-	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	userPlatformQuotaRepo UserPlatformQuotaRepository, _ ...any,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
