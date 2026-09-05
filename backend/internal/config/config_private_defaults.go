@@ -56,13 +56,4 @@ func setPrivateEnvReachableDefaults() {
 	viper.SetDefault("gateway.scheduling.debug.log_score_details", false)
 	viper.SetDefault("gateway.scheduling.debug.compare_mode", false)
 
-	// gateway.scheduling.account_health：账号健康采样
-	viper.SetDefault("gateway.scheduling.account_health.enabled", false)
-	viper.SetDefault("gateway.scheduling.account_health.slow_threshold_ms", 0)
-
-	// gateway.scheduling.weighted_selection：加权选择
-	viper.SetDefault("gateway.scheduling.weighted_selection.enabled", false)
-	viper.SetDefault("gateway.scheduling.weighted_selection.quality_window_minutes", 0)
-	viper.SetDefault("gateway.scheduling.weighted_selection.cost_aggressiveness", 0.0)
-	viper.SetDefault("gateway.scheduling.weighted_selection.cost_tolerance", 0.0)
 }

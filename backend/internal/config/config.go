@@ -1540,8 +1540,6 @@ type GatewaySchedulingConfig struct {
 	// Debug 调度调试观测开关。
 	Debug SchedulingDebugConfig `mapstructure:"debug"`
 
-	// WeightedSelection Layer 2 质量加权选号（私有扩展），默认关闭。
-	WeightedSelection WeightedSelectionConfig `mapstructure:"weighted_selection"`
 }
 
 // WeightedSelectionConfig Layer 2 性价比选号配置（私有扩展，不属于 upstream sub2api）。
