@@ -54,7 +54,6 @@ import "context"
 
 // credentialKeyFailoverNoSticky 是账号「救火号」开关在 Credentials 中的键名。
 // 缺省（键不存在）即保持 upstream 行为：failover 命中并成功后照常接管粘性。
-const credentialKeyFailoverNoSticky = "failover_no_sticky"
 
 // failoverAttemptContextKey 是「当前 attempt 由 failover 重试触发」的 ctx key。
 // 用独立的私有 struct key 而非 ctxkey.Key 常量，避免碰撞，也避免改动 upstream 的
@@ -63,9 +62,6 @@ type failoverAttemptContextKey struct{}
 
 // SkipsStickyBindOnFailover 返回该账号是否开启了「救火号」开关：
 // 被 failover 重试选中时不接管粘性会话。
-func (a *Account) SkipsStickyBindOnFailover() bool {
-	return false
-}
 
 // WithFailoverAttempt 标记当前 attempt 是否由 failover 重试触发。
 // 必须在 SelectAccountWithLoadAwareness 之前调用，调度层才能读到。
@@ -88,10 +84,6 @@ func FailoverAttemptFromContext(ctx context.Context) bool {
 
 // skipStickyBindForFailover 判定是否应跳过对该账号的粘性绑定写入。
 // 仅当「账号开启救火号开关」且「当前 attempt 由 failover 重试触发」时为 true。
-func skipStickyBindForFailover(ctx context.Context, account *Account) bool {
-	return false
-}
-
 // skipStickyBindForFailoverByID 是 skipStickyBindForFailover 的按 ID 回查版本，
 // 用于只拿到 accountID 的绑定点（利润门终检路径）。
 //
@@ -99,13 +91,3 @@ func skipStickyBindForFailover(ctx context.Context, account *Account) bool {
 // 引入一次多余的账号查询 —— 本函数不重复该判断。
 //
 // 回查失败时返回 false（保持 upstream 绑定行为），不因一次读库失败改变调度语义。
-func (s *GatewayService) skipStickyBindForFailoverByID(ctx context.Context, accountID int64) bool {
-	if s.accountRepo == nil || accountID <= 0 {
-		return false
-	}
-	account, err := s.accountRepo.GetByID(ctx, accountID)
-	if err != nil || account == nil {
-		return false
-	}
-	return account.SkipsStickyBindOnFailover()
-}
