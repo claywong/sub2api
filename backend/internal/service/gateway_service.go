@@ -635,10 +635,6 @@ type ForwardResult struct {
 	// cheaper tier (see ResolveBillingServiceTier).
 	ServiceTier *string
 
-	// 连接阶段性能指标（由 httptrace 采集；连接复用时 TCPConnMs=0）
-	TCPConnMs int // TCP 连接建立时间（ms）；utls 路径下含 TLS 握手
-	TTFBMs    int // 首字节时间（ms），从请求发出到收到第一个响应字节
-
 	// 图片生成计费字段（图片生成模型使用）
 	ImageCount         int    // 生成的图片数量
 	ImageSize          string // 最终计费尺寸 "1K", "2K", "4K"
@@ -649,9 +645,6 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 	SearchCount        int
 	AudioUsage         *AudioUsage
-
-	// CapturedResponseBody 仅当 gateway.request_log.enabled=true 时填充，供调用方写入 request_logs 表。
-	CapturedResponseBody string
 }
 
 // GatewayFailureStage identifies which request stage failed. The zero value is
@@ -758,13 +751,8 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	switch failoverErr.StatusCode {
 	case http.StatusBadRequest:
 		tempUnscheduleGoogleConfigError(ctx, s.accountRepo, accountID, "[handler]")
-	}
-	// 注意：500/502/520 的阈值计数已在 handleFailoverSideEffects 里每次响应时执行，此处不再重复计数。
-	if len(failoverErr.ResponseBody) > 0 && s.rateLimitService != nil {
-		account, err := s.accountRepo.GetByID(ctx, accountID)
-		if err == nil && account != nil {
-			s.rateLimitService.HandleTempUnschedulable(ctx, account, failoverErr.StatusCode, failoverErr.ResponseBody)
-		}
+	case http.StatusBadGateway:
+		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
 	}
 }
 
@@ -806,7 +794,6 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
-	requestLogRepo        RequestLogRepository
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
 
@@ -839,7 +826,6 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	compositeResolver *CompositeRouteResolver,
 	balanceNotifyService *BalanceNotifyService,
-	requestLogRepo RequestLogRepository,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
@@ -877,7 +863,6 @@ func NewGatewayService(
 		resolver:              resolver,
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
-		requestLogRepo:        requestLogRepo,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
 	if compositeResolver != nil {
@@ -977,27 +962,11 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 // behavior unless a profit gate is installed. Profit-controlled requests bind
 // only after the terminal post-slot check, otherwise a rejected candidate could
 // overwrite a healthy pre-existing sticky binding.
-//
-// 私有扩展：形参为 account *Account（而非 accountID int64），以便在此判定
-// 「救火号」开关。签名刻意收紧，使全部调用点由编译器强制同步，
-// 详见 account_failover_sticky.go。
-func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, account *Account) error {
-	if account == nil {
-		return nil
-	}
+func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if gatewayProfitControlGateActive(ctx) {
 		return nil
 	}
-	// 私有扩展：救火号被 failover 重试选中时不接管粘性会话，保留原绑定。
-	if skipStickyBindForFailover(ctx, account) {
-		slog.Info("sticky.skip_bind_failover_account",
-			"account_id", account.ID,
-			"group_id", derefGroupID(groupID),
-			"session", shortSessionHash(sessionHash),
-		)
-		return nil
-	}
-	return s.BindStickySession(ctx, groupID, sessionHash, account.ID)
+	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }
 
 // BindStickySessionAfterProfitAdmission records a terminally admitted
@@ -1008,18 +977,6 @@ func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Con
 // account rate recovers.
 func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
-		return nil
-	}
-	// 私有扩展：救火号被 failover 重试选中时不接管粘性会话。此处只有 accountID，
-	// 需回查账号才能读开关；仅在已标记 failover 的 attempt 上回查，正常路径零开销。
-	// 见 account_failover_sticky.go。
-	if FailoverAttemptFromContext(ctx) && s.skipStickyBindForFailoverByID(ctx, accountID) {
-		slog.Info("sticky.skip_bind_failover_account",
-			"account_id", accountID,
-			"group_id", derefGroupID(groupID),
-			"session", shortSessionHash(sessionHash),
-			"path", "profit_admission",
-		)
 		return nil
 	}
 	if !gatewayProfitControlGateActive(ctx) {
