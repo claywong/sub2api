@@ -806,7 +806,6 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
-	modelQualityCache     *AccountModelQualityCache
 	requestLogRepo        RequestLogRepository
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 }
@@ -878,7 +877,6 @@ func NewGatewayService(
 		resolver:              resolver,
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
-		modelQualityCache:     NewAccountModelQualityCache(),
 		requestLogRepo:        requestLogRepo,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
 	}
@@ -1729,7 +1727,3 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 }
 
 // ModelQualityCache 返回模型质量缓存，供 admin handler 访问
-func (s *GatewayService) ModelQualityCache() *AccountModelQualityCache {
-	return s.modelQualityCache
-}
-
