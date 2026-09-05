@@ -1725,5 +1725,3 @@ func (s *GatewayService) debugLogGatewaySnapshot(tag string, headers http.Header
 	// 写入文件（调试用，并发写入可能交错但不影响可读性）
 	_, _ = f.WriteString(buf.String())
 }
-
-// ModelQualityCache 返回模型质量缓存，供 admin handler 访问
