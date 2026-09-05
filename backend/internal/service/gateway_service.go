@@ -988,15 +988,6 @@ func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Con
 	if gatewayProfitControlGateActive(ctx) {
 		return nil
 	}
-	// 私有扩展：救火号被 failover 重试选中时不接管粘性会话，保留原绑定。
-	if skipStickyBindForFailover(ctx, account) {
-		slog.Info("sticky.skip_bind_failover_account",
-			"account_id", account.ID,
-			"group_id", derefGroupID(groupID),
-			"session", shortSessionHash(sessionHash),
-		)
-		return nil
-	}
 	return s.BindStickySession(ctx, groupID, sessionHash, account.ID)
 }
 
@@ -1013,15 +1004,6 @@ func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Conte
 	// 私有扩展：救火号被 failover 重试选中时不接管粘性会话。此处只有 accountID，
 	// 需回查账号才能读开关；仅在已标记 failover 的 attempt 上回查，正常路径零开销。
 	// 见 account_failover_sticky.go。
-	if FailoverAttemptFromContext(ctx) && s.skipStickyBindForFailoverByID(ctx, accountID) {
-		slog.Info("sticky.skip_bind_failover_account",
-			"account_id", accountID,
-			"group_id", derefGroupID(groupID),
-			"session", shortSessionHash(sessionHash),
-			"path", "profit_admission",
-		)
-		return nil
-	}
 	if !gatewayProfitControlGateActive(ctx) {
 		return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 	}

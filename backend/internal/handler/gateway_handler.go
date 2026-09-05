@@ -1080,12 +1080,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 私有扩展：救火号（credentials.failover_no_sticky）被 failover 重试
 			// 选中时，即使成功也不接管粘性会话，见 account_failover_sticky.go。
 			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
-				if service.FailoverAttemptFromContext(c.Request.Context()) && account.SkipsStickyBindOnFailover() {
-					reqLog.Info("sticky.skip_bind_failover_account",
-						zap.Int64("account_id", account.ID),
-						zap.String("session_key", sessionKey),
-					)
-				} else if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -2603,4 +2598,3 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, model string, err error, result *service.ForwardResult) {
 	// 健康缓存已移除，此方法不再执行任何操作
 }
-

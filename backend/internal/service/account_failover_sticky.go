@@ -64,11 +64,7 @@ type failoverAttemptContextKey struct{}
 // SkipsStickyBindOnFailover 返回该账号是否开启了「救火号」开关：
 // 被 failover 重试选中时不接管粘性会话。
 func (a *Account) SkipsStickyBindOnFailover() bool {
-	if a == nil || a.Credentials == nil {
-		return false
-	}
-	enabled, ok := a.Credentials[credentialKeyFailoverNoSticky].(bool)
-	return ok && enabled
+	return false
 }
 
 // WithFailoverAttempt 标记当前 attempt 是否由 failover 重试触发。
@@ -93,10 +89,7 @@ func FailoverAttemptFromContext(ctx context.Context) bool {
 // skipStickyBindForFailover 判定是否应跳过对该账号的粘性绑定写入。
 // 仅当「账号开启救火号开关」且「当前 attempt 由 failover 重试触发」时为 true。
 func skipStickyBindForFailover(ctx context.Context, account *Account) bool {
-	if !account.SkipsStickyBindOnFailover() {
-		return false
-	}
-	return FailoverAttemptFromContext(ctx)
+	return false
 }
 
 // skipStickyBindForFailoverByID 是 skipStickyBindForFailover 的按 ID 回查版本，
