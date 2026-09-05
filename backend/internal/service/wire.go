@@ -649,18 +649,6 @@ func ProvideScheduledTestRunnerService(
 	return svc
 }
 
-// ProvideMetricCooldownService 创建并启动 MetricCooldownService。
-func ProvideMetricCooldownService(
-	cfg *config.Config,
-	repo MetricCooldownRepository,
-	accountRepo AccountRepository,
-	rateLimitSvc *RateLimitService,
-) *MetricCooldownService {
-	svc := NewMetricCooldownService(cfg, repo, accountRepo, rateLimitSvc)
-	svc.Start()
-	return svc
-}
-
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -958,7 +946,6 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
-	ProvideMetricCooldownService,
 	NewGroupCapacityService,
 	NewChannelService,
 	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),

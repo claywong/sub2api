@@ -25,35 +25,10 @@ import "github.com/spf13/viper"
 //
 // 覆盖范围：
 //   - gateway.request_log.*          请求内容记录
-//   - gateway.scheduling.health.*    账号健康度判定阈值
-//   - gateway.scheduling.debug.*     调度决策调试日志
-//   - gateway.scheduling.account_health.*   账号健康采样
-//   - gateway.scheduling.weighted_selection.*  加权选择
 //
 // 新增私有配置项时必须同步在此登记，否则 TestConfigKeysAreEnvReachable 会失败。
 func setPrivateEnvReachableDefaults() {
 	// gateway.request_log：请求内容记录
 	viper.SetDefault("gateway.request_log.enabled", false)
 	viper.SetDefault("gateway.request_log.max_body_bytes", 0)
-
-	// gateway.scheduling.health：健康度判定阈值
-	viper.SetDefault("gateway.scheduling.health.window_minutes", 0)
-	viper.SetDefault("gateway.scheduling.health.min_samples", 0)
-	viper.SetDefault("gateway.scheduling.health.err_count_soft", 0)
-	viper.SetDefault("gateway.scheduling.health.err_count_hard", 0)
-	viper.SetDefault("gateway.scheduling.health.err_rate_soft", 0.0)
-	viper.SetDefault("gateway.scheduling.health.err_rate_hard", 0.0)
-	viper.SetDefault("gateway.scheduling.health.ttft_sticky_only_ms", 0)
-	viper.SetDefault("gateway.scheduling.health.ttft_excluded_ms", 0)
-	viper.SetDefault("gateway.scheduling.health.otps_sticky_only_min", 0.0)
-	viper.SetDefault("gateway.scheduling.health.otps_excluded_min", 0.0)
-	viper.SetDefault("gateway.scheduling.health.excluded_temp_unsched_minutes", 0)
-
-	// gateway.scheduling.debug：调度决策调试日志
-	viper.SetDefault("gateway.scheduling.debug.log_decisions", false)
-	viper.SetDefault("gateway.scheduling.debug.log_groups", []int64{})
-	viper.SetDefault("gateway.scheduling.debug.log_sample_rate", 0.0)
-	viper.SetDefault("gateway.scheduling.debug.log_score_details", false)
-	viper.SetDefault("gateway.scheduling.debug.compare_mode", false)
-
 }

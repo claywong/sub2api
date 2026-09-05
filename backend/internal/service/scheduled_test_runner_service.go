@@ -20,10 +20,9 @@ type ScheduledTestRunnerService struct {
 	rateLimitSvc   *RateLimitService
 	cfg            *config.Config
 
-	cron        *cron.Cron
-	startOnce   sync.Once
-	stopOnce    sync.Once
-	retryStates *retryStateMap
+	cron      *cron.Cron
+	startOnce sync.Once
+	stopOnce  sync.Once
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -40,7 +39,6 @@ func NewScheduledTestRunnerService(
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
-		retryStates:    newRetryStateMap(),
 	}
 }
 
@@ -147,8 +145,6 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 			"[WARN] [ScheduledTestRunner] plan=%d account=%d account_name=%s test failed: %s",
 			plan.ID, plan.AccountID, plan.AccountName, result.ErrorMessage)
 	}
-
-	s.launchRetryIfNeeded(plan, result)
 
 	// Auto-recover account if test succeeded and auto_recover is enabled.
 	if result.Status == "success" && plan.AutoRecover {

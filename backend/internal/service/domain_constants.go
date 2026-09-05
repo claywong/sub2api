@@ -16,8 +16,6 @@ const (
 	StatusExpired  = domain.StatusExpired
 )
 
-const ManualCooldownReasonPrefix = domain.ManualCooldownReasonPrefix
-
 // Role constants
 const (
 	RoleAdmin = domain.RoleAdmin
