@@ -315,6 +315,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 
 		for {
+			// 私有扩展：failover attempt 标记，见 account_failover_sticky.go
+			c.Request = c.Request.WithContext(service.WithFailoverAttempt(c.Request.Context(), fs.SwitchCount > 0))
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if len(fs.FailedAccountIDs) == 0 {
@@ -621,12 +623,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				return
 			}
 
+			// 私有扩展：标记本次 attempt 是否由 failover 重试触发，供调度层判定
+			// 救火号是否接管粘性。必须在选号之前写入，见 account_failover_sticky.go。
+			// 用 fs.SwitchCount 而非 len(fs.FailedAccountIDs)：503 退避分支会清空
+			// FailedAccountIDs 但不重置 SwitchCount。
+			c.Request = c.Request.WithContext(service.WithFailoverAttempt(c.Request.Context(), fs.SwitchCount > 0))
+
 			// 选择支持该模型的账号
 			reqLog.Info("sticky.selecting_account",
 				zap.String("session_key", sessionKey),
 				zap.Int64("sticky_bound_account_id", sessionBoundAccountID),
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
+				zap.Int("switch_count", fs.SwitchCount),
 			)
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
@@ -992,10 +1001,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
+						// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+						h.reportAnthropicForwardResult(account, reqModel, err, result)
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
 					action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
+					// 同账号重试：本次失败是中间重试，不计入健康窗口，避免虚高 errCount。
+					// 最终失败（重试耗尽切换账号或 Exhausted）时 IsSameAccountRetry=false，正常上报。
+					if !fs.IsSameAccountRetry {
+						h.reportAnthropicForwardResult(account, reqModel, err, result)
+					}
 					switch action {
 					case FailoverContinue:
 						continue
@@ -1007,6 +1023,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						return
 					}
 				}
+				// 非 failoverErr 的普通错误（网络层、未知错误等），直接上报。
+				h.reportAnthropicForwardResult(account, reqModel, err, result)
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
@@ -1040,6 +1058,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				return
 			}
 
+			// 真实调用结果上报到健康缓存（仅 Anthropic 平台）。
+			// 成功路径无条件上报（含经历同账号重试后最终成功的情况）。
+			h.reportAnthropicForwardResult(account, reqModel, nil, result)
+
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
@@ -1054,13 +1076,31 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// - 选中账号与粘性账号一致：刷新 TTL
 			// - 粘性账号因负载/RPM 被跳过、选中了其他账号：不覆盖原绑定，
 			//   下次请求粘性账号恢复后仍可命中
+			//
+			// 私有扩展：救火号（credentials.failover_no_sticky）被 failover 重试
+			// 选中时，即使成功也不接管粘性会话，见 account_failover_sticky.go。
 			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
-				if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if service.FailoverAttemptFromContext(c.Request.Context()) && account.SkipsStickyBindOnFailover() {
+					reqLog.Info("sticky.skip_bind_failover_account",
+						zap.Int64("account_id", account.ID),
+						zap.String("session_key", sessionKey),
+					)
+				} else if err := h.gatewayService.BindStickySession(c.Request.Context(), currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
 
+			// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
+			// （私有扩展：须在 submitForwardUsage 之前，让 RecordUsage 用同一 ID）
+			result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
+
 			submitForwardUsage(result)
+			// 私有扩展：request log 落库（upstream helper 不含此步）
+			// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+			if result != nil {
+				clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
+				h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, currentAPIKey.User.ID, string(body), result.CapturedResponseBody)
+			}
 			return
 		}
 		if !retryWithFallback {
@@ -2161,7 +2201,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
-		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		reqLog.Error("gateway.count_tokens_forward_failed", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name), zap.Error(err))
 		// 错误响应已在 ForwardCountTokens 中处理
 		return
 	}
@@ -2462,6 +2502,8 @@ func (h *GatewayHandler) metadataBridgeEnabled() bool {
 	return h.cfg.Gateway.OpenAIWS.MetadataBridgeEnabled
 }
 
+// reportAnthropicForwardResult 已搬到 gateway_handler_health_report.go（私有扩展）。
+
 func (h *GatewayHandler) maybeLogCompatibilityFallbackMetrics(reqLog *zap.Logger) {
 	if reqLog == nil {
 		return
@@ -2555,3 +2597,10 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 	}
 	return mode
 }
+
+// reportAnthropicForwardResult 上报 Anthropic 平台的转发结果到质量缓存
+// 该方法已弃用，保留空实现以兼容现有调用
+func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, model string, err error, result *service.ForwardResult) {
+	// 健康缓存已移除，此方法不再执行任何操作
+}
+

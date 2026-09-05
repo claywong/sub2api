@@ -2354,6 +2354,33 @@
         </template>
       </div>
 
+      <!-- Failover No Sticky (救火账号) -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="flex items-center justify-between">
+          <div class="pr-4">
+            <label class="input-label mb-0">{{ t('admin.accounts.failoverNoSticky.title') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.failoverNoSticky.hint') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="failoverNoSticky = !failoverNoSticky"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              failoverNoSticky ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                failoverNoSticky ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+      </div>
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -2531,6 +2558,76 @@
               ]"
             />
           </button>
+        </div>
+      </div>
+
+      <!-- 私有扩展：Anthropic API Key 会话数量控制（仅会话限制，不含窗口费用/RPM） -->
+      <div
+        v-if="form.platform === 'anthropic' && form.type === 'apikey'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
+      >
+        <div class="mb-3">
+          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.quotaControl.sessionLimit.hint') }}
+          </p>
+        </div>
+
+        <!-- Session Limit -->
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
+          <div class="mb-3 flex items-center justify-between">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.sessionLimit.label') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.quotaControl.sessionLimit.hint') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              @click="sessionLimitEnabled = !sessionLimitEnabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                sessionLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  sessionLimitEnabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+
+          <div v-if="sessionLimitEnabled" class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessions') }}</label>
+              <input
+                v-model.number="maxSessions"
+                type="number"
+                min="1"
+                step="1"
+                class="input"
+                :placeholder="t('admin.accounts.quotaControl.sessionLimit.maxSessionsPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessionsHint') }}</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeout') }}</label>
+              <div class="relative">
+                <input
+                  v-model.number="sessionIdleTimeout"
+                  type="number"
+                  min="1"
+                  step="1"
+                  class="input pr-12"
+                  :placeholder="t('admin.accounts.quotaControl.sessionLimit.idleTimeoutPlaceholder')"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">{{ t('common.minutes') }}</span>
+              </div>
+              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeoutHint') }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -4293,6 +4390,9 @@ const vertexProjectId = ref('')
 const vertexClientEmail = ref('')
 const vertexLocation = ref('global')
 const vertexServiceAccountDragActive = ref(false)
+// 私有扩展：救火账号开关（failover 重试命中后不接管粘性会话）
+const failoverNoSticky = ref(false)
+
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
@@ -4723,8 +4823,8 @@ watch(
 
 // Gemini AI Studio OAuth availability (requires operator-configured OAuth client)
 watch(
-  [accountCategory, () => form.platform],
-  ([category, platform]) => {
+  [accountCategory, addMethod, () => form.platform],
+  ([category, , platform]) => {
     if (platform === 'openai' && category !== 'oauth-based') {
       codexCLIOnlyEnabled.value = false
       codexCLIOnlyAppServerEnabled.value = false
@@ -4948,6 +5048,16 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   credentials.temp_unschedulable_enabled = true
   credentials.temp_unschedulable_rules = rules
   return true
+}
+
+// 私有扩展：救火账号开关。关闭时删除键而非写 false，保持 credentials 稀疏，
+// 与后端「键不存在即未开启」的读取语义一致。
+const applyFailoverNoStickyConfig = (credentials: Record<string, unknown>) => {
+  if (!failoverNoSticky.value) {
+    delete credentials.failover_no_sticky
+    return
+  }
+  credentials.failover_no_sticky = true
 }
 
 const splitTempUnschedKeywords = (value: string) => {
@@ -5182,6 +5292,7 @@ const resetForm = () => {
   vertexLocation.value = 'global'
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
+  failoverNoSticky.value = false
   geminiOAuthType.value = 'code_assist'
   geminiTierGoogleOne.value = 'google_one_free'
   geminiTierGcp.value = 'gcp_standard'
@@ -5638,6 +5749,7 @@ const handleSubmit = async () => {
   }
 
   applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
@@ -5707,13 +5819,20 @@ const createAccountAndFinish = async (
   credentials: Record<string, unknown>,
   extra?: Record<string, unknown>
 ) => {
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
   // Inject quota limits for apikey/bedrock accounts
-  let finalExtra = extra
+  let finalExtra = platform === 'anthropic' ? buildAnthropicExtra(extra) : extra
   if (type === 'apikey' || type === 'bedrock') {
-    const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
+    const quotaExtra: Record<string, unknown> = { ...(finalExtra || {}) }
+    // 私有扩展：Anthropic API Key 会话数量控制（窗口费用 / RPM 仍仅 OAuth/SetupToken）
+    if (platform === 'anthropic' && type === 'apikey'
+      && sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
+      quotaExtra.max_sessions = maxSessions.value
+      quotaExtra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
+    }
     if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
       quotaExtra.quota_limit = editQuotaLimit.value
     }
@@ -5827,6 +5946,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
         if (modelMapping) {
           credentials.model_mapping = modelMapping
         }
+        applyFailoverNoStickyConfig(credentials)
         if (!applyTempUnschedConfig(credentials)) {
           return
         }
@@ -5894,6 +6014,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     grokOAuth.loading.value = false
     return
@@ -6004,6 +6125,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
         if (modelMapping) {
           credentials.model_mapping = modelMapping
         }
+        applyFailoverNoStickyConfig(credentials)
         if (!applyTempUnschedConfig(credentials)) {
           return
         }
@@ -6102,6 +6224,7 @@ const handleOpenAIExchange = async (authCode: string) => {
     }
 
     // 应用临时不可调度配置
+    applyFailoverNoStickyConfig(credentials)
     if (!applyTempUnschedConfig(credentials)) {
       return
     }
@@ -6154,6 +6277,7 @@ const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | nul
     credentials.compact_model_mapping = compactModelMapping
   }
 
+  applyFailoverNoStickyConfig(credentials)
   if (!applyTempUnschedConfig(credentials)) {
     return null
   }
@@ -6863,11 +6987,11 @@ const handleCookieAuth = async (sessionKey: string) => {
 
         const credentials: Record<string, unknown> = { ...tokenInfo }
         applyInterceptWarmup(credentials, interceptWarmupRequests.value, 'create')
+        applyFailoverNoStickyConfig(credentials)
         if (tempUnschedEnabled.value) {
           credentials.temp_unschedulable_enabled = true
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
-
         await adminAPI.accounts.create({
           name: accountName,
           notes: form.notes,

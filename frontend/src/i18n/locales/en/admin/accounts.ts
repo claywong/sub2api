@@ -86,6 +86,7 @@ export default {
       allTypes: 'All Types',
       allStatus: 'All Status',
       allGroups: 'All Groups',
+      allModels: 'All Models',
       ungroupedGroup: 'Ungrouped',
       oauthType: 'OAuth',
       setupToken: 'Setup Token',
@@ -353,6 +354,10 @@ export default {
           exceeded: 'Quota exceeded, account paused',
           normal: 'Quota normal'
         },
+      },
+      failoverNoSticky: {
+        title: 'Standby account (no session takeover)',
+        hint: 'When this account is picked by a failover retry, it will not take over the sticky session even if the request succeeds. The session stays bound to the original account and returns to it once it recovers. Selection on the first attempt still binds normally.'
       },
       tempUnschedulable: {
         title: 'Temp Unschedulable',
@@ -744,6 +749,8 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      fromModel: 'Source model',
+      toModel: 'Target model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -846,6 +853,15 @@ export default {
 	    thresholdHint: 'Each window is evaluated independently. Enter 0.1–100; both default to 100.',
 	    thresholdInvalid: 'Automatic reset-credit thresholds must be between 0.1% and 100%.'
 	  },
+      metricCooldown: {
+        title: 'Metric Cooldown',
+        hint: 'When enabled, the scheduler periodically evaluates the last N minutes of this account against 4 metrics. Hitting any threshold cools the account down. Empty thresholds inherit the global default.',
+        ruleTTFTMs: 'TTFT threshold > (ms)',
+        ruleOTPS: 'OTPS threshold < (tokens/s)',
+        ruleCacheHitRate: 'Cache hit rate threshold < (%)',
+        ruleCostPerReq: 'Cost/req threshold > (USD)',
+        inheritGlobalHint: 'Empty = inherit global',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: 'Quota Control',
@@ -957,6 +973,9 @@ export default {
       updating: 'Updating...',
       accountCreated: 'Account created successfully',
       accountUpdated: 'Account updated successfully',
+      messages: {
+        accountCreated: 'Account created successfully',
+      },
       failedToCreate: 'Failed to create account',
       failedToUpdate: 'Failed to update account',
       pleaseSelectStatus: 'Please select a valid account status',
@@ -1075,11 +1094,11 @@ export default {
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
           refreshTokenPlaceholder: 'Paste your OpenAI Refresh Token...\nSupports multiple, one per line',
-          mobileRefreshTokenAuth: 'Manual Mobile RT Input',
           accessTokenAuth: 'Manual AT Input',
-          codexSessionAuth: 'Codex OAuth auth.json / AT Import',
-          codexSessionDesc: 'Paste a Codex OAuth auth.json or an accessToken. Accounts use the step 1 settings.',
-          codexSessionInputLabel: 'Codex OAuth auth.json or accessToken',
+          mobileRefreshTokenAuth: 'Manual Mobile RT Input',
+          codexSessionAuth: 'Codex auth.json / AT Import',
+          codexSessionDesc: 'Paste a Codex auth.json (OAuth or Agent Identity) or an accessToken. Accounts use the step 1 settings.',
+          codexSessionInputLabel: 'Codex auth.json or accessToken',
           codexSessionPlaceholder: 'Multiple lines supported, one token or auth.json object per line',
           codexSessionHint: 'OAuth session/access-token imports retain their existing expiration behavior.',
           codexSessionImportAndCreate: 'Import & Create Account',

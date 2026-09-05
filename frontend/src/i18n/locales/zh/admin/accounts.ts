@@ -86,6 +86,7 @@ export default {
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      allModels: '全部模型',
       ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
       // Schedulable toggle
@@ -401,6 +402,10 @@ export default {
         overloadedUntil: '负载过重，重置时间：{time}',
         viewTempUnschedDetails: '查看临时不可调度详情',
         tempUnschedulableUntil: '预计 {time} 恢复'
+      },
+      failoverNoSticky: {
+        title: '救火账号（不接管会话）',
+        hint: '该账号被 failover 重试选中时，即使请求成功也不接管粘性会话：会话仍绑在原账号，原账号恢复后自动回归。首次选中仍正常绑定。'
       },
       tempUnschedulable: {
         title: '临时不可调度',
@@ -820,6 +825,8 @@ export default {
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',
       actualModel: '实际模型',
+      fromModel: '源模型',
+      toModel: '目标模型',
       addMapping: '添加映射',
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
@@ -917,6 +924,15 @@ export default {
 	    thresholdHint: '两个窗口独立判断，任一达到自身阈值即触发。可填写 0.1–100，默认均为 100。',
 	    thresholdInvalid: '自动使用重置卡阈值必须在 0.1% 到 100% 之间。'
 	  },
+      metricCooldown: {
+        title: '指标冷却',
+        hint: '开启后按全局 cron 周期扫描该账号近 N 分钟的 4 个指标，任一命中阈值即冷却该账号。阈值留空继承全局默认。',
+        ruleTTFTMs: 'TTFT 阈值 > （毫秒）',
+        ruleOTPS: 'OTPS 阈值 < （tokens/秒）',
+        ruleCacheHitRate: '缓存命中率阈值 < （%）',
+        ruleCostPerReq: '均次成本阈值 > （USD）',
+        inheritGlobalHint: '留空使用全局默认',
+      },
       // Quota control (Anthropic OAuth/SetupToken only)
       quotaControl: {
         title: '配额控制',
@@ -1028,6 +1044,9 @@ export default {
       updating: '更新中...',
       accountCreated: '账号创建成功',
       accountUpdated: '账号更新成功',
+      messages: {
+        accountCreated: '账号创建成功',
+      },
       failedToCreate: '创建账号失败',
       failedToUpdate: '更新账号失败',
       pleaseSelectStatus: '请选择有效的账号状态',
@@ -1140,11 +1159,11 @@ export default {
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
           refreshTokenPlaceholder: '粘贴您的 OpenAI Refresh Token...\n支持多个，每行一个',
-          mobileRefreshTokenAuth: '手动输入 Mobile RT',
           accessTokenAuth: '手动输入 AT',
-          codexSessionAuth: 'Codex OAuth auth.json / AT 导入',
-          codexSessionDesc: '粘贴 Codex OAuth auth.json 或 accessToken，按第一步配置创建账号。',
-          codexSessionInputLabel: 'Codex OAuth auth.json 或 accessToken',
+          mobileRefreshTokenAuth: '手动输入 Mobile RT',
+          codexSessionAuth: 'Codex auth.json / AT 导入',
+          codexSessionDesc: '粘贴 Codex auth.json（OAuth 或 Agent Identity）或 accessToken，按第一步配置创建账号。',
+          codexSessionInputLabel: 'Codex auth.json 或 accessToken',
           codexSessionPlaceholder: '支持多行，每行一个 token 或 auth.json 对象',
           codexSessionHint: 'OAuth session/accessToken 导入继续沿用原有过期规则。',
           codexSessionImportAndCreate: '导入并创建账号',

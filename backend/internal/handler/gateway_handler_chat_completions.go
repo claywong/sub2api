@@ -171,6 +171,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if c.Request.Context().Err() != nil {
 			return
 		}
+		// 私有扩展：failover attempt 标记，见 account_failover_sticky.go
+		c.Request = c.Request.WithContext(service.WithFailoverAttempt(c.Request.Context(), fs.SwitchCount > 0))
 		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, selectionSessionHash, reqModel, fs.FailedAccountIDs, "", int64(0))
 		if err != nil {
 			if len(fs.FailedAccountIDs) == 0 {
@@ -320,6 +322,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 			reqLog.Error("gateway.cc.forward_failed",
 				zap.Int64("account_id", account.ID),
+				zap.String("account_name", account.Name),
 				zap.Bool("fallback_error_response_written", wroteFallback),
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
@@ -333,6 +336,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		requestPayloadHash := service.HashUsageRequestPayload(body)
 		inboundEndpoint := GetInboundEndpoint(c)
 		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+
+		// 在请求 ctx 上同步解析 request_id，确保 usage_logs 与 request_logs 使用同一 ID
+		result.RequestID = h.gatewayService.ResolveRequestID(c.Request.Context(), result.RequestID)
 
 		quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 		sessionID := service.ExtractClientSessionID(c)
@@ -361,6 +367,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				)
 			}
 		})
+		// 不以响应体非空为前置条件：采集失败或上游无输出时，请求体仍需落库。
+		if result != nil {
+			clientSessionID := h.gatewayService.ExtractClientSessionID(c, parsedReq)
+			h.gatewayService.WriteRequestLog(c.Request.Context(), result.RequestID, clientSessionID, apiKey.User.ID, string(body), result.CapturedResponseBody)
+		}
 		return
 	}
 }
