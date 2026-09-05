@@ -1321,33 +1321,6 @@
         </div>
       </div>
 
-      <!-- Failover No Sticky (救火账号) -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
-        <div class="flex items-center justify-between">
-          <div class="pr-4">
-            <label class="input-label mb-0">{{ t('admin.accounts.failoverNoSticky.title') }}</label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.failoverNoSticky.hint') }}
-            </p>
-          </div>
-          <button
-            type="button"
-            @click="failoverNoSticky = !failoverNoSticky"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              failoverNoSticky ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                failoverNoSticky ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-      </div>
-
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -1984,46 +1957,6 @@
           @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
-
-        <!-- Cache TTL Override -->
-        <div v-if="account?.type === 'apikey'" class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-          <div class="flex items-center justify-between">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.cacheTTLOverride.label') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.quotaControl.cacheTTLOverride.hint') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="cacheTTLOverrideEnabled = !cacheTTLOverrideEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                cacheTTLOverrideEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  cacheTTLOverrideEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-          <div v-if="cacheTTLOverrideEnabled" class="mt-3">
-            <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
-            <select
-              v-model="cacheTTLOverrideTarget"
-              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-white"
-            >
-              <option value="5m">5m</option>
-              <option value="1h">1h</option>
-            </select>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.quotaControl.cacheTTLOverride.targetHint') }}
-            </p>
-          </div>
-        </div>
       </div>
       <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
       <div
@@ -2423,150 +2356,6 @@
           </div>
         </div>
         <p class="input-hint">{{ t('admin.accounts.autoResetCredit.thresholdHint') }}</p>
-      </div>
-
-      <!-- 指标冷却覆盖 (manual-cooldown) -->
-      <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-2">
-        <div class="flex items-center justify-between">
-          <div class="flex-1">
-            <h3 class="input-label mb-0 text-sm font-semibold">{{ t('admin.accounts.metricCooldown.title') }}</h3>
-            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.metricCooldown.hint') }}</p>
-          </div>
-          <button
-            type="button"
-            @click="metricCooldownEnabled = !metricCooldownEnabled"
-            :class="[
-              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-              metricCooldownEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-            ]"
-            data-testid="metric-cooldown-enabled"
-          >
-            <span
-              :class="[
-                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                metricCooldownEnabled ? 'translate-x-5' : 'translate-x-0'
-              ]"
-            />
-          </button>
-        </div>
-
-        <div v-if="metricCooldownEnabled" class="grid grid-cols-4 gap-2 text-xs">
-          <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleTTFTMs') }}</label>
-            <input
-              v-model.number="metricCooldownTTFTThreshold"
-              type="number"
-              min="0"
-              step="any"
-              class="input text-xs py-1"
-              placeholder="10000"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleOTPS') }}</label>
-            <input
-              v-model.number="metricCooldownOTPSThreshold"
-              type="number"
-              min="0"
-              step="any"
-              class="input text-xs py-1"
-              placeholder="20"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleCacheHitRate') }}</label>
-            <input
-              v-model.number="metricCooldownCacheThreshold"
-              type="number"
-              min="0"
-              max="100"
-              step="any"
-              class="input text-xs py-1"
-              placeholder="70"
-            />
-          </div>
-          <div>
-            <label class="block text-xs text-gray-600 dark:text-gray-400 mb-1">{{ t('admin.accounts.metricCooldown.ruleCostPerReq') }}</label>
-            <input
-              v-model.number="metricCooldownCostThreshold"
-              type="number"
-              min="0"
-              step="any"
-              class="input text-xs py-1"
-              placeholder="0.1"
-            />
-          </div>
-        </div>
-      </div>
-
-      <!-- 私有扩展：Anthropic API Key 会话数量控制（仅会话限制，不含窗口费用/RPM） -->
-      <div
-        v-if="account?.platform === 'anthropic' && account?.type === 'apikey'"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
-      >
-        <div class="mb-3">
-          <h3 class="input-label mb-0 text-base font-semibold">{{ t('admin.accounts.quotaControl.title') }}</h3>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.accounts.quotaControl.sessionLimit.hint') }}
-          </p>
-        </div>
-
-        <!-- Session Limit -->
-        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
-          <div class="mb-3 flex items-center justify-between">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.quotaControl.sessionLimit.label') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.quotaControl.sessionLimit.hint') }}
-              </p>
-            </div>
-            <button
-              type="button"
-              @click="sessionLimitEnabled = !sessionLimitEnabled"
-              :class="[
-                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
-                sessionLimitEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
-              ]"
-            >
-              <span
-                :class="[
-                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
-                  sessionLimitEnabled ? 'translate-x-5' : 'translate-x-0'
-                ]"
-              />
-            </button>
-          </div>
-
-          <div v-if="sessionLimitEnabled" class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessions') }}</label>
-              <input
-                v-model.number="maxSessions"
-                type="number"
-                min="1"
-                step="1"
-                class="input"
-                :placeholder="t('admin.accounts.quotaControl.sessionLimit.maxSessionsPlaceholder')"
-              />
-              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.maxSessionsHint') }}</p>
-            </div>
-            <div>
-              <label class="input-label">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeout') }}</label>
-              <div class="relative">
-                <input
-                  v-model.number="sessionIdleTimeout"
-                  type="number"
-                  min="1"
-                  step="1"
-                  class="input pr-12"
-                  :placeholder="t('admin.accounts.quotaControl.sessionLimit.idleTimeoutPlaceholder')"
-                />
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">{{ t('common.minutes') }}</span>
-              </div>
-              <p class="input-hint">{{ t('admin.accounts.quotaControl.sessionLimit.idleTimeoutHint') }}</p>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- 配额控制 (Anthropic OAuth/SetupToken: 亲和 + 窗口费用 + 会话 + RPM 等) -->
@@ -3086,7 +2875,6 @@ import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
-  AccountType,
   Proxy,
   AdminGroup,
   CheckMixedChannelResponse,
@@ -3416,11 +3204,6 @@ const autoPause7dDisabled = ref(false)
 const autoResetCreditEnabled = ref(false)
 const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
-const metricCooldownEnabled = ref(false)
-const metricCooldownTTFTThreshold = ref<number | null>(null)
-const metricCooldownOTPSThreshold = ref<number | null>(null)
-const metricCooldownCacheThreshold = ref<number | null>(null)
-const metricCooldownCostThreshold = ref<number | null>(null)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
@@ -3430,9 +3213,6 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
-// 私有扩展：救火账号开关（failover 重试命中后不接管粘性会话）
-const failoverNoSticky = ref(false)
-
 const tempUnschedEnabled = ref(false)
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
@@ -3961,18 +3741,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
 
-	const mcOverride = (extra?.metric_cooldown_override ?? {}) as Record<string, unknown>
-	metricCooldownEnabled.value = mcOverride.enabled === true
-	const mcRules = (mcOverride.rules ?? {}) as Record<string, Record<string, unknown>>
-	const loadThr = (key: string, ref: typeof metricCooldownTTFTThreshold, fallback: number) => {
-		const r = mcRules[key]
-		ref.value = typeof r?.threshold === 'number' ? r.threshold : fallback
-	}
-	loadThr('ttft_ms', metricCooldownTTFTThreshold, 10000)
-	loadThr('otps', metricCooldownOTPSThreshold, 20)
-	loadThr('cache_hit_rate', metricCooldownCacheThreshold, 70)
-	loadThr('cost_per_req', metricCooldownCostThreshold, 0.1)
-
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
@@ -4051,16 +3819,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
     }
   }
-  if (
-    newAccount.platform === 'anthropic' &&
-    (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')
-  ) {
-    if (newAccount.type === 'apikey') {
-      anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
-      anthropicAPIKeyAuthScheme.value = extra?.anthropic_apikey_auth_scheme === 'authorization_bearer'
-        ? 'authorization_bearer'
-        : 'x_api_key'
-    }
+  if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
+    anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
+    anthropicAPIKeyAuthScheme.value = extra?.anthropic_apikey_auth_scheme === 'authorization_bearer'
+      ? 'authorization_bearer'
+      : 'x_api_key'
     // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
     const wsVal = extra?.web_search_emulation
     if (wsVal === 'enabled' || wsVal === 'disabled') {
@@ -4138,8 +3901,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   loadQuotaControlSettings(newAccount)
 
   loadTempUnschedRules(credentials)
-  // 私有扩展：救火账号开关回填
-  failoverNoSticky.value = credentials?.failover_no_sticky === true
   loadAccountSchedulingThresholdOverride(newAccount.platform, credentials)
 
   // Load header override state for eligible account platforms/types
@@ -4339,27 +4100,6 @@ async function loadTLSProfiles() {
   } catch {
     tlsFingerprintProfiles.value = []
   }
-}
-
-const buildAnthropicExtra = (
-  base?: Record<string, unknown>,
-  type: AccountType | null = props.account?.type ?? null
-): Record<string, unknown> | undefined => {
-  const extra: Record<string, unknown> = { ...(base || {}) }
-  // 自动透传（仅替换认证）仅对 Anthropic API Key 账号有效，字段为布尔 anthropic_passthrough。
-  if (type === 'apikey') {
-    if (anthropicPassthroughEnabled.value) {
-      extra.anthropic_passthrough = true
-    } else {
-      delete extra.anthropic_passthrough
-    }
-  }
-  if (webSearchEmulationMode.value === 'default') {
-    delete extra.web_search_emulation
-  } else {
-    extra.web_search_emulation = webSearchEmulationMode.value
-  }
-  return Object.keys(extra).length > 0 ? extra : undefined
 }
 
 watch(
@@ -4586,16 +4326,6 @@ const applyTempUnschedConfig = (credentials: Record<string, unknown>) => {
   return true
 }
 
-// 私有扩展：救火账号开关。关闭时删除键而非写 false，保持 credentials 稀疏，
-// 与后端「键不存在即未开启」的读取语义一致。
-const applyFailoverNoStickyConfig = (credentials: Record<string, unknown>) => {
-  if (!failoverNoSticky.value) {
-    delete credentials.failover_no_sticky
-    return
-  }
-  credentials.failover_no_sticky = true
-}
-
 
 function supportsAccountSchedulingThresholdOverridePlatform(platform: Account['platform'] | undefined) {
   return platform === 'openai' || platform === 'anthropic' || platform === 'grok'
@@ -4705,28 +4435,8 @@ function loadQuotaControlSettings(account: Account) {
     return
   }
 
-  // Cache TTL override applies to all Anthropic account types (including apikey)
-  if (account.cache_ttl_override_enabled === true) {
-    cacheTTLOverrideEnabled.value = true
-    cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
-  }
-
-  // 会话限制对 Anthropic OAuth/SetupToken/API Key 都生效（私有扩展：放开 API Key）
-  const isOAuthLike = account.type === 'oauth' || account.type === 'setup-token'
-  const isAnthropicApiKey = account.platform === 'anthropic' && account.type === 'apikey'
-  if (!isOAuthLike && !isAnthropicApiKey) {
-    return
-  }
-
-  // 会话数量控制（OAuth/SetupToken/API Key 通用）
-  if (account.max_sessions != null && account.max_sessions > 0) {
-    sessionLimitEnabled.value = true
-    maxSessions.value = account.max_sessions
-    sessionIdleTimeout.value = account.session_idle_timeout_minutes ?? 5
-  }
-
-  // 窗口费用 / RPM 仅 OAuth/SetupToken 生效，API Key 不加载
-  if (!isOAuthLike) {
+  // Window cost / session limit only apply to Anthropic OAuth/SetupToken accounts
+  if (account.type !== 'oauth' && account.type !== 'setup-token') {
     return
   }
 
@@ -4735,6 +4445,12 @@ function loadQuotaControlSettings(account: Account) {
     windowCostEnabled.value = true
     windowCostLimit.value = account.window_cost_limit
     windowCostStickyReserve.value = account.window_cost_sticky_reserve ?? 10
+  }
+
+  if (account.max_sessions != null && account.max_sessions > 0) {
+    sessionLimitEnabled.value = true
+    maxSessions.value = account.max_sessions
+    sessionIdleTimeout.value = account.session_idle_timeout_minutes ?? 5
   }
 
   // RPM limit
@@ -4757,6 +4473,12 @@ function loadQuotaControlSettings(account: Account) {
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
     sessionIdMaskingEnabled.value = true
+  }
+
+  // Load cache TTL override setting
+  if (account.cache_ttl_override_enabled === true) {
+    cacheTTLOverrideEnabled.value = true
+    cacheTTLOverrideTarget.value = account.cache_ttl_override_target || '5m'
   }
 
   // Load custom base URL setting
@@ -5064,7 +4786,6 @@ const handleSubmit = async () => {
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
-      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5084,7 +4805,6 @@ const handleSubmit = async () => {
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
 
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
-      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5134,7 +4854,6 @@ const handleSubmit = async () => {
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
-      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5193,7 +4912,6 @@ const handleSubmit = async () => {
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
-      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5206,7 +4924,6 @@ const handleSubmit = async () => {
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       applyAccountSchedulingThresholdOverridePatch(newCredentials, currentCredentials)
-      applyFailoverNoStickyConfig(newCredentials)
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       }
@@ -5417,21 +5134,17 @@ const handleSubmit = async () => {
         delete newExtra.custom_base_url
       }
 
-      updatePayload.extra = buildAnthropicExtra(newExtra, props.account.type)
+      updatePayload.extra = newExtra
     }
 
     // For Anthropic API Key accounts, handle passthrough mode + web search emulation in extra
     if (props.account.platform === 'anthropic' && props.account.type === 'apikey') {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-
-      // Cache TTL override setting
-      if (cacheTTLOverrideEnabled.value) {
-        newExtra.cache_ttl_override_enabled = true
-        newExtra.cache_ttl_override_target = cacheTTLOverrideTarget.value
+      if (anthropicPassthroughEnabled.value) {
+        newExtra.anthropic_passthrough = true
       } else {
-        delete newExtra.cache_ttl_override_enabled
-        delete newExtra.cache_ttl_override_target
+        delete newExtra.anthropic_passthrough
       }
       if (anthropicAPIKeyAuthScheme.value === 'authorization_bearer') {
         newExtra.anthropic_apikey_auth_scheme = 'authorization_bearer'
@@ -5443,17 +5156,7 @@ const handleSubmit = async () => {
       } else {
         newExtra.web_search_emulation = webSearchEmulationMode.value
       }
-
-      // 私有扩展：会话数量控制（窗口费用 / RPM 等 OAuth-only 设置不在 API Key 暴露）
-      if (sessionLimitEnabled.value && maxSessions.value != null && maxSessions.value > 0) {
-        newExtra.max_sessions = maxSessions.value
-        newExtra.session_idle_timeout_minutes = sessionIdleTimeout.value ?? 5
-      } else {
-        delete newExtra.max_sessions
-        delete newExtra.session_idle_timeout_minutes
-      }
-
-      updatePayload.extra = buildAnthropicExtra(newExtra, props.account.type)
+      updatePayload.extra = newExtra
     }
 
     // For OpenAI OAuth/SetupToken/API Key accounts, handle passthrough mode in extra
@@ -5576,11 +5279,8 @@ const handleSubmit = async () => {
 
     // For apikey/bedrock accounts, handle quota_limit in extra
     if (props.account.type === 'apikey' || props.account.type === 'bedrock') {
-      // 用 'extra' in updatePayload 判断是否已被前面的块显式设置（即使值为 undefined），
-      // 避免 buildAnthropicExtra 返回 undefined 时回退到 props.account.extra 带回旧字段
-      const currentExtra = ('extra' in updatePayload
-        ? (updatePayload.extra as Record<string, unknown>)
-        : (props.account.extra as Record<string, unknown>)) || {}
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       // 上游倍率自动探测对全部 API-key 平台开放（sub2api 上游即可应答），
       // Bedrock 凭证无静态 Key 不参与。
@@ -5635,28 +5335,6 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
-    }
-
-    // metric_cooldown_override 适用于所有平台/类型，必须在 platform-specific 块之后无条件处理
-    {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) ?? (props.account.extra as Record<string, unknown>) ?? {}
-      const finalExtra: Record<string, unknown> = { ...currentExtra }
-      if (metricCooldownEnabled.value) {
-        const mcRules: Record<string, Record<string, unknown>> = {}
-        const buildThr = (key: string, threshold: number | null) => {
-          if (threshold != null && threshold >= 0) mcRules[key] = { threshold }
-        }
-        buildThr('ttft_ms', metricCooldownTTFTThreshold.value)
-        buildThr('otps', metricCooldownOTPSThreshold.value)
-        buildThr('cache_hit_rate', metricCooldownCacheThreshold.value)
-        buildThr('cost_per_req', metricCooldownCostThreshold.value)
-        const mcOverride: Record<string, unknown> = { enabled: true }
-        if (Object.keys(mcRules).length > 0) mcOverride.rules = mcRules
-        finalExtra.metric_cooldown_override = mcOverride
-      } else {
-        delete finalExtra.metric_cooldown_override
-      }
-      updatePayload.extra = finalExtra
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
