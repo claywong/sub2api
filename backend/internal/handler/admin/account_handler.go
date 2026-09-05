@@ -61,7 +61,6 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
-	healthCache             *service.AccountTestHealthCache
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
@@ -92,7 +91,6 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
-	healthCache *service.AccountTestHealthCache,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -109,7 +107,6 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
-		healthCache:             healthCache,
 	}
 }
 
@@ -200,28 +197,8 @@ type AccountWithConcurrency struct {
 	CurrentWindowCost   *float64              `json:"current_window_cost,omitempty"`   // 当前窗口费用
 	ActiveSessions      *int                  `json:"active_sessions,omitempty"`       // 当前活跃会话数
 	CurrentRPM          *int                  `json:"current_rpm,omitempty"`           // 当前分钟 RPM 计数
-	HealthVerdict       *string               `json:"health_verdict,omitempty"`        // 健康三态：StickyOnly / Excluded（OK 时不返回）
-	HealthVerdictReason *string               `json:"health_verdict_reason,omitempty"` // 触发原因，如 err_rate=45.0%(≥30%)
-	AccountHealth       *AccountHealthRuntime `json:"account_health,omitempty"`        // Anthropic 账号健康滑动窗口快照
-}
+	}
 
-type AccountHealthRuntime struct {
-	Available           bool    `json:"available"`
-	WindowSeconds       int64   `json:"window_seconds"`
-	ReqCount            int     `json:"req_count"`
-	ErrCount            int     `json:"err_count"`
-	ErrRate             float64 `json:"err_rate"`
-	SlowCount           int     `json:"slow_count"`
-	SlowRate            float64 `json:"slow_rate"`
-	TTFTAvgMs           float64 `json:"ttft_avg_ms"`
-	OTPSAvg             float64 `json:"otps_avg"`
-	TCPConnAvgMs        float64 `json:"tcp_conn_avg_ms"`       // TCP 连接平均时间（ms）
-	TTFBAvgMs           float64 `json:"ttfb_avg_ms"`           // TTFB（首字节时间）平均（ms）
-	CacheHitRateAvg     float64 `json:"cache_hit_rate_avg"`    // 缓存命中率均值（0~1）
-	CacheHitSampleCount int     `json:"cache_hit_sample_count"` // 有缓存命中率样本的次数
-	Verdict             string  `json:"verdict"`
-	VerdictReason       string  `json:"verdict_reason"`
-}
 
 type AccountSchedulerScore struct {
 	BaseScore             float64 `json:"base_score"`
@@ -299,43 +276,9 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 		}
 	}
 
-	h.attachAccountHealthRuntime(&item, account)
 	h.enrichShadowParents(ctx, []AccountWithConcurrency{item})
 
 	return item
-}
-
-func (h *AccountHandler) attachAccountHealthRuntime(item *AccountWithConcurrency, account *service.Account) {
-	if h == nil || item == nil || account == nil || h.healthCache == nil || account.Platform != service.PlatformAnthropic {
-		return
-	}
-
-	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(account.ID)
-	item.AccountHealth = &AccountHealthRuntime{
-		Available:           true,
-		WindowSeconds:       service.DefaultHealthWindowSeconds,
-		ReqCount:            snap.ReqCount,
-		ErrCount:            snap.ErrCount,
-		ErrRate:             snap.ErrRate(),
-		SlowCount:           snap.SlowCount,
-		SlowRate:            snap.SlowRate(),
-		TTFTAvgMs:           snap.TTFTAvg(),
-		OTPSAvg:             snap.OTPSAvg(),
-		TCPConnAvgMs:        snap.TCPConnAvg(),
-		TTFBAvgMs:           snap.TTFBAvg(),
-		CacheHitRateAvg:     snap.CacheHitRateAvg(),
-		CacheHitSampleCount: snap.CacheHitSampleCount,
-		Verdict:             verdict.String(),
-		VerdictReason:       reason,
-	}
-
-	if verdict != service.HealthOK {
-		s := verdict.String()
-		item.HealthVerdict = &s
-		if reason != "" {
-			item.HealthVerdictReason = &reason
-		}
-	}
 }
 
 // scoreOpenAIAccountSchedulerPool 对池内 OpenAI 账号计算调度分数快照。
@@ -754,8 +697,6 @@ func (h *AccountHandler) List(c *gin.Context) {
 				item.CurrentRPM = &rpm
 			}
 		}
-
-		h.attachAccountHealthRuntime(&item, acc)
 
 		result[i] = item
 	}
@@ -1219,10 +1160,6 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 		return
 	}
 
-	// 同时清除内存健康缓存，使 HealthExcluded/StickyOnly 立即解除
-	if h.healthCache != nil {
-		h.healthCache.Reset(accountID)
-	}
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
 	if err != nil {
@@ -3185,39 +3122,4 @@ func sanitizeExtraBaseRPM(extra map[string]any) {
 		v = 10000
 	}
 	extra["base_rpm"] = v
-}
-
-// GetHealthStats returns the sliding-window health metrics for a single account.
-// GET /api/v1/admin/accounts/:id/health-stats
-func (h *AccountHandler) GetHealthStats(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-
-	if h.healthCache == nil {
-		response.Success(c, gin.H{"available": false})
-		return
-	}
-
-	snap, verdict, reason := h.healthCache.SnapshotAndVerdict(accountID)
-
-	response.Success(c, gin.H{
-		"available":             true,
-		"window_seconds":        service.DefaultHealthWindowSeconds,
-		"req_count":             snap.ReqCount,
-		"err_count":             snap.ErrCount,
-		"err_rate":              snap.ErrRate(),
-		"slow_count":            snap.SlowCount,
-		"slow_rate":             snap.SlowRate(),
-		"ttft_avg_ms":           snap.TTFTAvg(),
-		"otps_avg":              snap.OTPSAvg(),
-		"tcp_conn_avg_ms":       snap.TCPConnAvg(),
-		"ttfb_avg_ms":           snap.TTFBAvg(),
-		"cache_hit_rate_avg":    snap.CacheHitRateAvg(),
-		"cache_hit_sample_count": snap.CacheHitSampleCount,
-		"verdict":               verdict.String(),
-		"verdict_reason":        reason,
-	})
 }

@@ -12,8 +12,6 @@
 //	otpsScore = clamp01((otps - 20) / (50 - 20))               // 20→0 分，50→满分；无样本取 1
 //
 // 设计要点：
-//   - 成功率不进 quality：账号可靠性由 HealthVerdict 门禁（10min 窗口）前置硬过滤，
-//     评分只负责"活着的账号之间按性价比优选"，职责不重叠。
 //   - 缓存命中率不进 quality（避免自增强污染），只折进 effRate。
 //   - 冷启动账号无缓存样本时，用候选集平均缓存率乐观估计 effRate，
 //     避免"无缓存显贵"导致新账号一直选不上 → 一直没缓存的死循环。
@@ -55,6 +53,19 @@ const (
 	wsMinRateMultiplier = 0.05    // 倍率下限，防止 0 倍率账号 effRate → 0
 	wsCostToleranceDef  = 0.15    // 成本容差带默认宽度
 )
+
+// groupContainedInLogList 检查分组 ID 是否在日志白名单中
+func groupContainedInLogList(groupID *int64, logGroups []int64) bool {
+	if groupID == nil || len(logGroups) == 0 {
+		return false
+	}
+	for _, g := range logGroups {
+		if g == *groupID {
+			return true
+		}
+	}
+	return false
+}
 
 // weightedSelectionConfig 返回填充默认值后的选号配置。
 func (s *GatewayService) weightedSelectionConfig() weightedSelectionRuntimeConfig {
@@ -123,7 +134,6 @@ type qualityScoreDetail struct {
 //	otpsScore = clamp01((otps - 20) / 30)    // 无样本取 1
 //
 // 无样本各项取 1（乐观），让冷启动账号有充分探索机会。
-// 成功率不在此计算——账号可靠性由 HealthVerdict 门禁前置过滤，评分不再重复判定。
 // TTFT/OTPS 来自 account+model 质量窗口（默认 60min）。
 func (s *GatewayService) computeQualityScore(accountID int64, model string) (float64, qualityScoreDetail) {
 	d := qualityScoreDetail{CacheHitRate: -1}

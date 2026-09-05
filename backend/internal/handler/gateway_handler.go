@@ -2597,3 +2597,10 @@ func (h *GatewayHandler) getUserMsgQueueMode(account *service.Account, parsed *s
 	}
 	return mode
 }
+
+// reportAnthropicForwardResult 上报 Anthropic 平台的转发结果到质量缓存
+// 该方法已弃用，保留空实现以兼容现有调用
+func (h *GatewayHandler) reportAnthropicForwardResult(account *service.Account, model string, err error, result *service.ForwardResult) {
+	// 健康缓存已移除，此方法不再执行任何操作
+}
+
