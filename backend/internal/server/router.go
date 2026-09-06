@@ -69,6 +69,7 @@ func SetupRouter(
 		return nil
 	}))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
+	r.Use(middleware2.NewIPAllowlistMiddleware(settingService).Handler())
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
@@ -115,9 +116,62 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	r.GET("/ip-access-request", func(c *gin.Context) {
+		c.JSON(200, gin.H{"ip": middleware2.ClientIPForAccess(c)})
+	})
+	r.POST("/api/v1/ip-access-requests", func(c *gin.Context) {
+		value := middleware2.ClientIPForAccess(c)
+		if value == "" {
+			c.JSON(400, gin.H{"code": "INVALID_IP"})
+			return
+		}
+		if err := settingService.AddIPAllowlist(c.Request.Context(), value); err != nil {
+			c.JSON(500, gin.H{"code": "IP_ALLOWLIST_WRITE_FAILED"})
+			return
+		}
+		c.JSON(200, gin.H{"ip": value})
+	})
 
 	// API v1
 	v1 := r.Group("/api/v1")
+	ipAdmin := v1.Group("/admin/ip-allowlist")
+	ipAdmin.Use(gin.HandlerFunc(adminAuth))
+	ipAdmin.GET("", func(c *gin.Context) {
+		ips, err := settingService.ListEnabledIPAllowlist(c.Request.Context())
+		if err != nil {
+			c.JSON(500, gin.H{"code": "IP_ALLOWLIST_READ_FAILED"})
+			return
+		}
+		c.JSON(200, gin.H{"enabled": settingService.IPAllowlistEnabled(c.Request.Context()), "ips": ips})
+	})
+	ipAdmin.PUT("/enabled", func(c *gin.Context) {
+		var p struct {
+			Enabled bool `json:"enabled"`
+		}
+		if c.ShouldBindJSON(&p) != nil {
+			c.JSON(400, gin.H{"code": "INVALID_REQUEST"})
+			return
+		}
+		if err := settingService.SetIPAllowlistEnabled(c.Request.Context(), p.Enabled); err != nil {
+			c.JSON(500, gin.H{"code": "IP_ALLOWLIST_WRITE_FAILED"})
+			return
+		}
+		c.JSON(200, gin.H{"enabled": p.Enabled})
+	})
+	ipAdmin.PUT("/ips", func(c *gin.Context) {
+		var p struct {
+			IPs []string `json:"ips"`
+		}
+		if c.ShouldBindJSON(&p) != nil {
+			c.JSON(400, gin.H{"code": "INVALID_REQUEST"})
+			return
+		}
+		if err := settingService.ReplaceIPAllowlist(c.Request.Context(), p.IPs); err != nil {
+			c.JSON(400, gin.H{"code": "INVALID_IP_RULE"})
+			return
+		}
+		c.JSON(200, gin.H{"ips": p.IPs})
+	})
 
 	// 面板 API 限流器：认证接口按用户 ID、公开接口按安全客户端 IP，
 	// 防止高频刷管理面接口打爆数据库（阈值可在系统设置中调整）。

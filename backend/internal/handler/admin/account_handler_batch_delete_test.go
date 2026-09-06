@@ -70,7 +70,7 @@ func setupAccountBatchDeleteRouter(adminSvc *batchDeleteAdminService) *gin.Engin
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	// 末位 nil 为 *service.AccountTestHealthCache（本 fork 私有扩展参数）
-	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router.POST("/api/v1/admin/accounts/batch-delete", handler.BatchDelete)
 	return router
 }

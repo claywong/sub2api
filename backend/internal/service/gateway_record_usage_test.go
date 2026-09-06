@@ -45,7 +45,6 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 		nil,
 		nil,
 		nil, // balanceNotifyService
-		nil, // healthCache
 		nil, // requestLogRepo
 		nil, // userPlatformQuotaRepo
 	)
