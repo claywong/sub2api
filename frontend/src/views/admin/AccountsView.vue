@@ -7,7 +7,6 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
-            :model-names="modelNames"
             @update:filters="(newFilters) => Object.assign(params, newFilters)"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
@@ -541,7 +540,6 @@ const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
-const modelNames = ref<string[]>([])
 const groupsByID = computed(() => new Map(groups.value.map(group => [group.id, group])))
 const accountGroupsForRow = (account: Pick<AccountListItem, 'group_ids'>): AdminGroup[] => {
   const groupIDs = account.group_ids ?? []
@@ -566,7 +564,6 @@ type AccountBulkEditTarget =
         group?: string
         search?: string
         privacy_mode?: string
-        model_name?: string
         sort_by?: string
         sort_order?: AccountSortOrder
       }
@@ -1086,7 +1083,6 @@ const {
     type: '',
     status: '',
     privacy_mode: '',
-    model_name: '',
     group: '',
     search: '',
     lite: '1',
@@ -1453,7 +1449,6 @@ const refreshAccountsIncrementally = async () => {
         type?: string
         status?: string
         privacy_mode?: string
-        model_name?: string
         group?: string
         search?: string
         sort_by?: string
@@ -2102,8 +2097,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
-    model_name: typeof rawParams.model_name === 'string' ? rawParams.model_name : '',
-    sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
+      sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
 }
@@ -2179,7 +2173,6 @@ const buildAccountQueryFilters = () => ({
   status: params.status || '',
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
-  model_name: params.model_name || '',
   search: params.search || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -2582,10 +2575,9 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  const [proxiesResult, groupsResult, modelNamesResult] = await Promise.allSettled([
+  const [proxiesResult, groupsResult] = await Promise.allSettled([
     adminAPI.proxies.getAll(),
-    adminAPI.groups.getAll(),
-    adminAPI.accounts.getModelNames()
+    adminAPI.groups.getAll()
   ])
   if (proxiesResult.status === 'fulfilled') {
     proxies.value = proxiesResult.value
@@ -2596,11 +2588,6 @@ onMounted(async () => {
     groups.value = groupsResult.value
   } else {
     console.error('Failed to load groups:', groupsResult.reason)
-  }
-  if (modelNamesResult.status === 'fulfilled') {
-    modelNames.value = modelNamesResult.value
-  } else {
-    console.error('Failed to load model names:', modelNamesResult.reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   window.addEventListener('resize', handleViewportResize)
