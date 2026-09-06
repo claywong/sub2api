@@ -1298,6 +1298,68 @@ export async function deleteAdminApiKeyIpWhitelist(): Promise<{
   return data;
 }
 
+// ==================== Global IP Allowlist Settings ====================
+
+/**
+ * Global IP allowlist settings interface
+ */
+export interface GlobalIPAllowlistSettings {
+  enabled: boolean;
+  ip_allowlist: string[];
+}
+
+/**
+ * Get global IP allowlist settings
+ * @returns Global IP allowlist configuration
+ */
+export async function getGlobalIPAllowlist(): Promise<GlobalIPAllowlistSettings> {
+  const { data } = await apiClient.get<GlobalIPAllowlistSettings>(
+    "/admin/settings/security/ip-allowlist",
+  );
+  return data;
+}
+
+/**
+ * Update global IP allowlist
+ * @param ipAllowlist - Array of IP addresses or CIDR ranges
+ * @returns Updated IP allowlist
+ */
+export async function updateGlobalIPAllowlist(
+  ipAllowlist: string[],
+): Promise<{ ip_allowlist: string[] }> {
+  const { data } = await apiClient.put<{ ip_allowlist: string[] }>(
+    "/admin/settings/security/ip-allowlist",
+    { ip_allowlist: ipAllowlist },
+  );
+  return data;
+}
+
+/**
+ * Clear global IP allowlist (allow all IPs)
+ * @returns Success message
+ */
+export async function deleteGlobalIPAllowlist(): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(
+    "/admin/settings/security/ip-allowlist",
+  );
+  return data;
+}
+
+/**
+ * Toggle global IP allowlist enabled/disabled
+ * @param enabled - Whether to enable the allowlist
+ * @returns Updated enabled status
+ */
+export async function toggleGlobalIPAllowlist(
+  enabled: boolean,
+): Promise<{ enabled: boolean }> {
+  const { data } = await apiClient.put<{ enabled: boolean }>(
+    "/admin/settings/security/ip-allowlist/toggle",
+    { enabled },
+  );
+  return data;
+}
+
 // ==================== Overload Cooldown Settings ====================
 
 /**
@@ -1607,6 +1669,10 @@ export const settingsAPI = {
   getAdminApiKeyIpWhitelist,
   updateAdminApiKeyIpWhitelist,
   deleteAdminApiKeyIpWhitelist,
+  getGlobalIPAllowlist,
+  updateGlobalIPAllowlist,
+  deleteGlobalIPAllowlist,
+  toggleGlobalIPAllowlist,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,

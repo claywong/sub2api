@@ -1001,6 +1001,27 @@ export default {
           invalidFormat: 'Invalid IP whitelist format. Please check each IP or CIDR line.'
         }
       },
+      globalIPAllowlist: {
+        title: 'Global IP Allowlist',
+        description: 'Restrict platform access by IP. When enabled, only allowlisted IPs can access the system',
+        enabled: 'Enable Global IP Allowlist',
+        enabledHint: 'When enabled, only IPs in the allowlist can access the platform (including admins)',
+        ipList: 'IP Allowlist',
+        ipListHint: 'One IP address or CIDR range per line, e.g.: 192.168.1.100 or 10.0.0.0/8',
+        placeholder: '192.168.1.100\n10.0.0.0/8\n172.16.0.0/12',
+        save: 'Save',
+        saving: 'Saving...',
+        saved: 'IP allowlist saved',
+        clear: 'Clear Allowlist',
+        cleared: 'IP allowlist cleared',
+        securityWarning: 'Warning: When global IP allowlist is enabled, only IPs in the list can access the system. Make sure to add your current IP to the allowlist, or you will lose access to the admin panel.',
+        emptyWarning: 'If the allowlist is empty when enabled, all access will be blocked! Please add at least one IP address.',
+        currentIP: 'Your Current IP',
+        addCurrentIP: 'Add Current IP',
+        invalidFormat: 'Invalid IP format. Please check each IP address or CIDR line.',
+        toggleSuccess: 'Global IP allowlist {status}',
+        toggleFailed: 'Failed to toggle global IP allowlist'
+      },
       overloadCooldown: {
         title: '529 Overload Cooldown',
         description: 'Configure account scheduling pause strategy when upstream returns 529 (overloaded)',
