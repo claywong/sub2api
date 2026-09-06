@@ -90,7 +90,7 @@ func NewAccountHandler(
 	crsSyncService *service.CRSSyncService,
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
-	tokenCacheInvalidator service.TokenCacheInvalidator, _ ...any,
+	tokenCacheInvalidator service.TokenCacheInvalidator,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
