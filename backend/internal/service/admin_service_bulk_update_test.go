@@ -128,7 +128,7 @@ func (s *accountRepoStubForBulkUpdate) ListAllWithFilters(context.Context, strin
 	return nil, nil
 }
 
-func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode, modelName string) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
 	s.listCalled = true
 	s.lastListParams = params
 	s.lastListFilters.platform = platform
@@ -144,10 +144,6 @@ func (s *accountRepoStubForBulkUpdate) ListWithFilters(_ context.Context, params
 		return s.listData, s.listResult, nil
 	}
 	return s.listData, &pagination.PaginationResult{Total: int64(len(s.listData))}, nil
-}
-
-func (s *accountRepoStubForBulkUpdate) ListDistinctModelNames(_ context.Context) ([]string, error) {
-	return nil, nil
 }
 
 // TestAdminService_BulkUpdateAccounts_AllSuccessIDs 验证批量更新成功时返回 success_ids/failed_ids。

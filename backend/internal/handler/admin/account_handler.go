@@ -539,16 +539,12 @@ func (h *AccountHandler) List(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("search")
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
-	modelName := strings.TrimSpace(c.Query("model_name"))
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)
 	if len(search) > 100 {
 		search = search[:100]
-	}
-	if len(modelName) > 200 {
-		modelName = modelName[:200]
 	}
 	lite := parseBoolQueryWithDefault(c.Query("lite"), false)
 	// 调度分需要跨候选池批量打分并读取负载，默认列表不计算；只有前端列可见时才显式开启。
@@ -572,7 +568,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, modelName, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -744,7 +740,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 				CurrentRPM:         item.CurrentRPM,
 			}
 		}
-		etag := buildAccountsListETag(compact, total, page, pageSize, platform, accountType, status, search, modelName, true)
+		etag := buildAccountsListETag(compact, total, page, pageSize, platform, accountType, status, search, true)
 		if etag != "" {
 			c.Header("ETag", etag)
 			c.Header("Vary", "If-None-Match")
@@ -757,7 +753,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		return
 	}
 
-	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, modelName, false)
+	etag := buildAccountsListETag(result, total, page, pageSize, platform, accountType, status, search, false)
 	if etag != "" {
 		c.Header("ETag", etag)
 		c.Header("Vary", "If-None-Match")
@@ -774,7 +770,7 @@ func buildAccountsListETag[T any](
 	items []T,
 	total int64,
 	page, pageSize int,
-	platform, accountType, status, search, modelName string,
+	platform, accountType, status, search string,
 	lite bool,
 ) string {
 	payload := struct {
@@ -796,7 +792,6 @@ func buildAccountsListETag[T any](
 		AccountType: accountType,
 		Status:      status,
 		Search:      search,
-		ModelName:   modelName,
 		Lite:        lite,
 		Items:       items,
 	}
@@ -2660,20 +2655,6 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
-// ListModelNames handles listing distinct model names from all accounts' model_mapping
-// GET /api/v1/admin/accounts/model-names
-func (h *AccountHandler) ListModelNames(c *gin.Context) {
-	names, err := h.adminService.ListAccountModelNames(c.Request.Context())
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	if names == nil {
-		names = []string{}
-	}
-	response.Success(c, names)
-}
-
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
@@ -3084,7 +3065,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

@@ -83,12 +83,8 @@ func (s *accountRepoStub) ListAllWithFilters(context.Context, string, string, st
 	return nil, nil
 }
 
-func (s *accountRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode, modelName string) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStub) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
-}
-
-func (s *accountRepoStub) ListDistinctModelNames(_ context.Context) ([]string, error) {
-	return nil, nil
 }
 
 func (s *accountRepoStub) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {

@@ -29,7 +29,7 @@ func (s *accountRepoStubForAdminList) ListAllWithFilters(context.Context, string
 	return nil, nil
 }
 
-func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode, modelName string) ([]Account, *pagination.PaginationResult, error) {
+func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
 	s.listWithFiltersCalls++
 	s.listWithFiltersParams = params
 	s.listWithFiltersPlatform = platform
@@ -52,10 +52,6 @@ func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params 
 	}
 
 	return s.listWithFiltersAccounts, result, nil
-}
-
-func (s *accountRepoStubForAdminList) ListDistinctModelNames(_ context.Context) ([]string, error) {
-	return nil, nil
 }
 
 type proxyRepoStubForAdminList struct {
