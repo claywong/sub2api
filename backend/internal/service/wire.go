@@ -964,8 +964,6 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
-	NewMonitorGroupUsageService,                                    // 私有扩展
-	wire.Bind(new(UserVisibleGroupsProvider), new(*APIKeyService)), // 私有扩展：分组消耗可见口径
 )
 
 // ProvideUserPlatformQuotaUsageFlusher 创建并启动 UserPlatformQuotaUsageFlusher。

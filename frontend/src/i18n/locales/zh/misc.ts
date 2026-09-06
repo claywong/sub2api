@@ -135,28 +135,6 @@ export default {
     usageOf: '已用 {used} / {limit}',
   },
 
-  // Group Usage (monitor page, private extension)
-  groupUsage: {
-    title: '分组消耗（近 1 小时）',
-    description: '按您可见的分组展示各模型的请求量与性能指标',
-    updatedAt: '更新于 {time}',
-    refresh: '刷新',
-    refreshing: '刷新中...',
-    empty: '暂无数据',
-    loadError: '加载分组消耗失败',
-    modelCount: '{count} 个模型',
-    columns: {
-      group: '分组',
-      requests: '请求数',
-      successRate: '成功率',
-      cacheHitRate: '缓存率',
-      ttftAvg: 'TTFT 均值',
-      ttftP90: 'TTFT P90',
-      otpsAvg: 'OTPS 均值',
-      costAvg: '次均成本'
-    }
-  },
-
   // Onboarding Tour
   onboarding: {
     restartTour: '重新查看新手引导',

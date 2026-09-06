@@ -138,28 +138,6 @@ export default {
     usageOf: '{used} of {limit}',
   },
 
-  // Group Usage (monitor page, private extension)
-  groupUsage: {
-    title: 'Group Usage (Last 1 Hour)',
-    description: 'Per-model request volume and performance metrics across your visible groups',
-    updatedAt: 'Updated at {time}',
-    refresh: 'Refresh',
-    refreshing: 'Refreshing...',
-    empty: 'No data',
-    loadError: 'Failed to load group usage',
-    modelCount: '{count} models',
-    columns: {
-      group: 'Group',
-      requests: 'Requests',
-      successRate: 'Success Rate',
-      cacheHitRate: 'Cache Hit Rate',
-      ttftAvg: 'TTFT Avg',
-      ttftP90: 'TTFT P90',
-      otpsAvg: 'OTPS Avg',
-      costAvg: 'Avg Cost'
-    }
-  },
-
   // Onboarding Tour
   onboarding: {
     restartTour: 'Restart Onboarding Tour',

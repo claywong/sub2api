@@ -101,7 +101,6 @@ var ProviderSet = wire.NewSet(
 	NewPluginRepository,
 	NewChannelRepository,
 	NewChannelMonitorRepository,
-	NewMonitorGroupUsageRepository, // 私有扩展
 	NewChannelMonitorV2Repository,
 	NewChannelMonitorRequestTemplateRepository,
 	NewContentModerationRepository,
