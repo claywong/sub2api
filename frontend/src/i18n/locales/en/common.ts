@@ -211,8 +211,6 @@ export default {
     securityAudit: 'Security Audit',
     contentModeration: 'Content Moderation',
     promptAudit: 'Prompt Audit',
-    // Private extension: menu label for the standalone DLP page.
-    dlp: 'Data Loss Prevention',
     auditLogs: 'Audit Logs',
   },
 

@@ -7,8 +7,6 @@ import settings from './settings'
 import audit from './audit'
 import promptAudit from './promptAudit'
 import plugins from './plugins'
-// 私有扩展：DLP 独立页面的文案。
-import dlp from './dlp'
 
 export default {
   ...overview,
@@ -20,5 +18,4 @@ export default {
   ...audit,
   ...promptAudit,
   ...plugins,
-  ...dlp,
 }
