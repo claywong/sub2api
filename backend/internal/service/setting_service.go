@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"sync/atomic"
 
@@ -104,6 +105,76 @@ type SettingRepository interface {
 	SetMultiple(ctx context.Context, settings map[string]string) error
 	GetAll(ctx context.Context) (map[string]string, error)
 	Delete(ctx context.Context, key string) error
+}
+
+const SettingKeyIPAllowlist = "security.ip_allowlist"
+const SettingKeyIPAllowlistEnabled = "security.ip_allowlist_enabled"
+
+func (s *SettingService) IPAllowlistEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	v, err := s.settingRepo.GetValue(ctx, SettingKeyIPAllowlistEnabled)
+	return err == nil && strings.EqualFold(strings.TrimSpace(v), "true")
+}
+
+func (s *SettingService) SetIPAllowlistEnabled(ctx context.Context, enabled bool) error {
+	v := "false"
+	if enabled {
+		v = "true"
+	}
+	return s.settingRepo.Set(ctx, SettingKeyIPAllowlistEnabled, v)
+}
+
+func (s *SettingService) ReplaceIPAllowlist(ctx context.Context, values []string) error {
+	for _, value := range values {
+		if net.ParseIP(strings.TrimSpace(value)) == nil && !strings.Contains(value, "/") {
+			return fmt.Errorf("invalid IP rule")
+		}
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(value)); err != nil {
+			if net.ParseIP(strings.TrimSpace(value)) == nil {
+				return fmt.Errorf("invalid IP rule")
+			}
+		}
+	}
+	b, _ := json.Marshal(values)
+	return s.settingRepo.Set(ctx, SettingKeyIPAllowlist, string(b))
+}
+
+func (s *SettingService) ListEnabledIPAllowlist(ctx context.Context) ([]string, error) {
+	if s == nil || s.settingRepo == nil {
+		return nil, nil
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyIPAllowlist)
+	if err != nil {
+		return nil, err
+	}
+	var values []string
+	if err := json.Unmarshal([]byte(raw), &values); err != nil {
+		return nil, err
+	}
+	return values, nil
+}
+
+func (s *SettingService) AddIPAllowlist(ctx context.Context, value string) error {
+	// Self-service submissions are always one concrete address; CIDR ranges
+	// remain available only to trusted database/admin configuration paths.
+	if strings.Contains(value, "/") || net.ParseIP(strings.TrimSpace(value)) == nil {
+		return fmt.Errorf("invalid single IP address")
+	}
+	value = net.ParseIP(strings.TrimSpace(value)).String()
+	values, err := s.ListEnabledIPAllowlist(ctx)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return err
+	}
+	for _, v := range values {
+		if v == value || v == value+"/32" || v == value+"/128" {
+			return nil
+		}
+	}
+	values = append(values, value)
+	b, _ := json.Marshal(values)
+	return s.settingRepo.Set(ctx, SettingKeyIPAllowlist, string(b))
 }
 
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.

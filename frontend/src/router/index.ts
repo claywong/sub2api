@@ -50,6 +50,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/ip-access-request',
+    name: 'IPAccessRequest',
+    component: () => import('@/views/auth/IPAccessRequestView.vue'),
+    meta: { requiresAuth: false, title: 'IP Access Request' }
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('@/views/auth/RegisterView.vue'),
