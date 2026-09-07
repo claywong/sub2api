@@ -830,7 +830,7 @@ export default {
       accountsAvailable: 'Avail:',
       accountsRateLimited: 'Limited:',
       accountsTotal: 'Total:',
-      accountsUnit: '',
+      accountsUnit: 'accounts',
       rateAndAccounts: '{rate}x rate · {count} accounts',
       accountsCount: '{count} accounts',
       rateLabel: 'rate',
@@ -866,7 +866,7 @@ export default {
         maxReasoningEffortOverLimitDeny: 'Deny access',
         maxReasoningEffortOverLimitHint: 'Applies after a ceiling is set. Downgrade rewrites values above the ceiling to the ceiling. Deny rejects the request.',
         reasoningEffortMappings: 'Reasoning effort mappings',
-        reasoningEffortMappingsHint: 'Type and model can both be left empty to match every model. One type and model can hold multiple request mappings, for example prefix gpt mapping both high and xhigh to medium. Exact matches beat affixes, and longer affixes beat shorter ones.',
+        reasoningEffortMappingsHint: 'Type and model can both be left empty to match every model. One type and model can hold multiple request mappings, for example prefix gpt mapping both high and xhigh to medium. Choose Deny as the forwarded value to reject that request value. Exact matches beat affixes, and longer affixes beat shorter ones.',
         addReasoningEffortMapping: 'Add mapping',
         addReasoningEffortPair: 'Add request value',
         removeReasoningEffortMapping: 'Remove mapping',
@@ -880,6 +880,7 @@ export default {
         reasoningEffortModelPlaceholder: 'Empty = all / gpt / gpt-5.4',
         reasoningEffortFrom: 'Request value',
         reasoningEffortTo: 'Forwarded value',
+        reasoningEffortToDeny: 'Deny',
         reasoningEffortFromPlaceholder: 'Select A',
         reasoningEffortToPlaceholder: 'Select B',
         fromRequired: 'Select request value A',
@@ -1092,11 +1093,11 @@ export default {
         invertSelection: 'Invert'
       },
       codexModelsManifest: {
-        title: 'Pinned Accounts for Codex Model Manifest',
-        hint: 'When enabled, Codex client /models requests for this group are fetched only from the pinned accounts and merged by slug, bypassing the scheduler. Pinned accounts in rate-limit or overload windows are still used.',
-        enable: 'Fetch manifest with specific accounts',
+        title: 'Pinned Accounts for Model Lists',
+        hint: 'When enabled, ordinary model lists and Codex Model Manifest are discovered from the pinned accounts first, then merged and filtered using account mappings and the group model list. Rate-limited or overloaded pinned accounts are still used.',
+        enable: 'Fetch model lists with specific accounts',
         enabledHint: 'Accounts are limited to OpenAI accounts bound to this group, at most 10.',
-        disabledHint: 'Not enabled: manifest requests go through scheduler account selection.',
+        disabledHint: 'Disabled: ordinary lists use local mappings or defaults; Codex uses a local catalog when configured, otherwise scheduler discovery.',
         accounts: 'Pinned accounts',
         searchPlaceholder: 'Search accounts (OpenAI accounts in this group)',
         searchEmpty: 'No matching accounts',
@@ -1233,12 +1234,6 @@ export default {
         searchAccountPlaceholder: 'Search accounts...',
         accountsHint: 'Select accounts to prioritize for this model pattern'
       },
-      mcpXml: {
-        title: 'MCP XML Protocol Injection',
-        tooltip: 'When enabled, if the request contains MCP tools, an XML format call protocol prompt will be injected into the system prompt. Disable this to avoid interference with certain clients.',
-        enabled: 'Enabled',
-        disabled: 'Disabled'
-      },
       claudeMaxSimulation: {
         title: 'Claude Max Usage Simulation',
         tooltip:
@@ -1246,6 +1241,12 @@ export default {
         enabled: 'Enabled (simulate 1h cache)',
         disabled: 'Disabled',
         hint: 'Only token categories in usage billing logs are adjusted. No per-request mapping state is persisted.'
+      },
+      mcpXml: {
+        title: 'MCP XML Protocol Injection',
+        tooltip: 'When enabled, if the request contains MCP tools, an XML format call protocol prompt will be injected into the system prompt. Disable this to avoid interference with certain clients.',
+        enabled: 'Enabled',
+        disabled: 'Disabled'
       },
       supportedScopes: {
         title: 'Supported Model Families',

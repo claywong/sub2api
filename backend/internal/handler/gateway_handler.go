@@ -1167,11 +1167,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		platform = forcedPlatform
 	}
 
+	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
+		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {
+		h.pinnedOpenAIModels(c, apiKey.Group)
+		return
+	}
+
 	if platform == service.PlatformComposite {
 		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 			availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(service.PlatformComposite), apiKey.Group.ModelsListConfig.Models)
-			writeCustomModelsList(c, service.PlatformComposite, availableModels)
+			writeModelsList(c, service.PlatformComposite, availableModels)
 			return
 		}
 		if len(availableModels) > 0 {
@@ -1187,7 +1193,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
 		fallbackModels := defaultModelIDsForPlatform(platform)
 		availableModels = filterModelsByCustomList(customModelsListSource(platform, availableModels, fallbackModels), fallbackModels, apiKey.Group.ModelsListConfig.Models)
-		writeCustomModelsList(c, platform, availableModels)
+		writeModelsList(c, platform, availableModels)
 		return
 	}
 
@@ -1328,6 +1334,10 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 }
 
 func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
+	if platform == service.PlatformOpenAI {
+		writeOpenAIModelsList(c, modelIDs)
+		return
+	}
 	if platform == service.PlatformGrok {
 		writeGrokModelsList(c, modelIDs)
 		return
@@ -1345,14 +1355,6 @@ func writeModelsList(c *gin.Context, platform string, modelIDs []string) {
 		"object": "list",
 		"data":   models,
 	})
-}
-
-func writeCustomModelsList(c *gin.Context, platform string, modelIDs []string) {
-	if platform == service.PlatformOpenAI {
-		writeOpenAIModelsList(c, modelIDs)
-		return
-	}
-	writeModelsList(c, platform, modelIDs)
 }
 
 type grokReasoningEffortOption struct {
