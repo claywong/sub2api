@@ -222,9 +222,9 @@ func (d *OpsErrorWebhookDispatcher) doPost(body []byte) bool {
 // computeWebhookSignature returns sha256=<hex(hmac-sha256(secret, timestamp+"."+body))>.
 func computeWebhookSignature(secret, timestamp string, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(timestamp))
-	mac.Write([]byte("."))
-	mac.Write(body)
+	_, _ = mac.Write([]byte(timestamp))
+	_, _ = mac.Write([]byte("."))
+	_, _ = mac.Write(body)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 

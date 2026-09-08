@@ -263,10 +263,11 @@ func (c *AnthropicCollector) flushEvent() {
 		idx := int(parsed.Get("index").Int())
 		blockType := parsed.Get("content_block.type").String()
 		blk := &anthropicBlock{blockType: blockType}
-		if blockType == "tool_use" {
+		switch blockType {
+		case "tool_use":
 			blk.toolID = parsed.Get("content_block.id").String()
 			blk.toolName = parsed.Get("content_block.name").String()
-		} else if blockType == "server_tool_use" || blockType == "redacted_thinking" {
+		case "server_tool_use", "redacted_thinking":
 			blk.rawStart = json.RawMessage(parsed.Get("content_block").Raw)
 		}
 		if _, exists := c.blocks[idx]; !exists {
@@ -284,11 +285,11 @@ func (c *AnthropicCollector) flushEvent() {
 		deltaType := parsed.Get("delta.type").String()
 		switch deltaType {
 		case "text_delta":
-			blk.text.WriteString(parsed.Get("delta.text").String())
+			_, _ = blk.text.WriteString(parsed.Get("delta.text").String())
 		case "input_json_delta":
-			blk.inputBuf.WriteString(parsed.Get("delta.partial_json").String())
+			_, _ = blk.inputBuf.WriteString(parsed.Get("delta.partial_json").String())
 		case "thinking_delta":
-			blk.thinking.WriteString(parsed.Get("delta.thinking").String())
+			_, _ = blk.thinking.WriteString(parsed.Get("delta.thinking").String())
 		}
 	case "message_delta":
 		if reason := parsed.Get("delta.stop_reason").String(); reason != "" {
@@ -552,7 +553,7 @@ func (c *ChatCompletionsCollector) flushEvent() {
 				ch.role = role
 			}
 			if content := delta.Get("content"); content.Exists() && content.Type == gjson.String {
-				ch.content.WriteString(content.String())
+				_, _ = ch.content.WriteString(content.String())
 			}
 			if tools := delta.Get("tool_calls"); tools.IsArray() {
 				for _, t := range tools.Array() {
@@ -571,7 +572,7 @@ func (c *ChatCompletionsCollector) flushEvent() {
 						tc.function = true
 					}
 					if args := t.Get("function.arguments").String(); args != "" {
-						tc.argsBuf.WriteString(args)
+						_, _ = tc.argsBuf.WriteString(args)
 					}
 				}
 			}

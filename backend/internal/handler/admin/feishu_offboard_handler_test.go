@@ -24,15 +24,15 @@ import (
 
 // stubFeishuOffboardService 记录入参并回放预设结果。
 type stubFeishuOffboardService struct {
-	view       service.FeishuOffboardConfigView
-	savedInput *service.FeishuOffboardConfigInput
-	run        *service.FeishuOffboardRun
+	view          service.FeishuOffboardConfigView
+	savedInput    *service.FeishuOffboardConfigInput
+	run           *service.FeishuOffboardRun
 	gotDryRun     *bool
 	triggerCalled bool
-	list       *service.FeishuOffboardRunList
-	gotFilter  *service.FeishuOffboardRunListFilter
-	runByID    *service.FeishuOffboardRun
-	gotID      int64
+	list          *service.FeishuOffboardRunList
+	gotFilter     *service.FeishuOffboardRunListFilter
+	runByID       *service.FeishuOffboardRun
+	gotID         int64
 }
 
 func (s *stubFeishuOffboardService) LoadConfigView(context.Context) (service.FeishuOffboardConfigView, error) {

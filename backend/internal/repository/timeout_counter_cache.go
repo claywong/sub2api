@@ -11,7 +11,6 @@ import (
 
 const timeoutCounterPrefix = "timeout_count:account:"
 
-
 type timeoutCounterCache struct {
 	rdb *redis.Client
 }

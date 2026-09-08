@@ -222,7 +222,7 @@ func TestAccountCacheTTLOverrideEnabled(t *testing.T) {
 	apiKeyAccount := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"cache_ttl_override_enabled": true,
 			"cache_ttl_override_target":  "1h",
 		},
@@ -234,7 +234,7 @@ func TestAccountCacheTTLOverrideEnabled(t *testing.T) {
 	oauthAccount := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeOAuth,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"cache_ttl_override_enabled": true,
 			"cache_ttl_override_target":  "5m",
 		},
@@ -246,7 +246,7 @@ func TestAccountCacheTTLOverrideEnabled(t *testing.T) {
 	openaiAccount := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
-		Extra: map[string]interface{}{
+		Extra: map[string]any{
 			"cache_ttl_override_enabled": true,
 		},
 	}
@@ -256,7 +256,7 @@ func TestAccountCacheTTLOverrideEnabled(t *testing.T) {
 	disabledAccount := &Account{
 		Platform: PlatformAnthropic,
 		Type:     AccountTypeAPIKey,
-		Extra:    map[string]interface{}{},
+		Extra:    map[string]any{},
 	}
 	require.False(t, disabledAccount.IsCacheTTLOverrideEnabled())
 }

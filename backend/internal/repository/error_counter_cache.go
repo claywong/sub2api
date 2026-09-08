@@ -10,7 +10,6 @@ import (
 
 const errorCounterPrefix = "upstream_error_count:account:"
 
-
 type errorCounterCache struct {
 	rdb *redis.Client
 }
