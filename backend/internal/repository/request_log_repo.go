@@ -20,9 +20,9 @@ const (
 )
 
 type requestLogRepository struct {
-	db      *sql.DB
-	ch      chan *service.RequestLog
-	once    sync.Once
+	db   *sql.DB
+	ch   chan *service.RequestLog
+	once sync.Once
 }
 
 // NewRequestLogRepository 创建请求日志仓库，复用主库连接。

@@ -286,7 +286,6 @@ func (Group) Fields() []ent.Field {
 			Default(false).
 			Comment("开启后 Anthropic 协议直通出站请求归一为账号级统一身份（GLM 等 CN 供应商分组使用）"),
 
-
 		// OpenAI/Codex 请求的推理强度上限（空字符串表示不限制）。
 		field.String("max_reasoning_effort").
 			MaxLen(20).
