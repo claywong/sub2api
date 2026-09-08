@@ -127,7 +127,7 @@ func (u *httpBridgeIsolationUpstream) Do(req *http.Request, _ string, _ int64, _
 	return &http.Response{StatusCode: http.StatusOK, Header: headers, Body: responseBody}, nil
 }
 
-func (u *httpBridgeIsolationUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u *httpBridgeIsolationUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, concurrency)
 }
 
