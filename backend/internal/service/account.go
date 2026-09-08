@@ -1143,16 +1143,6 @@ func isPoolModeRetryableStatus(statusCode int) bool {
 	return false
 }
 
-// isUpstreamErrorThresholdStatus 需要走阈值计数的上游错误状态码（500/502/520）
-func isUpstreamErrorThresholdStatus(statusCode int) bool {
-	switch statusCode {
-	case 500, 502, 520:
-		return true
-	default:
-		return false
-	}
-}
-
 // GetPoolModeRetryStatusCodes 返回账号自定义的池模式同账号重试状态码列表。
 //
 // 返回值语义：

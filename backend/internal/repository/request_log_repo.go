@@ -99,7 +99,7 @@ func (r *requestLogRepository) GetByRequestIDs(ctx context.Context, requestIDs [
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck
 
 	result := make(map[string]*service.RequestLog, len(requestIDs))
 	for rows.Next() {
@@ -137,7 +137,7 @@ func (r *requestLogRepository) insertBatch(logs []*service.RequestLog) error {
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer stmt.Close() //nolint:errcheck
 
 	for _, log := range logs {
 		sessionID := sql.NullString{String: log.SessionID, Valid: log.SessionID != ""}

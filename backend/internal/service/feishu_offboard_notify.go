@@ -112,31 +112,36 @@ func (n *FeishuOffboardEmailNotifier) buildSubject(
 	}
 }
 
+// writeSB 包装 strings.Builder.WriteString；Builder 写入永不返回错误，包装仅为满足 errcheck。
+func writeSB(b *strings.Builder, s string) {
+	_, _ = b.WriteString(s)
+}
+
 func (n *FeishuOffboardEmailNotifier) buildBody(run *FeishuOffboardRun) string {
 	var b strings.Builder
-	b.WriteString("<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:#1f2937\">")
+	writeSB(&b, "<div style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.7;color:#1f2937\">")
 
 	if run.CircuitBroken {
 		// 熔断是最需要人立刻介入的情况，放在最前面并且给出原因。
-		b.WriteString("<p style=\"padding:12px;background:#fef3c7;border-left:4px solid #d97706;margin:0 0 16px\">")
-		b.WriteString("<strong>已触发安全熔断，本次未禁用任何账号。</strong><br>")
-		b.WriteString(html.EscapeString(run.ErrorMessage))
-		b.WriteString("<br>一次命中过多通常意味着飞书数据异常，而非真的集体离职，请人工核对后再手动处理。")
-		b.WriteString("</p>")
+		writeSB(&b, "<p style=\"padding:12px;background:#fef3c7;border-left:4px solid #d97706;margin:0 0 16px\">")
+		writeSB(&b, "<strong>已触发安全熔断，本次未禁用任何账号。</strong><br>")
+		writeSB(&b, html.EscapeString(run.ErrorMessage))
+		writeSB(&b, "<br>一次命中过多通常意味着飞书数据异常，而非真的集体离职，请人工核对后再手动处理。")
+		writeSB(&b, "</p>")
 	} else if run.DryRun {
-		b.WriteString("<p style=\"padding:12px;background:#e0f2fe;border-left:4px solid #0284c7;margin:0 0 16px\">")
-		b.WriteString("<strong>空跑模式：下列账号被判定为已离职，但本次未实际禁用。</strong>")
-		b.WriteString("</p>")
+		writeSB(&b, "<p style=\"padding:12px;background:#e0f2fe;border-left:4px solid #0284c7;margin:0 0 16px\">")
+		writeSB(&b, "<strong>空跑模式：下列账号被判定为已离职，但本次未实际禁用。</strong>")
+		writeSB(&b, "</p>")
 	}
 
 	if run.ErrorMessage != "" && !run.CircuitBroken {
-		b.WriteString("<p style=\"padding:12px;background:#fee2e2;border-left:4px solid #dc2626;margin:0 0 16px\">")
-		b.WriteString("<strong>执行出错：</strong>")
-		b.WriteString(html.EscapeString(run.ErrorMessage))
-		b.WriteString("</p>")
+		writeSB(&b, "<p style=\"padding:12px;background:#fee2e2;border-left:4px solid #dc2626;margin:0 0 16px\">")
+		writeSB(&b, "<strong>执行出错：</strong>")
+		writeSB(&b, html.EscapeString(run.ErrorMessage))
+		writeSB(&b, "</p>")
 	}
 
-	b.WriteString("<h3 style=\"margin:16px 0 8px\">执行概况</h3><ul style=\"margin:0;padding-left:20px\">")
+	writeSB(&b, "<h3 style=\"margin:16px 0 8px\">执行概况</h3><ul style=\"margin:0;padding-left:20px\">")
 	fmt.Fprintf(&b, "<li>触发方式：%s</li>", triggerLabel(run.TriggerSource))
 	fmt.Fprintf(&b, "<li>检查人数：%d</li>", run.CheckedCount)
 	fmt.Fprintf(&b, "<li>判定已离职：%d</li>", run.ResignedCount)
@@ -145,14 +150,14 @@ func (n *FeishuOffboardEmailNotifier) buildBody(run *FeishuOffboardRun) string {
 		run.UnverifiableCount)
 	fmt.Fprintf(&b, "<li>跳过管理员：%d</li>", run.SkippedCount)
 	fmt.Fprintf(&b, "<li>耗时：%.1f 秒</li>", float64(run.DurationMs)/1000)
-	b.WriteString("</ul>")
+	writeSB(&b, "</ul>")
 
 	n.writeDecisionTable(&b, run)
 
-	b.WriteString("<p style=\"margin-top:16px;color:#6b7280;font-size:13px\">")
-	b.WriteString("被禁用的账号仅修改了状态，余额、分组权限与订阅记录均保留；")
-	b.WriteString("人员回归时将状态改回 active 即可恢复，无需重新配置。")
-	b.WriteString("</p></div>")
+	writeSB(&b, "<p style=\"margin-top:16px;color:#6b7280;font-size:13px\">")
+	writeSB(&b, "被禁用的账号仅修改了状态，余额、分组权限与订阅记录均保留；")
+	writeSB(&b, "人员回归时将状态改回 active 即可恢复，无需重新配置。")
+	writeSB(&b, "</p></div>")
 	return b.String()
 }
 
@@ -172,13 +177,13 @@ func (n *FeishuOffboardEmailNotifier) writeDecisionTable(
 		return
 	}
 
-	b.WriteString("<h3 style=\"margin:16px 0 8px\">判定为已离职的账号</h3>")
-	b.WriteString("<table style=\"border-collapse:collapse;width:100%;font-size:13px\">")
-	b.WriteString("<tr style=\"background:#f3f4f6\">" +
-		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">用户</th>" +
-		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">邮箱</th>" +
-		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">飞书姓名/工号</th>" +
-		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">依据</th>" +
+	writeSB(b, "<h3 style=\"margin:16px 0 8px\">判定为已离职的账号</h3>")
+	writeSB(b, "<table style=\"border-collapse:collapse;width:100%;font-size:13px\">")
+	writeSB(b, "<tr style=\"background:#f3f4f6\">"+
+		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">用户</th>"+
+		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">邮箱</th>"+
+		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">飞书姓名/工号</th>"+
+		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">依据</th>"+
 		"<th style=\"padding:6px;border:1px solid #e5e7eb;text-align:left\">结果</th></tr>")
 
 	limit := len(rows)
@@ -212,7 +217,7 @@ func (n *FeishuOffboardEmailNotifier) writeDecisionTable(
 			html.EscapeString(who), html.EscapeString(reason),
 			html.EscapeString(result))
 	}
-	b.WriteString("</table>")
+	writeSB(b, "</table>")
 	if len(rows) > limit {
 		fmt.Fprintf(b, "<p style=\"color:#6b7280;font-size:13px\">另有 %d 人未在此列出，"+
 			"请到管理后台的执行记录中查看完整明细。</p>", len(rows)-limit)
