@@ -1,12 +1,17 @@
 package service
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+// modelQuotaMatchMaxLen 是规则 match（即 rule_key）的长度上限，
+// 与 user_group_model_usage.rule_key 的 VARCHAR(200) 对齐。
+const modelQuotaMatchMaxLen = 200
 
 // GroupModelQuotaRule 是 service 层的模型配额规则（字段与 domain 类型一致，
 // ent 持久化用 domain 类型，边界处显式转换）。
@@ -202,6 +207,12 @@ func normalizeModelQuotaRule(rule GroupModelQuotaRule) (GroupModelQuotaRule, err
 	}
 	if match == "*" {
 		return rule, invalidModelQuota(`model quota rule "*" is not allowed; use the group-level limits instead`)
+	}
+	// rule_key 落库列为 VARCHAR(200)：超长规则能存进 jsonb 配置，但每次落账
+	// 都会因 rule_key 溢出让整个计费事务失败（用量记不上、余额/订阅照扣的
+	// 竞态窗口扩大），必须在配置入口拦截。
+	if len(match) > modelQuotaMatchMaxLen {
+		return rule, invalidModelQuota(fmt.Sprintf("model quota rule match is longer than %d characters", modelQuotaMatchMaxLen))
 	}
 	for _, limit := range []*float64{rule.Daily, rule.Weekly, rule.Monthly} {
 		if limit != nil && *limit < 0 {

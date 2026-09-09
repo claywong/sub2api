@@ -176,8 +176,10 @@ syncFromProps(props.modelValue)
 watch(
   () => props.modelValue,
   (value) => {
-    // 只在外部整体替换（打开对话框、切换分组）时重灌，避免与本组件回写形成循环
-    if (value === buildPayload()) return
+    // 只在外部整体替换（打开对话框、切换分组）时重灌。
+    // 必须做内容比较：本组件 emit 出去的对象经父组件 v-model 回流时引用必变，
+    // 引用比较（===）恒不相等，会形成 emit → 回灌 → 重置 → 再 emit 的无限循环。
+    if (payloadEquals(value, buildPayload())) return
     syncFromProps(value)
   },
 )
@@ -224,6 +226,23 @@ function buildPayload(): ModelQuotas {
       monthly: inputToLimit(monthlyInputs.value[index] ?? ''),
     })),
   }
+}
+
+// payloadEquals 做内容比较。null 视为空配置（enabled=false、无规则）。
+function payloadEquals(a: ModelQuotas | null | undefined, b: ModelQuotas): boolean {
+  const left = a ?? { enabled: false, rules: [] }
+  const right = b
+  if (left.enabled !== right.enabled) return false
+  if ((left.rules?.length ?? 0) !== (right.rules?.length ?? 0)) return false
+  for (let i = 0; i < (right.rules?.length ?? 0); i++) {
+    const lr = left.rules![i]
+    const rr = right.rules[i]
+    if ((lr.match ?? '') !== (rr.match ?? '')) return false
+    if ((lr.daily ?? null) !== (rr.daily ?? null)) return false
+    if ((lr.weekly ?? null) !== (rr.weekly ?? null)) return false
+    if ((lr.monthly ?? null) !== (rr.monthly ?? null)) return false
+  }
+  return true
 }
 
 function addRule() {

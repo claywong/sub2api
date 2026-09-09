@@ -3,6 +3,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -200,6 +201,20 @@ func TestNormalizeGroupModelQuotas(t *testing.T) {
 		cfg := GroupModelQuotas{Enabled: true, Rules: []GroupModelQuotaRule{{Match: "gpt-6-astra", Daily: f64(-1)}}}
 		if _, err := normalizeGroupModelQuotas(cfg); err == nil {
 			t.Fatal("expected error for negative limit")
+		}
+	})
+
+	t.Run("oversized match is rejected", func(t *testing.T) {
+		long := strings.Repeat("a", 201)
+		cfg := GroupModelQuotas{Enabled: true, Rules: []GroupModelQuotaRule{{Match: long, Daily: f64(1)}}}
+		if _, err := normalizeGroupModelQuotas(cfg); err == nil {
+			t.Fatal("expected error for match longer than rule_key column")
+		}
+		// 恰好 200（含末尾通配符）应通过
+		ok := strings.Repeat("a", 199) + "*"
+		cfg = GroupModelQuotas{Enabled: true, Rules: []GroupModelQuotaRule{{Match: ok, Daily: f64(1)}}}
+		if _, err := normalizeGroupModelQuotas(cfg); err != nil {
+			t.Fatalf("unexpected error at exactly 200 chars: %v", err)
 		}
 	})
 

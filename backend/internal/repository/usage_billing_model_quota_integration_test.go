@@ -11,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -201,6 +200,3 @@ func TestUsageBillingApply_KeepsMonthlyAnchorWithinWindow(t *testing.T) {
 	require.True(t, after.MonthlyWindowStart.Equal(anchor),
 		"billing SQL must not drift the monthly anchor while inside the window")
 }
-
-// 保证 dbent 导入被使用（部分构建标签组合下 fixtures 已提供 client）
-var _ = func() *dbent.Client { return nil }

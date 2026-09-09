@@ -39,9 +39,9 @@ type UsageBillingCommand struct {
 	MediaType           string
 
 	// ModelQuotaRuleKey 是本次请求命中的按模型配额规则键（归一后的规则原文）。
-	// 由 handler 侧在准入判定时算定并透传，落账层不再重新匹配：
-	// 后扣运行在 worker ctx 上没有请求模型，且配置若在请求期间变更，
-	// 重新匹配会把用量记到与判定不同的规则上。空串表示未命中任何规则。
+	// 由后扣入口用 handler 透传的 RequestedModel 与同一份 apiKey.Group 配置
+	// （认证快照对象，请求期间不变）算定，落账层不再重新匹配：后扣运行在
+	// worker ctx 上没有请求模型。空串表示未命中任何规则。
 	ModelQuotaRuleKey string
 
 	BalanceCost         float64

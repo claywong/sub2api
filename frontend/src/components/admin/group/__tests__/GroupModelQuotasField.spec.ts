@@ -1,4 +1,5 @@
 import { mount } from "@vue/test-utils";
+import { defineComponent, h, ref } from "vue";
 import { describe, expect, it, vi } from "vitest";
 
 import GroupModelQuotasField from "../GroupModelQuotasField.vue";
@@ -156,5 +157,54 @@ describe("GroupModelQuotasField", () => {
     });
     await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-testid="model-quota-error"]').exists()).toBe(false);
+  });
+
+  // 回归：真实使用是 v-model 闭环（父组件把 emit 的对象原样回流为 modelValue）。
+  // 旧实现用引用相等判断外部回灌，回流对象引用必变 → syncFromProps 重置内部状态
+  // → deep watch 再 emit → 无限循环。本测试模拟 v-model 回流，断言 emit 收敛。
+  it("does not loop when the parent echoes emitted values back (v-model)", async () => {
+    const state = ref<ModelQuotas>({
+      enabled: true,
+      rules: [{ match: "claude-opus*", daily: 50 }],
+    });
+    const host = mount(
+      defineComponent({
+        setup() {
+          return () =>
+            h(GroupModelQuotasField, {
+              modelValue: state.value,
+              "onUpdate:modelValue": (v: ModelQuotas) => {
+                state.value = v;
+              },
+            });
+        },
+      }),
+      {
+        global: {
+          stubs: {
+            Icon: { template: "<span />" },
+            Toggle: {
+              props: ["modelValue"],
+              emits: ["update:modelValue"],
+              template: "<button data-testid='toggle' @click=\"$emit('update:modelValue', !modelValue)\" />",
+            },
+          },
+        },
+      },
+    );
+
+    // 用户编辑：触发 emit → 父回流 → 若误判为外部回灌会再 emit
+    await host.findAll('input[type="number"]')[1].setValue("200");
+    await host.vm.$nextTick();
+    await host.vm.$nextTick();
+
+    const before = host.emitted("update:modelValue")?.length ?? 0;
+    await host.vm.$nextTick();
+    await host.vm.$nextTick();
+    await host.vm.$nextTick();
+    const after = host.emitted("update:modelValue")?.length ?? 0;
+
+    expect(after).toBe(before);
+    expect(state.value.rules[0].weekly).toBe(200);
   });
 });
