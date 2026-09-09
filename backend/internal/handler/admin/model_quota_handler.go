@@ -12,11 +12,11 @@ import (
 
 // ModelQuotaHandler 处理分组级「按模型/模型前缀」配额用量的查看与重置。
 type ModelQuotaHandler struct {
-	modelQuotaService *service.AdminModelQuotaService
+	modelQuotaService *service.ModelQuotaUsageService
 }
 
 // NewModelQuotaHandler 创建 ModelQuotaHandler。
-func NewModelQuotaHandler(modelQuotaService *service.AdminModelQuotaService) *ModelQuotaHandler {
+func NewModelQuotaHandler(modelQuotaService *service.ModelQuotaUsageService) *ModelQuotaHandler {
 	return &ModelQuotaHandler{modelQuotaService: modelQuotaService}
 }
 

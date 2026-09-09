@@ -224,7 +224,8 @@
               v-if="
                 !subscription.group?.daily_limit_usd &&
                 !subscription.group?.weekly_limit_usd &&
-                !subscription.group?.monthly_limit_usd
+                !subscription.group?.monthly_limit_usd &&
+                !(modelQuotaRuleCounts[subscription.id] > 0)
               "
               class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
             >
@@ -240,6 +241,12 @@
                 </div>
               </div>
             </div>
+
+            <!-- 按模型额度（分组未配置时组件自身不渲染） -->
+            <SubscriptionModelQuotas
+              :subscription-id="subscription.id"
+              @loaded="count => (modelQuotaRuleCounts[subscription.id] = count)"
+            />
           </div>
         </div>
       </div>
@@ -248,13 +255,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import SubscriptionModelQuotas from '@/components/subscription/SubscriptionModelQuotas.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTimeToMinute } from '@/utils/format'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
@@ -282,6 +290,8 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+// subscription.id -> 该分组配置的按模型额度规则数，用于抑制“无限制”徽章
+const modelQuotaRuleCounts = reactive<Record<number, number>>({})
 
 function subscriptionHasPeakRate(subscription: UserSubscription): boolean {
   return hasPeakRate(subscription.group)
