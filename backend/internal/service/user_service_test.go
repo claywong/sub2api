@@ -914,3 +914,19 @@ func TestGetProfile_HydratesAvatarFromRepository(t *testing.T) {
 	require.Equal(t, "https://cdn.example.com/profile.png", user.AvatarURL)
 	require.Equal(t, "remote_url", user.AvatarSource)
 }
+
+func (m *mockBillingCache) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (m *mockBillingCache) SetModelQuotaUsageCache(context.Context, int64, int64, string, *ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (m *mockBillingCache) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (m *mockBillingCache) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
+}

@@ -89,6 +89,32 @@ type BillingCache interface {
 	PopDirtyUserPlatformQuotaKeys(ctx context.Context, n int) ([]UserPlatformQuotaKey, error)
 	ReaddDirtyUserPlatformQuotaKeys(ctx context.Context, keys []UserPlatformQuotaKey) error
 	BatchGetUserPlatformQuotaCache(ctx context.Context, keys []UserPlatformQuotaKey) ([]*UserPlatformQuotaCacheEntry, error)
+
+	// 按模型配额用量缓存（(user, group, rule_key) 维度）。
+	//
+	// 与 user × platform quota 的脏集 flusher 设计不同，这里沿用订阅用量缓存的模式：
+	// DB 在计费事务内权威写入，Redis 只是读缓存并在落账后同步累加。
+	// 模型配额规则数远少于用户数，不需要引入批量回写通道。
+	GetModelQuotaUsageCache(ctx context.Context, userID, groupID int64, ruleKey string) (*ModelQuotaUsageCacheEntry, bool, error)
+	SetModelQuotaUsageCache(ctx context.Context, userID, groupID int64, ruleKey string, entry *ModelQuotaUsageCacheEntry, ttl time.Duration) error
+	// IncrModelQuotaUsageCache 在缓存命中时累加用量；key 不存在时静默返回 nil
+	// （下次读取会 MISS 回源 DB，DB 已是权威值）。
+	IncrModelQuotaUsageCache(ctx context.Context, userID, groupID int64, ruleKey string, cost float64, ttl time.Duration) error
+	InvalidateModelQuotaUsageCache(ctx context.Context, userID, groupID int64, ruleKey string) error
+}
+
+// ModelQuotaUsageCacheEntry 是按模型配额用量的 Redis hash 反序列化结果。
+//
+// 只缓存用量与窗口起点，不缓存限额：限额随 groups.model_quotas 配置读取
+// （Group 已在 api key auth 快照里），因此改配置立即生效，无需失效用量缓存。
+type ModelQuotaUsageCacheEntry struct {
+	DailyUsageUSD   float64
+	WeeklyUsageUSD  float64
+	MonthlyUsageUSD float64
+
+	DailyWindowStart   *time.Time
+	WeeklyWindowStart  *time.Time
+	MonthlyWindowStart *time.Time
 }
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）

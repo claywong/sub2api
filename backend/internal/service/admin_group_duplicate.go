@@ -93,6 +93,26 @@ func cloneGroupMessagesDispatchModelConfig(value OpenAIMessagesDispatchModelConf
 	return cloned
 }
 
+// cloneGroupModelQuotas 深拷贝按模型配额配置。
+// 规则里的三个上限是 *float64，必须逐个复制指针指向的值，
+// 否则复制出的分组与源分组共享同一份上限，改一边会影响另一边。
+func cloneGroupModelQuotas(value GroupModelQuotas) GroupModelQuotas {
+	cloned := GroupModelQuotas{Enabled: value.Enabled}
+	if len(value.Rules) == 0 {
+		return cloned
+	}
+	cloned.Rules = make([]GroupModelQuotaRule, 0, len(value.Rules))
+	for _, rule := range value.Rules {
+		cloned.Rules = append(cloned.Rules, GroupModelQuotaRule{
+			Match:   rule.Match,
+			Daily:   cloneGroupValuePointer(rule.Daily),
+			Weekly:  cloneGroupValuePointer(rule.Weekly),
+			Monthly: cloneGroupValuePointer(rule.Monthly),
+		})
+	}
+	return cloned
+}
+
 func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 	return &Group{
 		Name:                            duplicateGroupName(source.Name, 1),
@@ -154,6 +174,9 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 			Enabled: source.ModelAllowlist.Enabled,
 			Models:  append([]string(nil), source.ModelAllowlist.Models...),
 		},
+		// 按模型配额随分组复制：规则是纯配置（不含账号/用户引用），深拷贝规则切片即可。
+		// 用量按 (user, group, rule) 记录，新分组从零开始，无需搬运。
+		ModelQuotas: cloneGroupModelQuotas(source.ModelQuotas),
 		// 固定账号 manifest 配置指向源分组的账号 ID，复制后成员关系可能变化，重置为关闭且列表为空。
 		CodexModelsManifestConfig:   GroupCodexModelsManifestConfig{},
 		RPMLimit:                    source.RPMLimit,

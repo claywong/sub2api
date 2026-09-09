@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -209,7 +212,81 @@ func (r *usageBillingRepository) applyUsageBillingEffects(ctx context.Context, t
 		result.QuotaState = quotaState
 	}
 
+	if cmd.ModelQuotaCost > 0 && cmd.GroupID > 0 && strings.TrimSpace(cmd.ModelQuotaRuleKey) != "" {
+		if err := incrementUsageBillingModelQuota(ctx, tx, cmd.UserID, cmd.GroupID, cmd.ModelQuotaRuleKey, cmd.ModelQuotaCost); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// incrementUsageBillingModelQuota 在计费事务内累加按模型配额用量。
+//
+// 窗口自愈用纯 SQL 完成（不复用 repo 层的 ent 实现）：本函数运行在
+// usage_billing 的 *sql.Tx 上，与订阅/余额/API Key 用量在同一原子事务内，
+// 且请求级幂等由 usage_billing_dedup 保证，不需要额外的行锁往返。
+//
+// 语义与 UserGroupModelUsageRepository.IncrementUsageWithReset 严格一致：
+//   - daily  窗口起点变化 → 用量重置为本次 cost，否则累加
+//   - weekly 同上
+//   - monthly 30 天滚动：now - start >= 30d 时重置且起点改为 now，否则累加且保留原起点
+//
+// 时区口径必须与 timezone.StartOfDay / StartOfWeek 一致，因此日/周窗口起点由
+// 调用侧算好传入，而不是在 SQL 里用 date_trunc（后者按数据库时区，会与
+// 应用配置时区不符）。
+func incrementUsageBillingModelQuota(
+	ctx context.Context,
+	tx *sql.Tx,
+	userID, groupID int64,
+	ruleKey string,
+	cost float64,
+) error {
+	now := time.Now()
+	dayStart := timezone.StartOfDay(now)
+	weekStart := timezone.StartOfWeek(now)
+	monthlyWindow := 30 * 24 * time.Hour
+
+	const upsertSQL = `
+		INSERT INTO user_group_model_usage
+			(user_id, group_id, rule_key,
+			 daily_usage_usd, weekly_usage_usd, monthly_usage_usd,
+			 daily_window_start, weekly_window_start, monthly_window_start,
+			 created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $4, $4, $5, $6, $7, $8, $8)
+		ON CONFLICT (user_id, group_id, rule_key) WHERE deleted_at IS NULL DO UPDATE SET
+			daily_usage_usd = CASE
+				WHEN user_group_model_usage.daily_window_start IS DISTINCT FROM EXCLUDED.daily_window_start
+				THEN EXCLUDED.daily_usage_usd
+				ELSE user_group_model_usage.daily_usage_usd + EXCLUDED.daily_usage_usd
+			END,
+			weekly_usage_usd = CASE
+				WHEN user_group_model_usage.weekly_window_start IS DISTINCT FROM EXCLUDED.weekly_window_start
+				THEN EXCLUDED.weekly_usage_usd
+				ELSE user_group_model_usage.weekly_usage_usd + EXCLUDED.weekly_usage_usd
+			END,
+			monthly_usage_usd = CASE
+				WHEN user_group_model_usage.monthly_window_start IS NULL
+					OR EXCLUDED.monthly_window_start - user_group_model_usage.monthly_window_start >= $9::interval
+				THEN EXCLUDED.monthly_usage_usd
+				ELSE user_group_model_usage.monthly_usage_usd + EXCLUDED.monthly_usage_usd
+			END,
+			daily_window_start = EXCLUDED.daily_window_start,
+			weekly_window_start = EXCLUDED.weekly_window_start,
+			monthly_window_start = CASE
+				WHEN user_group_model_usage.monthly_window_start IS NULL
+					OR EXCLUDED.monthly_window_start - user_group_model_usage.monthly_window_start >= $9::interval
+				THEN EXCLUDED.monthly_window_start
+				ELSE user_group_model_usage.monthly_window_start
+			END,
+			updated_at = EXCLUDED.updated_at`
+
+	_, err := tx.ExecContext(ctx, upsertSQL,
+		userID, groupID, ruleKey, cost,
+		dayStart, weekStart, now, now,
+		fmt.Sprintf("%d seconds", int64(monthlyWindow.Seconds())),
+	)
+	return err
 }
 
 func incrementUsageBillingSubscription(ctx context.Context, tx *sql.Tx, subscriptionID int64, costUSD float64) error {

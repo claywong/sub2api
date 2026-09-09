@@ -1099,6 +1099,28 @@ export default {
           duplicate: '该条目已存在'
         }
       },
+      modelQuotas: {
+        title: '按模型配额',
+        hint: '为单个模型或整个模型系列单独设置日/周/月 USD 上限。与分组总限额是两层独立约束，两层都需满足才放行。条目支持精确模型 ID 与末尾 * 通配（如 claude-opus* 表示整个系列共享一份额度）。一次请求只命中最具体的一条规则：精确条目优先于通配，多条通配同时命中时前缀最长者优先。留空表示该窗口不限制，填 0 表示禁用该模型。',
+        empty: '暂无规则，点击下方按钮添加',
+        addRule: '添加规则',
+        matchPlaceholder: '如 claude-opus* 或 gpt-6-astra',
+        unlimited: '不限制',
+        columns: {
+          match: '模型 / 前缀',
+          daily: '日上限 (USD)',
+          weekly: '周上限 (USD)',
+          monthly: '月上限 (USD)'
+        },
+        errors: {
+          emptyMatch: '请填写模型 ID 或前缀',
+          bareWildcard: '不允许单独使用 *，请改用分组总限额',
+          wildcardPosition: '通配符 * 只能出现在末尾：{match}',
+          duplicate: '规则重复：{match}',
+          negativeLimit: '上限不能为负数',
+          enabledButEmpty: '按模型配额已开启，请至少添加一条规则'
+        }
+      },
       codexModelsManifest: {
         title: '固定账号获取模型列表',
         hint: '开启后，普通模型列表与 Codex Model Manifest 均优先从选定账号获取并合并，再应用账号映射和分组列表过滤；限流/过载中的选定账号仍会被使用。',

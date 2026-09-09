@@ -98,7 +98,7 @@ func (b *billingCacheWorkerStub) BatchGetUserPlatformQuotaCache(ctx context.Cont
 
 func TestBillingCacheServiceQueueHighLoad(t *testing.T) {
 	cache := &billingCacheWorkerStub{}
-	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil, nil)
 	t.Cleanup(svc.Stop)
 
 	start := time.Now()
@@ -120,7 +120,7 @@ func TestBillingCacheServiceQueueHighLoad(t *testing.T) {
 
 func TestBillingCacheServiceEnqueueAfterStopReturnsFalse(t *testing.T) {
 	cache := &billingCacheWorkerStub{}
-	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil)
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{}, nil, nil)
 	svc.Stop()
 
 	enqueued := svc.enqueueCacheWrite(cacheWriteTask{
@@ -129,4 +129,20 @@ func TestBillingCacheServiceEnqueueAfterStopReturnsFalse(t *testing.T) {
 		amount: 1,
 	})
 	require.False(t, enqueued)
+}
+
+func (b *billingCacheWorkerStub) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (b *billingCacheWorkerStub) SetModelQuotaUsageCache(context.Context, int64, int64, string, *ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (b *billingCacheWorkerStub) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (b *billingCacheWorkerStub) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
 }

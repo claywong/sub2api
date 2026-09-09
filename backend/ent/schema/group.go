@@ -195,6 +195,12 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("分组逐模型定价；优先级高于渠道和内置定价"),
 
+		// 分组级按模型/模型前缀配额（私有扩展，added by migration 909）
+		field.JSON("model_quotas", domain.GroupModelQuotas{}).
+			Default(domain.GroupModelQuotas{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按模型或模型前缀的日/周/月 USD 配额；与分组总限额是两层独立约束"),
+
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
 			Default(false).

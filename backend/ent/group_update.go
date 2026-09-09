@@ -820,6 +820,20 @@ func (_u *GroupUpdate) ClearModelPricing() *GroupUpdate {
 	return _u
 }
 
+// SetModelQuotas sets the "model_quotas" field.
+func (_u *GroupUpdate) SetModelQuotas(v domain.GroupModelQuotas) *GroupUpdate {
+	_u.mutation.SetModelQuotas(v)
+	return _u
+}
+
+// SetNillableModelQuotas sets the "model_quotas" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableModelQuotas(v *domain.GroupModelQuotas) *GroupUpdate {
+	if v != nil {
+		_u.SetModelQuotas(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1832,6 +1846,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ModelPricingCleared() {
 		_spec.ClearField(group.FieldModelPricing, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ModelQuotas(); ok {
+		_spec.SetField(group.FieldModelQuotas, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -3048,6 +3065,20 @@ func (_u *GroupUpdateOne) ClearModelPricing() *GroupUpdateOne {
 	return _u
 }
 
+// SetModelQuotas sets the "model_quotas" field.
+func (_u *GroupUpdateOne) SetModelQuotas(v domain.GroupModelQuotas) *GroupUpdateOne {
+	_u.mutation.SetModelQuotas(v)
+	return _u
+}
+
+// SetNillableModelQuotas sets the "model_quotas" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableModelQuotas(v *domain.GroupModelQuotas) *GroupUpdateOne {
+	if v != nil {
+		_u.SetModelQuotas(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -4090,6 +4121,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if _u.mutation.ModelPricingCleared() {
 		_spec.ClearField(group.FieldModelPricing, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.ModelQuotas(); ok {
+		_spec.SetField(group.FieldModelQuotas, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

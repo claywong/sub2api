@@ -215,6 +215,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
 				group.FieldModelAllowlist,
+				// 按模型配额：判定直接读认证快照里的分组配置，漏选会让配额静默放行。
+				group.FieldModelQuotas,
 				group.FieldCodexModelsManifestConfig,
 				group.FieldRpmLimit,
 				group.FieldMaxReasoningEffort,
@@ -1020,6 +1022,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
 		ModelAllowlist:                  service.GroupModelAllowlistFromDomain(g.ModelAllowlist),
+		ModelQuotas:                     service.GroupModelQuotasFromDomain(g.ModelQuotas),
 		CodexModelsManifestConfig:       g.CodexModelsManifestConfig,
 		RPMLimit:                        g.RpmLimit,
 		MaxReasoningEffort:              g.MaxReasoningEffort,

@@ -117,6 +117,9 @@ type UserAttributeDefinition func(*sql.Selector)
 // UserAttributeValue is the predicate function for userattributevalue builders.
 type UserAttributeValue func(*sql.Selector)
 
+// UserGroupModelUsage is the predicate function for usergroupmodelusage builders.
+type UserGroupModelUsage func(*sql.Selector)
+
 // UserPlatformQuota is the predicate function for userplatformquota builders.
 type UserPlatformQuota func(*sql.Selector)
 

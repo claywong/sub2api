@@ -812,3 +812,19 @@ func TestAdminService_BatchDeleteRedeemCodes_PartialFailures(t *testing.T) {
 	require.Equal(t, int64(2), deleted)
 	require.Equal(t, []int64{1, 2, 3}, repo.deletedIDs)
 }
+
+func (s *billingCacheStub) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (s *billingCacheStub) SetModelQuotaUsageCache(context.Context, int64, int64, string, *ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (s *billingCacheStub) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (s *billingCacheStub) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
+}

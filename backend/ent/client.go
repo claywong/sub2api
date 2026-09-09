@@ -52,6 +52,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/usergroupmodelusage"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 
@@ -137,6 +138,8 @@ type Client struct {
 	UserAttributeDefinition *UserAttributeDefinitionClient
 	// UserAttributeValue is the client for interacting with the UserAttributeValue builders.
 	UserAttributeValue *UserAttributeValueClient
+	// UserGroupModelUsage is the client for interacting with the UserGroupModelUsage builders.
+	UserGroupModelUsage *UserGroupModelUsageClient
 	// UserPlatformQuota is the client for interacting with the UserPlatformQuota builders.
 	UserPlatformQuota *UserPlatformQuotaClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
@@ -189,6 +192,7 @@ func (c *Client) init() {
 	c.UserAllowedGroup = NewUserAllowedGroupClient(c.config)
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
+	c.UserGroupModelUsage = NewUserGroupModelUsageClient(c.config)
 	c.UserPlatformQuota = NewUserPlatformQuotaClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
 }
@@ -320,6 +324,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserGroupModelUsage:           NewUserGroupModelUsageClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
@@ -378,6 +383,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserGroupModelUsage:           NewUserGroupModelUsageClient(cfg),
 		UserPlatformQuota:             NewUserPlatformQuotaClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
@@ -419,7 +425,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserGroupModelUsage, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -439,7 +445,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserPlatformQuota, c.UserSubscription,
+		c.UserGroupModelUsage, c.UserPlatformQuota, c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -522,6 +528,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeDefinition.mutate(ctx, m)
 	case *UserAttributeValueMutation:
 		return c.UserAttributeValue.mutate(ctx, m)
+	case *UserGroupModelUsageMutation:
+		return c.UserGroupModelUsage.mutate(ctx, m)
 	case *UserPlatformQuotaMutation:
 		return c.UserPlatformQuota.mutate(ctx, m)
 	case *UserSubscriptionMutation:
@@ -6488,6 +6496,141 @@ func (c *UserAttributeValueClient) mutate(ctx context.Context, m *UserAttributeV
 	}
 }
 
+// UserGroupModelUsageClient is a client for the UserGroupModelUsage schema.
+type UserGroupModelUsageClient struct {
+	config
+}
+
+// NewUserGroupModelUsageClient returns a client for the UserGroupModelUsage from the given config.
+func NewUserGroupModelUsageClient(c config) *UserGroupModelUsageClient {
+	return &UserGroupModelUsageClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `usergroupmodelusage.Hooks(f(g(h())))`.
+func (c *UserGroupModelUsageClient) Use(hooks ...Hook) {
+	c.hooks.UserGroupModelUsage = append(c.hooks.UserGroupModelUsage, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `usergroupmodelusage.Intercept(f(g(h())))`.
+func (c *UserGroupModelUsageClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UserGroupModelUsage = append(c.inters.UserGroupModelUsage, interceptors...)
+}
+
+// Create returns a builder for creating a UserGroupModelUsage entity.
+func (c *UserGroupModelUsageClient) Create() *UserGroupModelUsageCreate {
+	mutation := newUserGroupModelUsageMutation(c.config, OpCreate)
+	return &UserGroupModelUsageCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UserGroupModelUsage entities.
+func (c *UserGroupModelUsageClient) CreateBulk(builders ...*UserGroupModelUsageCreate) *UserGroupModelUsageCreateBulk {
+	return &UserGroupModelUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *UserGroupModelUsageClient) MapCreateBulk(slice any, setFunc func(*UserGroupModelUsageCreate, int)) *UserGroupModelUsageCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &UserGroupModelUsageCreateBulk{err: fmt.Errorf("calling to UserGroupModelUsageClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*UserGroupModelUsageCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &UserGroupModelUsageCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UserGroupModelUsage.
+func (c *UserGroupModelUsageClient) Update() *UserGroupModelUsageUpdate {
+	mutation := newUserGroupModelUsageMutation(c.config, OpUpdate)
+	return &UserGroupModelUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UserGroupModelUsageClient) UpdateOne(_m *UserGroupModelUsage) *UserGroupModelUsageUpdateOne {
+	mutation := newUserGroupModelUsageMutation(c.config, OpUpdateOne, withUserGroupModelUsage(_m))
+	return &UserGroupModelUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UserGroupModelUsageClient) UpdateOneID(id int64) *UserGroupModelUsageUpdateOne {
+	mutation := newUserGroupModelUsageMutation(c.config, OpUpdateOne, withUserGroupModelUsageID(id))
+	return &UserGroupModelUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UserGroupModelUsage.
+func (c *UserGroupModelUsageClient) Delete() *UserGroupModelUsageDelete {
+	mutation := newUserGroupModelUsageMutation(c.config, OpDelete)
+	return &UserGroupModelUsageDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UserGroupModelUsageClient) DeleteOne(_m *UserGroupModelUsage) *UserGroupModelUsageDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UserGroupModelUsageClient) DeleteOneID(id int64) *UserGroupModelUsageDeleteOne {
+	builder := c.Delete().Where(usergroupmodelusage.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UserGroupModelUsageDeleteOne{builder}
+}
+
+// Query returns a query builder for UserGroupModelUsage.
+func (c *UserGroupModelUsageClient) Query() *UserGroupModelUsageQuery {
+	return &UserGroupModelUsageQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUserGroupModelUsage},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UserGroupModelUsage entity by its id.
+func (c *UserGroupModelUsageClient) Get(ctx context.Context, id int64) (*UserGroupModelUsage, error) {
+	return c.Query().Where(usergroupmodelusage.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UserGroupModelUsageClient) GetX(ctx context.Context, id int64) *UserGroupModelUsage {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *UserGroupModelUsageClient) Hooks() []Hook {
+	hooks := c.hooks.UserGroupModelUsage
+	return append(hooks[:len(hooks):len(hooks)], usergroupmodelusage.Hooks[:]...)
+}
+
+// Interceptors returns the client interceptors.
+func (c *UserGroupModelUsageClient) Interceptors() []Interceptor {
+	inters := c.inters.UserGroupModelUsage
+	return append(inters[:len(inters):len(inters)], usergroupmodelusage.Interceptors[:]...)
+}
+
+func (c *UserGroupModelUsageClient) mutate(ctx context.Context, m *UserGroupModelUsageMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UserGroupModelUsageCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UserGroupModelUsageUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UserGroupModelUsageUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UserGroupModelUsageDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UserGroupModelUsage mutation op: %q", m.Op())
+	}
+}
+
 // UserPlatformQuotaClient is a client for the UserPlatformQuota schema.
 type UserPlatformQuotaClient struct {
 	config
@@ -6849,8 +6992,8 @@ type (
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Hook
+		UserAttributeDefinition, UserAttributeValue, UserGroupModelUsage,
+		UserPlatformQuota, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6861,8 +7004,8 @@ type (
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserPlatformQuota,
-		UserSubscription []ent.Interceptor
+		UserAttributeDefinition, UserAttributeValue, UserGroupModelUsage,
+		UserPlatformQuota, UserSubscription []ent.Interceptor
 	}
 )
 

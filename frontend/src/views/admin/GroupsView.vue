@@ -645,6 +645,7 @@
           v-model:over-limit="createForm.max_reasoning_effort_over_limit"
           v-model:mappings="createForm.reasoning_effort_mappings"
         />
+        <GroupModelQuotasField v-model="createModelQuotas" />
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -2349,6 +2350,7 @@
           v-model:over-limit="editForm.max_reasoning_effort_over_limit"
           v-model:mappings="editForm.reasoning_effort_mappings"
         />
+        <GroupModelQuotasField v-model="editModelQuotas" />
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4408,6 +4410,7 @@ import type {
   CompositeRouteEndpoint,
   CompositeRouteMatchType,
   GroupPlatform,
+  ModelQuotas,
   SubscriptionType,
 } from "@/types";
 import {
@@ -4431,6 +4434,7 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
+import GroupModelQuotasField from "@/components/admin/group/GroupModelQuotasField.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -5000,6 +5004,13 @@ const createModelAllowlistState = reactive(createInitialModelAllowlistState());
 const editModelAllowlistState = reactive(createInitialModelAllowlistState());
 const createModelAllowlistLoading = ref(false);
 const editModelAllowlistLoading = ref(false);
+
+// 按模型配额（私有扩展）：与模型白名单同为分组级模型配置，但只约束用量、不约束准入
+function createInitialModelQuotas(): ModelQuotas {
+  return { enabled: false, rules: [] };
+}
+const createModelQuotas = ref<ModelQuotas>(createInitialModelQuotas());
+const editModelQuotas = ref<ModelQuotas>(createInitialModelQuotas());
 type ReasoningEffortPolicyFieldsExpose = {
   validate: () => boolean;
   resetValidation: () => void;
@@ -5950,6 +5961,7 @@ const closeCreateModal = () => {
   createForm.reasoning_effort_mappings = [];
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelAllowlistState(createModelAllowlistState);
+  createModelQuotas.value = createInitialModelQuotas();
   createModelRoutingRules.value = [];
 };
 
@@ -6058,6 +6070,7 @@ const handleCreateGroup = async () => {
         createModelRoutingRules.value,
       ),
       model_allowlist: buildModelAllowlistConfig(createModelAllowlistState),
+      model_quotas: createModelQuotas.value,
       // 创建时固定账号 manifest 固定发送关闭状态（后端创建路径禁止开启）
       codex_models_manifest_config: createCodexManifestDefaults(),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
@@ -6255,6 +6268,9 @@ const handleEdit = async (group: AdminGroup) => {
     group.platform,
   );
   resetModelAllowlistState(editModelAllowlistState, group.model_allowlist);
+  editModelQuotas.value = group.model_quotas
+    ? { enabled: group.model_quotas.enabled, rules: (group.model_quotas.rules ?? []).map((rule) => ({ ...rule })) }
+    : createInitialModelQuotas();
   // 固定账号 manifest 配置：回显配置并异步解析已存账号名称（失败显示 #<id>）
   const savedCodexManifestConfig =
     group.codex_models_manifest_config ?? createCodexManifestDefaults();
@@ -6402,6 +6418,7 @@ const handleUpdateGroup = async () => {
         editModelRoutingRules.value,
       ),
       model_allowlist: buildModelAllowlistConfig(editModelAllowlistState),
+      model_quotas: editModelQuotas.value,
       // 非 openai 平台提交关闭状态，与后端归一化一致
       codex_models_manifest_config:
         editForm.platform === "openai"

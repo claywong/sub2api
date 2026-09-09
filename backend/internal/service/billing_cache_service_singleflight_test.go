@@ -128,7 +128,7 @@ func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 		delay:   80 * time.Millisecond,
 		balance: 12.34,
 	}
-	svc := NewBillingCacheService(cache, userRepo, nil, nil, nil, nil, &config.Config{}, nil)
+	svc := NewBillingCacheService(cache, userRepo, nil, nil, nil, nil, &config.Config{}, nil, nil)
 	t.Cleanup(svc.Stop)
 
 	const goroutines = 16
@@ -164,4 +164,20 @@ func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return cache.setBalanceCalls.Load() >= 1
 	}, time.Second, 10*time.Millisecond)
+}
+
+func (s *billingCacheMissStub) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (s *billingCacheMissStub) SetModelQuotaUsageCache(context.Context, int64, int64, string, *ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (s *billingCacheMissStub) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (s *billingCacheMissStub) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
 }
