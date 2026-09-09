@@ -104,7 +104,7 @@ const { t } = useI18n()
 
 const items = ref<ModelQuotaUsageProgress[]>([])
 const loading = ref(true)
-const expanded = ref(false)
+const expanded = ref(true)
 // 同页面会渲染多张订阅卡片，订阅 ID 保证 aria-controls 页内唯一
 const panelId = `model-quota-panel-${props.subscriptionId}`
 
