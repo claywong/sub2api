@@ -279,7 +279,7 @@ func TestWindowResetBypassesRedisFallbackCheck(t *testing.T) {
 		group := makeGroup(true) // AllowBalanceFallback=true，若误触发兜底则 capturedSub 为 nil
 		sub := makeExpiredWindowSub(7, group.ID)
 
-		billingCacheSvc := service.NewBillingCacheService(redisExceededCache, nil, nil, nil, nil, nil, cfg, nil)
+		billingCacheSvc := service.NewBillingCacheService(redisExceededCache, nil, nil, nil, nil, nil, cfg, nil, nil)
 		defer billingCacheSvc.Stop()
 
 		router, captured := buildRouter(&group, sub, billingCacheSvc)
@@ -298,7 +298,7 @@ func TestWindowResetBypassesRedisFallbackCheck(t *testing.T) {
 		group := makeGroup(true)
 		sub := makeActiveWindowSub(7, group.ID)
 
-		billingCacheSvc := service.NewBillingCacheService(redisExceededCache, nil, nil, nil, nil, nil, cfg, nil)
+		billingCacheSvc := service.NewBillingCacheService(redisExceededCache, nil, nil, nil, nil, nil, cfg, nil, nil)
 		defer billingCacheSvc.Stop()
 
 		router, captured := buildRouter(&group, sub, billingCacheSvc)
@@ -380,4 +380,20 @@ func (s *stubBillingCacheAlwaysExceeded) ReaddDirtyUserPlatformQuotaKeys(context
 }
 func (s *stubBillingCacheAlwaysExceeded) BatchGetUserPlatformQuotaCache(context.Context, []service.UserPlatformQuotaKey) ([]*service.UserPlatformQuotaCacheEntry, error) {
 	return nil, nil
+}
+
+func (s *stubBillingCacheAlwaysExceeded) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*service.ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (s *stubBillingCacheAlwaysExceeded) SetModelQuotaUsageCache(context.Context, int64, int64, string, *service.ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (s *stubBillingCacheAlwaysExceeded) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (s *stubBillingCacheAlwaysExceeded) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
 }

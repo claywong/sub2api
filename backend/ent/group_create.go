@@ -580,6 +580,20 @@ func (_c *GroupCreate) SetModelPricing(v jsontext.Value) *GroupCreate {
 	return _c
 }
 
+// SetModelQuotas sets the "model_quotas" field.
+func (_c *GroupCreate) SetModelQuotas(v domain.GroupModelQuotas) *GroupCreate {
+	_c.mutation.SetModelQuotas(v)
+	return _c
+}
+
+// SetNillableModelQuotas sets the "model_quotas" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableModelQuotas(v *domain.GroupModelQuotas) *GroupCreate {
+	if v != nil {
+		_c.SetModelQuotas(*v)
+	}
+	return _c
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_c *GroupCreate) SetClaudeCodeOnly(v bool) *GroupCreate {
 	_c.mutation.SetClaudeCodeOnly(v)
@@ -1151,6 +1165,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultLongContextPricingEnabled
 		_c.mutation.SetLongContextPricingEnabled(v)
 	}
+	if _, ok := _c.mutation.ModelQuotas(); !ok {
+		v := group.DefaultModelQuotas
+		_c.mutation.SetModelQuotas(v)
+	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -1372,6 +1390,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.LongContextPricingEnabled(); !ok {
 		return &ValidationError{Name: "long_context_pricing_enabled", err: errors.New(`ent: missing required field "Group.long_context_pricing_enabled"`)}
+	}
+	if _, ok := _c.mutation.ModelQuotas(); !ok {
+		return &ValidationError{Name: "model_quotas", err: errors.New(`ent: missing required field "Group.model_quotas"`)}
 	}
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)}
@@ -1650,6 +1671,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ModelPricing(); ok {
 		_spec.SetField(group.FieldModelPricing, field.TypeJSON, value)
 		_node.ModelPricing = value
+	}
+	if value, ok := _c.mutation.ModelQuotas(); ok {
+		_spec.SetField(group.FieldModelQuotas, field.TypeJSON, value)
+		_node.ModelQuotas = value
 	}
 	if value, ok := _c.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -2614,6 +2639,18 @@ func (u *GroupUpsert) UpdateModelPricing() *GroupUpsert {
 // ClearModelPricing clears the value of the "model_pricing" field.
 func (u *GroupUpsert) ClearModelPricing() *GroupUpsert {
 	u.SetNull(group.FieldModelPricing)
+	return u
+}
+
+// SetModelQuotas sets the "model_quotas" field.
+func (u *GroupUpsert) SetModelQuotas(v domain.GroupModelQuotas) *GroupUpsert {
+	u.Set(group.FieldModelQuotas, v)
+	return u
+}
+
+// UpdateModelQuotas sets the "model_quotas" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelQuotas() *GroupUpsert {
+	u.SetExcluded(group.FieldModelQuotas)
 	return u
 }
 
@@ -3859,6 +3896,20 @@ func (u *GroupUpsertOne) UpdateModelPricing() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearModelPricing() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearModelPricing()
+	})
+}
+
+// SetModelQuotas sets the "model_quotas" field.
+func (u *GroupUpsertOne) SetModelQuotas(v domain.GroupModelQuotas) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelQuotas(v)
+	})
+}
+
+// UpdateModelQuotas sets the "model_quotas" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelQuotas() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelQuotas()
 	})
 }
 
@@ -5333,6 +5384,20 @@ func (u *GroupUpsertBulk) UpdateModelPricing() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearModelPricing() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearModelPricing()
+	})
+}
+
+// SetModelQuotas sets the "model_quotas" field.
+func (u *GroupUpsertBulk) SetModelQuotas(v domain.GroupModelQuotas) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetModelQuotas(v)
+	})
+}
+
+// UpdateModelQuotas sets the "model_quotas" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelQuotas() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateModelQuotas()
 	})
 }
 

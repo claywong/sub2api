@@ -33,6 +33,9 @@ type OpenAIRecordUsageInput struct {
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
+	// RequestedModel 是客户端书写的模型名，用于按模型配额记账。
+	// 与 QuotaPlatform 同理由 handler 传入：后扣链路的 worker ctx 取不到请求模型。
+	RequestedModel string
 	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
 	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
@@ -490,6 +493,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		quotaPlatform = PlatformFromAPIKey(apiKey)
 	}
 
+	// 按模型配额规则键：与判定侧用同一份分组配置和同一套匹配规则算定，
+	// 保证判定命中的规则与用量记账的规则一致。
+	modelQuotaRuleKey := resolveModelQuotaRuleKey(apiKey, input.RequestedModel)
+
 	billingErr := func() error {
 		_, err := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 			Cost:                  cost,
@@ -502,6 +509,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
 			Platform:              quotaPlatform,
+			ModelQuotaRuleKey:     modelQuotaRuleKey,
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()

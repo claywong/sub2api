@@ -944,6 +944,7 @@ var (
 		{Name: "audio_stt_price_per_hour", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "long_context_pricing_enabled", Type: field.TypeBool, Default: true},
 		{Name: "model_pricing", Type: field.TypeJSON, Nullable: true, SchemaType: map[string]string{"postgres": "jsonb"}},
+		{Name: "model_quotas", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
 		{Name: "claude_code_only", Type: field.TypeBool, Default: false},
 		{Name: "fallback_group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "fallback_group_id_on_invalid_request", Type: field.TypeInt64, Nullable: true},
@@ -1006,7 +1007,7 @@ var (
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[49]},
+				Columns: []*schema.Column{GroupsColumns[50]},
 			},
 			{
 				Name:    "idx_groups_duplicate_operation_id_active",
@@ -1952,6 +1953,48 @@ var (
 			},
 		},
 	}
+	// UserGroupModelUsageColumns holds the columns for the "user_group_model_usage" table.
+	UserGroupModelUsageColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "user_id", Type: field.TypeInt64},
+		{Name: "group_id", Type: field.TypeInt64},
+		{Name: "rule_key", Type: field.TypeString, Size: 200},
+		{Name: "daily_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "weekly_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "monthly_usage_usd", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,10)"}},
+		{Name: "daily_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "weekly_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "monthly_window_start", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// UserGroupModelUsageTable holds the schema information for the "user_group_model_usage" table.
+	UserGroupModelUsageTable = &schema.Table{
+		Name:       "user_group_model_usage",
+		Columns:    UserGroupModelUsageColumns,
+		PrimaryKey: []*schema.Column{UserGroupModelUsageColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "usergroupmodelusage_user_group_rule_uq",
+				Unique:  true,
+				Columns: []*schema.Column{UserGroupModelUsageColumns[4], UserGroupModelUsageColumns[5], UserGroupModelUsageColumns[6]},
+				Annotation: &entsql.IndexAnnotation{
+					Where: "deleted_at IS NULL",
+				},
+			},
+			{
+				Name:    "usergroupmodelusage_user_id_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserGroupModelUsageColumns[4], UserGroupModelUsageColumns[5]},
+			},
+			{
+				Name:    "usergroupmodelusage_deleted_at",
+				Unique:  false,
+				Columns: []*schema.Column{UserGroupModelUsageColumns[3]},
+			},
+		},
+	}
 	// UserPlatformQuotasColumns holds the columns for the "user_platform_quotas" table.
 	UserPlatformQuotasColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2127,6 +2170,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserGroupModelUsageTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
 	}
@@ -2275,6 +2319,9 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserGroupModelUsageTable.Annotation = &entsql.Annotation{
+		Table: "user_group_model_usage",
 	}
 	UserPlatformQuotasTable.ForeignKeys[0].RefTable = UsersTable
 	UserPlatformQuotasTable.Annotation = &entsql.Annotation{

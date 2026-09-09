@@ -303,3 +303,19 @@ func TestResetUserPlatformQuotaWindow_UserNotFound(t *testing.T) {
 		t.Errorf("expected 404 when user not found, got %d: %s", w.Code, w.Body.String())
 	}
 }
+
+func (s *billingCacheStub) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*service.ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (s *billingCacheStub) SetModelQuotaUsageCache(context.Context, int64, int64, string, *service.ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (s *billingCacheStub) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (s *billingCacheStub) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
+}

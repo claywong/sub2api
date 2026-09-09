@@ -550,6 +550,12 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, err
 	}
 
+	// 按模型配额同样在创建路径收口：开启但为空、通配位置非法、重复规则、负数上限都会 400。
+	modelQuotas, err := normalizeGroupModelQuotas(input.ModelQuotas)
+	if err != nil {
+		return nil, err
+	}
+
 	group := &Group{
 		Name:                            input.Name,
 		Description:                     input.Description,
@@ -605,6 +611,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelAllowlist:                  modelAllowlist,
+		ModelQuotas:                     modelQuotas,
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
@@ -1002,6 +1009,13 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, err
 		}
 		group.ModelAllowlist = modelAllowlist
+	}
+	if input.ModelQuotas != nil {
+		modelQuotas, err := normalizeGroupModelQuotas(*input.ModelQuotas)
+		if err != nil {
+			return nil, err
+		}
+		group.ModelQuotas = modelQuotas
 	}
 	if input.CodexModelsManifestConfig != nil {
 		group.CodexModelsManifestConfig = *input.CodexModelsManifestConfig

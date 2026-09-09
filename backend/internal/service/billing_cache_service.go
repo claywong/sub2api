@@ -36,6 +36,14 @@ var (
 	ErrUserPlatformDailyQuotaExhausted   = infraerrors.TooManyRequests("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this platform.")
 	ErrUserPlatformWeeklyQuotaExhausted  = infraerrors.TooManyRequests("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this platform.")
 	ErrUserPlatformMonthlyQuotaExhausted = infraerrors.TooManyRequests("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this platform.")
+
+	// 分组级按模型/模型前缀配额（私有扩展）。映射策略与 user × platform quota 完全一致：
+	// HTTP 429 + Retry-After + window_resets_at metadata，让 SDK 自动退避。
+	// gateway_handler.billingErrorDetails 必须显式识别这三个错误，否则会落到默认分支
+	// 而丢掉 Retry-After。
+	ErrModelDailyQuotaExhausted   = infraerrors.TooManyRequests("MODEL_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this model.")
+	ErrModelWeeklyQuotaExhausted  = infraerrors.TooManyRequests("MODEL_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this model.")
+	ErrModelMonthlyQuotaExhausted = infraerrors.TooManyRequests("MODEL_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this model.")
 )
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
@@ -113,6 +121,8 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	// modelQuotaUsageRepo 为按模型配额的用量表；nil 时按模型配额检查整体跳过（fail-open）。
+	modelQuotaUsageRepo UserGroupModelUsageRepository
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -138,6 +148,7 @@ func NewBillingCacheService(
 	userGroupRateRepo UserGroupRateRepository,
 	cfg *config.Config,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
+	modelQuotaUsageRepo UserGroupModelUsageRepository,
 ) *BillingCacheService {
 	svc := &BillingCacheService{
 		cache:                 cache,
@@ -148,6 +159,7 @@ func NewBillingCacheService(
 		userGroupRateRepo:     userGroupRateRepo,
 		cfg:                   cfg,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		modelQuotaUsageRepo:   modelQuotaUsageRepo,
 	}
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
@@ -732,7 +744,12 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
-func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+// requestedModel 为客户端书写的模型名，传空串时跳过按模型配额检查。
+//
+// requestedModel 走显式参数而非 ctx：composite 的 ctxkey.RequestedPublicModel 只在
+// 路由命中时才由中间件写入，未命中的请求取不到值会导致配额静默放行；显式参数让
+// 漏传在编译期暴露。
+func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string, requestedModel string) error {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil
@@ -759,6 +776,12 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		if err := s.checkUserPlatformQuotaEligibility(ctx, user.ID, platform); err != nil {
 			return err
 		}
+	}
+
+	// 按模型/模型前缀配额：与计费模式无关，两种模式都生效。
+	// 它是分组总配额之内的一层细粒度约束，因此放在总配额检查之后。
+	if err := s.checkGroupModelQuotaEligibility(ctx, user.ID, group, requestedModel); err != nil {
+		return err
 	}
 
 	// Check API Key rate limits (applies to both billing modes)

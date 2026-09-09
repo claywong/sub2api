@@ -1102,6 +1102,28 @@ export default {
           duplicate: 'This entry already exists'
         }
       },
+      modelQuotas: {
+        title: 'Per-model quotas',
+        hint: 'Set daily/weekly/monthly USD caps for a single model or a whole model family. This is an independent layer on top of the group-wide limits — both must pass. Entries accept exact model IDs and a trailing * wildcard (e.g. claude-opus* makes the whole family share one budget). A request matches exactly one rule: exact entries beat wildcards, and among wildcards the longest prefix wins. Leave blank for no limit; enter 0 to disable the model.',
+        empty: 'No rules yet. Use the button below to add one.',
+        addRule: 'Add rule',
+        matchPlaceholder: 'e.g. claude-opus* or gpt-6-astra',
+        unlimited: 'No limit',
+        columns: {
+          match: 'Model / prefix',
+          daily: 'Daily cap (USD)',
+          weekly: 'Weekly cap (USD)',
+          monthly: 'Monthly cap (USD)'
+        },
+        errors: {
+          emptyMatch: 'Enter a model ID or prefix',
+          bareWildcard: 'A bare * is not allowed; use the group-wide limits instead',
+          wildcardPosition: 'The * wildcard is only allowed at the end: {match}',
+          duplicate: 'Duplicate rule: {match}',
+          negativeLimit: 'Caps cannot be negative',
+          enabledButEmpty: 'Per-model quotas are enabled; add at least one rule'
+        }
+      },
       codexModelsManifest: {
         title: 'Pinned Accounts for Model Lists',
         hint: 'When enabled, ordinary model lists and Codex Model Manifest are discovered from the pinned accounts first, then merged and filtered using account mappings and the group model list. Rate-limited or overloaded pinned accounts are still used.',

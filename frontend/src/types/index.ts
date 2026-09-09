@@ -646,6 +646,7 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_allowlist?: ModelAllowlist
+  model_quotas?: ModelQuotas
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
@@ -661,6 +662,41 @@ export interface AdminGroup extends Group {
 export interface ModelAllowlist {
   enabled: boolean
   models: string[]
+}
+
+// 按模型/模型前缀的配额规则（私有扩展）
+// match 末尾带 * 表示前缀匹配，该系列所有模型共享同一份额度
+// 上限为 null/undefined 表示该窗口不限制，0 表示显式禁用
+export interface ModelQuotaRule {
+  match: string
+  daily?: number | null
+  weekly?: number | null
+  monthly?: number | null
+}
+
+// 分组级按模型配额配置。与分组总限额是两层独立约束，两层都需满足才放行
+export interface ModelQuotas {
+  enabled: boolean
+  rules: ModelQuotaRule[]
+}
+
+// 单个窗口的用量进度（管理端展示）
+export interface ModelQuotaUsageWindow {
+  limit_usd: number
+  used_usd: number
+  remaining_usd: number
+  percentage: number
+  resets_at: string
+  resets_in_seconds: number
+}
+
+// 某条规则在某用户下的用量进度
+export interface ModelQuotaUsageProgress {
+  match: string
+  rule_key: string
+  daily?: ModelQuotaUsageWindow
+  weekly?: ModelQuotaUsageWindow
+  monthly?: ModelQuotaUsageWindow
 }
 
 // 固定账号获取 Codex Model Manifest 配置（仅 openai 分组）
@@ -835,6 +871,7 @@ export interface CreateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
+  model_quotas?: ModelQuotas
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -904,6 +941,7 @@ export interface UpdateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
+  model_quotas?: ModelQuotas
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean

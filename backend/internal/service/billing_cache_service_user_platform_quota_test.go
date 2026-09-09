@@ -581,7 +581,7 @@ func TestCheckBillingEligibility_SubscriptionMode_BypassesPlatformQuota(t *testi
 	sub := &UserSubscription{Status: "active"}
 	user := &User{ID: 42}
 
-	err := s.CheckBillingEligibility(context.Background(), user, nil, subGroup, sub, "anthropic")
+	err := s.CheckBillingEligibility(context.Background(), user, nil, subGroup, sub, "anthropic", "")
 	// 订阅模式下不应收到任何 user×platform quota 错误
 	if errors.Is(err, ErrUserPlatformDailyQuotaExhausted) ||
 		errors.Is(err, ErrUserPlatformWeeklyQuotaExhausted) ||
@@ -829,4 +829,36 @@ func TestHasUserPlatformQuotaLimit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (f *fakeZeroQuotaCache) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (f *fakeZeroQuotaCache) SetModelQuotaUsageCache(context.Context, int64, int64, string, *ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (f *fakeZeroQuotaCache) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (f *fakeZeroQuotaCache) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
+}
+
+func (f *fakeFullCache) GetModelQuotaUsageCache(context.Context, int64, int64, string) (*ModelQuotaUsageCacheEntry, bool, error) {
+	return nil, false, nil
+}
+
+func (f *fakeFullCache) SetModelQuotaUsageCache(context.Context, int64, int64, string, *ModelQuotaUsageCacheEntry, time.Duration) error {
+	return nil
+}
+
+func (f *fakeFullCache) IncrModelQuotaUsageCache(context.Context, int64, int64, string, float64, time.Duration) error {
+	return nil
+}
+
+func (f *fakeFullCache) InvalidateModelQuotaUsageCache(context.Context, int64, int64, string) error {
+	return nil
 }

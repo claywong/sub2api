@@ -52,6 +52,9 @@ type RecordUsageInput struct {
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	// RequestedModel 是客户端书写的模型名，用于按模型配额记账。
+	// 与 QuotaPlatform 同理由 handler 传入：后扣链路的 worker ctx 取不到请求模型。
+	RequestedModel string
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -82,6 +85,24 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
+	// ModelQuotaRuleKey 是本次请求命中的按模型配额规则键，空串表示未命中。
+	ModelQuotaRuleKey string
+}
+
+// resolveModelQuotaRuleKey 返回请求模型在分组配置下命中的配额规则键。
+// 未启用、未命中或缺少模型时返回空串，落账侧据此跳过按模型配额累加。
+func resolveModelQuotaRuleKey(apiKey *APIKey, requestedModel string) string {
+	if apiKey == nil || apiKey.Group == nil || requestedModel == "" {
+		return ""
+	}
+	if !apiKey.Group.ModelQuotasEnabled() {
+		return ""
+	}
+	rule := apiKey.Group.ModelQuotas.MatchRule(requestedModel)
+	if rule == nil {
+		return ""
+	}
+	return ModelQuotaRuleKey(rule.Match)
 }
 
 // PlatformFromAPIKey 从 APIKey 关联的 Group 推导 platform 名称。
@@ -327,6 +348,14 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
 	}
 
+	// 按模型配额：与订阅/余额同用 ActualCost（含分组倍率），保证"额度按用户实际
+	// 被扣的钱消耗"，与分组总限额的口径一致。
+	if p.ModelQuotaRuleKey != "" && p.Cost.ActualCost > 0 && p.APIKey.GroupID != nil {
+		cmd.GroupID = *p.APIKey.GroupID
+		cmd.ModelQuotaRuleKey = p.ModelQuotaRuleKey
+		cmd.ModelQuotaCost = p.Cost.ActualCost
+	}
+
 	cmd.Normalize()
 	return cmd
 }
@@ -380,6 +409,13 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+	}
+
+	// 按模型配额用量缓存：DB 已在计费事务内原子累加，这里只同步 Redis 让下次
+	// preflight 立即看到最新用量（把 TOCTOU 超支窗口限制在并发 in-flight 请求内）。
+	// 不需要 platform quota 那套异步直写 DB / flusher：权威写入已在事务里完成。
+	if p.ModelQuotaRuleKey != "" && p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+		deps.billingCacheService.UpdateModelQuotaUsageCache(ctx, p.User.ID, *p.APIKey.GroupID, p.ModelQuotaRuleKey, p.Cost.ActualCost)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
@@ -614,6 +650,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
+		RequestedModel:     input.RequestedModel,
 		ChannelUsageFields: input.ChannelUsageFields,
 	})
 }
@@ -635,6 +672,7 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
+	RequestedModel     string
 	ChannelUsageFields
 }
 
@@ -852,6 +890,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			quotaPlatform = account.Platform
 		}
 	}
+	// 按模型配额规则：用 handler 传入的原始请求模型匹配分组配置。
+	// 与判定侧 checkGroupModelQuotaEligibility 用同一份配置和同一套匹配规则，
+	// 保证"判定命中哪条规则"与"用量记到哪条规则"始终一致。
+	modelQuotaRuleKey := resolveModelQuotaRuleKey(apiKey, input.RequestedModel)
+
 	requestID := usageLog.RequestID
 	_, billingErr := applyUsageBilling(ctx, requestID, usageLog, &postUsageBillingParams{
 		Cost:                  cost,
@@ -864,6 +907,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		Platform:              quotaPlatform,
+		ModelQuotaRuleKey:     modelQuotaRuleKey,
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

@@ -24,6 +24,7 @@ type UsageBillingCommand struct {
 
 	UserID              int64
 	AccountID           int64
+	GroupID             int64
 	SubscriptionID      *int64
 	AccountType         string
 	Model               string
@@ -37,11 +38,19 @@ type UsageBillingCommand struct {
 	ImageCount          int
 	MediaType           string
 
+	// ModelQuotaRuleKey 是本次请求命中的按模型配额规则键（归一后的规则原文）。
+	// 由 handler 侧在准入判定时算定并透传，落账层不再重新匹配：
+	// 后扣运行在 worker ctx 上没有请求模型，且配置若在请求期间变更，
+	// 重新匹配会把用量记到与判定不同的规则上。空串表示未命中任何规则。
+	ModelQuotaRuleKey string
+
 	BalanceCost         float64
 	SubscriptionCost    float64
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
+	// ModelQuotaCost 是要累加到按模型配额用量的金额（通常等于实际计费额）。
+	ModelQuotaCost float64
 }
 
 func (c *UsageBillingCommand) Normalize() {
@@ -86,6 +95,7 @@ func (c *UsageBillingCommand) quantizeMonetaryFields() {
 	c.APIKeyQuotaCost = QuantizeUsageBillingAmount(c.APIKeyQuotaCost)
 	c.APIKeyRateLimitCost = QuantizeUsageBillingAmount(c.APIKeyRateLimitCost)
 	c.AccountQuotaCost = QuantizeUsageBillingAmount(c.AccountQuotaCost)
+	c.ModelQuotaCost = QuantizeUsageBillingAmount(c.ModelQuotaCost)
 }
 
 // QuantizeUsageBillingAmount 把金额舍入到 UsageBillingMonetaryScale 位小数，
