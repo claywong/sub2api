@@ -998,6 +998,27 @@ export default {
           invalidFormat: 'IP 白名单格式不正确，请检查每行的 IP 或 CIDR'
         }
       },
+      globalIPAllowlist: {
+        title: '全局 IP 白名单',
+        description: '限制整个平台的访问 IP，启用后只有白名单中的 IP 地址可以访问系统',
+        enabled: '启用全局 IP 白名单',
+        enabledHint: '开启后，仅白名单内的 IP 可以访问平台（包括管理员）',
+        ipList: 'IP 白名单列表',
+        ipListHint: '每行一个 IP 地址或 CIDR 网段，例如：192.168.1.100 或 10.0.0.0/8',
+        placeholder: '192.168.1.100\n10.0.0.0/8\n172.16.0.0/12',
+        save: '保存',
+        saving: '保存中...',
+        saved: 'IP 白名单已保存',
+        clear: '清空白名单',
+        cleared: 'IP 白名单已清空',
+        securityWarning: '警告：启用全局 IP 白名单后，只有白名单中的 IP 才能访问系统。请确保将您当前的 IP 地址加入白名单，否则您将无法访问管理后台。',
+        emptyWarning: '白名单为空时，启用后将阻止所有访问！请至少添加一个 IP 地址。',
+        currentIP: '您当前的 IP 地址',
+        addCurrentIP: '添加当前 IP',
+        invalidFormat: 'IP 格式不正确，请检查每行的 IP 地址或 CIDR',
+        toggleSuccess: '全局 IP 白名单已{status}',
+        toggleFailed: '切换全局 IP 白名单失败'
+      },
       overloadCooldown: {
         title: '529 过载冷却',
         description: '配置上游返回 529（过载）时的账号调度暂停策略',

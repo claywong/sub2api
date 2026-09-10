@@ -246,6 +246,131 @@
               </div>
             </div>
           </div>
+
+          <!-- Global IP Allowlist Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.globalIPAllowlist.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.globalIPAllowlist.description") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <!-- Security Warning -->
+              <div
+                class="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20"
+              >
+                <div class="flex items-start">
+                  <Icon
+                    name="exclamationTriangle"
+                    size="md"
+                    class="mt-0.5 flex-shrink-0 text-red-500"
+                  />
+                  <p class="ml-3 text-sm text-red-700 dark:text-red-300">
+                    {{ t("admin.settings.globalIPAllowlist.securityWarning") }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Loading State -->
+              <div
+                v-if="globalIPAllowlistLoading"
+                class="flex items-center gap-2 text-gray-500"
+              >
+                <div
+                  class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+                ></div>
+                {{ t("common.loading") }}
+              </div>
+
+              <template v-else>
+                <!-- Enable/Disable Toggle -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">{{
+                      t("admin.settings.globalIPAllowlist.enabled")
+                    }}</label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.globalIPAllowlist.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="globalIPAllowlistEnabled"
+                    @update:model-value="toggleGlobalIPAllowlist"
+                    :disabled="globalIPAllowlistSaving"
+                  />
+                </div>
+
+                <!-- IP List Editor -->
+                <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div class="mb-2">
+                    <label
+                      class="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.globalIPAllowlist.ipList") }}
+                    </label>
+                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.globalIPAllowlist.ipListHint") }}
+                    </p>
+                  </div>
+                  <textarea
+                    v-model="globalIPAllowlistText"
+                    rows="6"
+                    class="input w-full font-mono text-sm"
+                    :placeholder="t('admin.settings.globalIPAllowlist.placeholder')"
+                  />
+                  <div class="mt-2 flex items-center justify-between">
+                    <div class="flex gap-2">
+                      <button
+                        type="button"
+                        @click="saveGlobalIPAllowlist"
+                        :disabled="globalIPAllowlistSaving"
+                        class="btn btn-primary btn-sm"
+                      >
+                        <svg
+                          v-if="globalIPAllowlistSaving"
+                          class="mr-1 h-4 w-4 animate-spin"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle
+                            class="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            stroke-width="4"
+                          ></circle>
+                          <path
+                            class="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
+                        </svg>
+                        {{
+                          globalIPAllowlistSaving
+                            ? t("admin.settings.globalIPAllowlist.saving")
+                            : t("admin.settings.globalIPAllowlist.save")
+                        }}
+                      </button>
+                      <button
+                        type="button"
+                        @click="clearGlobalIPAllowlist"
+                        :disabled="globalIPAllowlistSaving"
+                        class="btn btn-secondary btn-sm"
+                      >
+                        {{ t("admin.settings.globalIPAllowlist.clear") }}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Security — Admin API Key -->
 
@@ -9029,6 +9154,13 @@ const newAdminApiKey = ref("");
 const adminApiKeyIpWhitelistText = ref("");
 const adminApiKeyIpWhitelistSaving = ref(false);
 const adminApiKeyIpWhitelistLoaded = ref(false);
+
+// 全局 IP 白名单
+const globalIPAllowlistLoading = ref(true);
+const globalIPAllowlistSaving = ref(false);
+const globalIPAllowlistEnabled = ref(false);
+const globalIPAllowlistText = ref("");
+
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
@@ -11804,6 +11936,65 @@ async function clearAdminApiKeyIpWhitelist() {
   }
 }
 
+// ========== 全局 IP 白名单方法 ==========
+async function loadGlobalIPAllowlist() {
+  globalIPAllowlistLoading.value = true;
+  try {
+    const result = await adminAPI.settings.getGlobalIPAllowlist();
+    globalIPAllowlistEnabled.value = result.enabled;
+    globalIPAllowlistText.value = (result.ip_allowlist || []).join("\n");
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    globalIPAllowlistLoading.value = false;
+  }
+}
+
+async function saveGlobalIPAllowlist() {
+  const lines = globalIPAllowlistText.value
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  globalIPAllowlistSaving.value = true;
+  try {
+    await adminAPI.settings.updateGlobalIPAllowlist(lines);
+    appStore.showSuccess(t("admin.settings.globalIPAllowlist.saved"));
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.globalIPAllowlist.invalidFormat")));
+  } finally {
+    globalIPAllowlistSaving.value = false;
+  }
+}
+
+async function clearGlobalIPAllowlist() {
+  globalIPAllowlistSaving.value = true;
+  try {
+    await adminAPI.settings.deleteGlobalIPAllowlist();
+    globalIPAllowlistText.value = "";
+    appStore.showSuccess(t("admin.settings.globalIPAllowlist.cleared"));
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    globalIPAllowlistSaving.value = false;
+  }
+}
+
+async function toggleGlobalIPAllowlist(enabled: boolean) {
+  globalIPAllowlistSaving.value = true;
+  try {
+    await adminAPI.settings.toggleGlobalIPAllowlist(enabled);
+    const status = enabled ? t("common.enabled") : t("common.disabled");
+    appStore.showSuccess(t("admin.settings.globalIPAllowlist.toggleSuccess", { status }));
+  } catch (error: unknown) {
+    // 切换失败，回退状态
+    globalIPAllowlistEnabled.value = !enabled;
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.globalIPAllowlist.toggleFailed")));
+  } finally {
+    globalIPAllowlistSaving.value = false;
+  }
+}
+
 async function createAdminApiKey() {
   adminApiKeyOperating.value = true;
   try {
@@ -12664,6 +12855,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+  loadGlobalIPAllowlist();
   loadUpstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
   loadOverloadCooldownSettings();

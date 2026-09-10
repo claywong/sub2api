@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from './client'
-import type { UserSubscription, SubscriptionProgress } from '@/types'
+import type { UserSubscription, SubscriptionProgress, ModelQuotaUsageProgress } from '@/types'
 
 /**
  * Subscription summary for user dashboard
@@ -67,10 +67,24 @@ export async function getSubscriptionProgress(
   return response.data
 }
 
+/**
+ * Get per-model quota usage for a specific subscription.
+ * Returns an empty list when the subscription's group has no model quotas configured.
+ */
+export async function getSubscriptionModelQuotaUsage(
+  subscriptionId: number
+): Promise<ModelQuotaUsageProgress[]> {
+  const response = await apiClient.get<{ items: ModelQuotaUsageProgress[] }>(
+    `/subscriptions/${subscriptionId}/model-quota-usage`
+  )
+  return response.data?.items ?? []
+}
+
 export default {
   getMySubscriptions,
   getActiveSubscriptions,
   getSubscriptionsProgress,
   getSubscriptionSummary,
-  getSubscriptionProgress
+  getSubscriptionProgress,
+  getSubscriptionModelQuotaUsage
 }

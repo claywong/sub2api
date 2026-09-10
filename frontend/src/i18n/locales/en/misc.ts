@@ -136,6 +136,19 @@ export default {
     quotaEndsIn: 'Quota ends in {time}',
     windowNotActive: 'Awaiting first use',
     usageOf: '{used} of {limit}',
+    modelQuota: {
+      title: 'Per-model limits',
+      description:
+        'These models have their own caps on top of the group total. Both layers must allow a request.',
+      failedToLoad: 'Failed to load per-model limits',
+      prefixHint: 'All models in this family share this quota',
+      noLimit: 'No limit',
+      disabled: 'Disabled',
+      disabledHint: 'This model is not available in this group',
+      exhausted: 'Quota exhausted',
+      show: 'Show per-model limits',
+      hide: 'Hide per-model limits'
+    }
   },
 
   // Onboarding Tour

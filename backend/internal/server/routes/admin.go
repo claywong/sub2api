@@ -601,6 +601,11 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.GET("/admin-api-key/ip-whitelist", h.Admin.Setting.GetAdminAPIKeyIPWhitelist)
 		adminSettings.PUT("/admin-api-key/ip-whitelist", h.Admin.Setting.UpdateAdminAPIKeyIPWhitelist)
 		adminSettings.DELETE("/admin-api-key/ip-whitelist", h.Admin.Setting.DeleteAdminAPIKeyIPWhitelist)
+		// 全局 IP 白名单（平台级访问控制）
+		adminSettings.GET("/security/ip-allowlist", h.Admin.Setting.GetGlobalIPAllowlist)
+		adminSettings.PUT("/security/ip-allowlist", h.Admin.Setting.UpdateGlobalIPAllowlist)
+		adminSettings.DELETE("/security/ip-allowlist", h.Admin.Setting.DeleteGlobalIPAllowlist)
+		adminSettings.PUT("/security/ip-allowlist/toggle", h.Admin.Setting.ToggleGlobalIPAllowlist)
 		// 529过载冷却配置
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)

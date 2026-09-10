@@ -27,20 +27,24 @@ type ModelQuotaUsageProgress struct {
 	Monthly *ModelQuotaUsageWindow `json:"monthly,omitempty"`
 }
 
-// AdminModelQuotaService 提供管理端查看/重置按模型配额用量的能力。
-type AdminModelQuotaService struct {
+// ModelQuotaUsageService 提供按模型配额用量的查看与重置能力。
+// 管理端可查任意用户并重置；用户端只读自己的用量（见 SubscriptionHandler）。
+type ModelQuotaUsageService struct {
 	usageRepo    UserGroupModelUsageRepository
 	groupRepo    GroupRepository
 	billingCache *BillingCacheService
 }
 
-// NewAdminModelQuotaService 创建 AdminModelQuotaService。
-func NewAdminModelQuotaService(
+// NewModelQuotaUsageService 创建 ModelQuotaUsageService。
+//
+// 注意：本服务不做归属校验，userID 必须由调用方确定。用户端入口须用认证上下文里
+// 的 userID，不能接受请求参数，否则可越权查看他人用量。
+func NewModelQuotaUsageService(
 	usageRepo UserGroupModelUsageRepository,
 	groupRepo GroupRepository,
 	billingCache *BillingCacheService,
-) *AdminModelQuotaService {
-	return &AdminModelQuotaService{
+) *ModelQuotaUsageService {
+	return &ModelQuotaUsageService{
 		usageRepo:    usageRepo,
 		groupRepo:    groupRepo,
 		billingCache: billingCache,
@@ -51,7 +55,7 @@ func NewAdminModelQuotaService(
 //
 // 以分组当前配置的规则为准来组织输出：配置里已删除的规则即使还有历史用量行
 // 也不返回（与判定侧"匹配不到规则即忽略"的处理保持一致）。
-func (s *AdminModelQuotaService) GetUsage(ctx context.Context, userID, groupID int64) ([]ModelQuotaUsageProgress, error) {
+func (s *ModelQuotaUsageService) GetUsage(ctx context.Context, userID, groupID int64) ([]ModelQuotaUsageProgress, error) {
 	group, err := s.groupRepo.GetByIDLite(ctx, groupID)
 	if err != nil {
 		return nil, err
@@ -139,7 +143,7 @@ func buildModelQuotaWindow(limit, used float64, resetsAt, now time.Time) *ModelQ
 //
 // 归零后必须失效 Redis 用量缓存，否则下次 preflight 仍会读到旧用量。
 // ruleKey 为空时逐条失效，不用 KEYS/SCAN 扫描（生产 Redis 上是危险操作）。
-func (s *AdminModelQuotaService) ResetUsage(
+func (s *ModelQuotaUsageService) ResetUsage(
 	ctx context.Context,
 	userID, groupID int64,
 	ruleKey string,

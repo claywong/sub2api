@@ -133,6 +133,18 @@ export default {
     quotaEndsIn: '额度将在 {time} 后结束',
     windowNotActive: '等待首次使用',
     usageOf: '已用 {used} / {limit}',
+    modelQuota: {
+      title: '按模型额度',
+      description: '以下模型在分组总额度之外还有单独上限，两层都需满足才能调用',
+      failedToLoad: '加载按模型额度失败',
+      prefixHint: '该系列所有模型共享这份额度',
+      noLimit: '不限',
+      disabled: '已禁用',
+      disabledHint: '该模型在本分组下不可用',
+      exhausted: '额度已用尽',
+      show: '展开按模型额度',
+      hide: '收起按模型额度'
+    }
   },
 
   // Onboarding Tour
