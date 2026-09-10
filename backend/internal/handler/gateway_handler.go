@@ -2511,10 +2511,10 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 		errors.Is(err, service.ErrModelDailyQuotaExhausted) ||
 		errors.Is(err, service.ErrModelWeeklyQuotaExhausted) ||
 		errors.Is(err, service.ErrModelMonthlyQuotaExhausted) {
-		// 与 RPM 超限一致映射 429 + Retry-After，让 SDK 自动退避（而非 403 直接失败）。
-		// 错误码用 rate_limit_exceeded 与 OpenAI 兼容客户端一致；细分类型由 ErrCode + window_resets_at metadata 区分。
+		// 额度耗尽只能等窗口重置才能恢复，重试无意义，映射为 403（而非 429），
+		// 与订阅限额（ErrDailyLimitExceeded 等，走下方默认分支）保持一致语义。
 		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, extractQuotaResetSeconds(err)
+		return http.StatusForbidden, "quota_exhausted", msg, 0
 	}
 	msg := pkgerrors.Message(err)
 	if msg == "" {

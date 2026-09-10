@@ -92,10 +92,9 @@ func TestExtractQuotaResetSeconds_T22_PastResetFallsBackToDefault(t *testing.T) 
 	}
 }
 
-func TestBillingErrorDetails_T10_QuotaExhaustedReturns429WithRetryAfter(t *testing.T) {
-	// quota 超限映射 429 + Retry-After（RFC 6585 / 与 RPM 一致），
-	// 让 SDK（OpenAI 兼容客户端等）能按 Retry-After 自动退避。
-	// 旧实现用 403 导致客户端不退避直接报错。
+func TestBillingErrorDetails_T10_QuotaExhaustedReturns403(t *testing.T) {
+	// quota 耗尽只能等窗口重置才能恢复，重试无意义，映射为 403（而非 429），
+	// 不再诱导客户端自动退避重试。
 	// 三个窗口共用同一映射分支，循环覆盖避免漏测某个窗口的 status/code。
 	cases := []struct {
 		name string
@@ -113,15 +112,18 @@ func TestBillingErrorDetails_T10_QuotaExhaustedReturns429WithRetryAfter(t *testi
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			status, code, _, retryAfter := billingErrorDetails(tc.err)
-			if status != http.StatusTooManyRequests {
-				t.Errorf("status = %d, want 429", status)
+			status, code, msg, retryAfter := billingErrorDetails(tc.err)
+			if status != http.StatusForbidden {
+				t.Errorf("status = %d, want 403", status)
 			}
-			if code != "rate_limit_exceeded" {
-				t.Errorf("code = %q, want rate_limit_exceeded", code)
+			if code != "quota_exhausted" {
+				t.Errorf("code = %q, want quota_exhausted", code)
 			}
-			if retryAfter < 3599 || retryAfter > 3601 {
-				t.Errorf("retryAfter = %d, want ~3600", retryAfter)
+			if msg == "" {
+				t.Errorf("message should not be empty")
+			}
+			if retryAfter != 0 {
+				t.Errorf("retryAfter = %d, want 0 (no Retry-After for 403)", retryAfter)
 			}
 		})
 	}
