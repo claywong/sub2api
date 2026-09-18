@@ -122,8 +122,8 @@ const sessionLimitTooltip = computed(() => {
 })
 
 // ====== RPM ======
+// RPM 限流不限平台与账号类型：base_rpm 有值即展示
 const showRpmLimit = computed(() =>
-  isAnthropicOAuthOrSetupToken.value &&
   props.account.base_rpm != null &&
   props.account.base_rpm > 0
 )

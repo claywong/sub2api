@@ -544,7 +544,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
-			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+			if account.GetBaseRPM() > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
@@ -1112,7 +1112,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// RPM 计数递增（Forward 成功后）
 			// 注意：TOCTOU 竞态是已知且可接受的设计权衡，与 WindowCost 一致的 soft-limit 模式。
 			// 在高并发下可能短暂超出 RPM 限制，但不会导致请求失败。
-			if account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0 {
+			if account.GetBaseRPM() > 0 {
 				if err := h.gatewayService.IncrementAccountRPM(c.Request.Context(), account.ID); err != nil {
 					reqLog.Warn("gateway.rpm_increment_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
@@ -2495,10 +2495,10 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 		errors.Is(err, service.ErrModelDailyQuotaExhausted) ||
 		errors.Is(err, service.ErrModelWeeklyQuotaExhausted) ||
 		errors.Is(err, service.ErrModelMonthlyQuotaExhausted) {
-		// 与 RPM 超限一致映射 429 + Retry-After，让 SDK 自动退避（而非 403 直接失败）。
-		// 错误码用 rate_limit_exceeded 与 OpenAI 兼容客户端一致；细分类型由 ErrCode + window_resets_at metadata 区分。
+		// 额度耗尽只能等窗口重置才能恢复，重试无意义，映射为 403（而非 429），
+		// 与订阅限额（ErrDailyLimitExceeded 等，走下方默认分支）保持一致语义。
 		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, extractQuotaResetSeconds(err)
+		return http.StatusForbidden, "quota_exhausted", msg, 0
 	}
 	msg := pkgerrors.Message(err)
 	if msg == "" {

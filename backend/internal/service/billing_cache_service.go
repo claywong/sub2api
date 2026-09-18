@@ -29,21 +29,17 @@ var (
 	ErrGroupRPMExceeded = infraerrors.TooManyRequests("GROUP_RPM_EXCEEDED", "group requests-per-minute limit exceeded")
 	ErrUserRPMExceeded  = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
 
-	// user × platform quota（HTTP 429 Too Many Requests + Retry-After header）。
-	// 选用 429 而非 403：限额耗尽属于"暂时性资源用尽，重试可恢复"的场景（RFC 6585），
-	// 大量 SDK（如 OpenAI 兼容客户端）只对 429 触发自动退避并读取 Retry-After，
-	// 用 403 会被视为"权限不足，重试无意义"导致客户端直接报错且不退避。
-	ErrUserPlatformDailyQuotaExhausted   = infraerrors.TooManyRequests("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this platform.")
-	ErrUserPlatformWeeklyQuotaExhausted  = infraerrors.TooManyRequests("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this platform.")
-	ErrUserPlatformMonthlyQuotaExhausted = infraerrors.TooManyRequests("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this platform.")
+	// user × platform quota（HTTP 403）。
+	// 用量额度耗尽只能等窗口重置才能恢复，重试没有意义，与订阅限额（ErrDailyLimitExceeded 等）
+	// 保持一致的 403 语义，不再用 429 诱导客户端自动退避重试。
+	ErrUserPlatformDailyQuotaExhausted   = infraerrors.Forbidden("USER_PLATFORM_DAILY_QUOTA_EXHAUSTED", "该平台今日额度已用尽，请等待额度重置后重试。")
+	ErrUserPlatformWeeklyQuotaExhausted  = infraerrors.Forbidden("USER_PLATFORM_WEEKLY_QUOTA_EXHAUSTED", "该平台本周额度已用尽，请等待额度重置后重试。")
+	ErrUserPlatformMonthlyQuotaExhausted = infraerrors.Forbidden("USER_PLATFORM_MONTHLY_QUOTA_EXHAUSTED", "该平台本月额度已用尽，请等待额度重置后重试。")
 
-	// 分组级按模型/模型前缀配额（私有扩展）。映射策略与 user × platform quota 完全一致：
-	// HTTP 429 + Retry-After + window_resets_at metadata，让 SDK 自动退避。
-	// gateway_handler.billingErrorDetails 必须显式识别这三个错误，否则会落到默认分支
-	// 而丢掉 Retry-After。
-	ErrModelDailyQuotaExhausted   = infraerrors.TooManyRequests("MODEL_DAILY_QUOTA_EXHAUSTED", "Daily usage quota exhausted for this model.")
-	ErrModelWeeklyQuotaExhausted  = infraerrors.TooManyRequests("MODEL_WEEKLY_QUOTA_EXHAUSTED", "Weekly usage quota exhausted for this model.")
-	ErrModelMonthlyQuotaExhausted = infraerrors.TooManyRequests("MODEL_MONTHLY_QUOTA_EXHAUSTED", "Monthly usage quota exhausted for this model.")
+	// 分组级按模型/模型前缀配额（私有扩展）。映射策略与 user × platform quota 一致：HTTP 403。
+	ErrModelDailyQuotaExhausted   = infraerrors.Forbidden("MODEL_DAILY_QUOTA_EXHAUSTED", "该模型今日额度已用尽，请等待额度重置后重试。")
+	ErrModelWeeklyQuotaExhausted  = infraerrors.Forbidden("MODEL_WEEKLY_QUOTA_EXHAUSTED", "该模型本周额度已用尽，请等待额度重置后重试。")
+	ErrModelMonthlyQuotaExhausted = infraerrors.Forbidden("MODEL_MONTHLY_QUOTA_EXHAUSTED", "该模型本月额度已用尽，请等待额度重置后重试。")
 )
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）

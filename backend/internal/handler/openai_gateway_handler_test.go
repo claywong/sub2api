@@ -2220,6 +2220,7 @@ func TestOpenAIResponses_APIKeyPassthroughPool5xxRetriesThenExhaustsMaxSwitches(
 		service.NewBillingService(cfg, nil),
 		nil,
 		billingCacheSvc,
+		nil,
 		upstream,
 		&service.DeferredService{},
 		nil,
@@ -2322,6 +2323,7 @@ func TestOpenAIResponses_APIKeyPassthroughPoolAuthFailureRetriesThenSwitchesToHe
 				service.NewBillingService(cfg, nil),
 				rateLimitSvc,
 				billingCacheSvc,
+				nil,
 				upstream,
 				&service.DeferredService{},
 				nil,
@@ -2405,6 +2407,7 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 		service.NewBillingService(cfg, nil),
 		nil,
 		billingCacheSvc,
+		nil,
 		upstream,
 		&service.DeferredService{},
 		nil,
@@ -2566,6 +2569,7 @@ func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T
 		service.NewBillingService(cfg, nil),
 		rateLimitSvc,
 		billingCacheSvc,
+		nil,
 		nil,
 		&service.DeferredService{},
 		nil, // openAITokenProvider
@@ -2764,6 +2768,7 @@ func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClien
 	gatewaySvc := service.NewOpenAIGatewayService(
 		accountRepo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), rateLimitSvc, billingCacheSvc,
+		nil,
 		nil, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, nil,
 	)
 	cache := &concurrencyCacheMock{
@@ -2982,6 +2987,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		service.NewBillingService(cfg, nil),
 		nil,
 		billingCacheSvc,
+		nil,
 		nil,
 		&service.DeferredService{},
 		nil,

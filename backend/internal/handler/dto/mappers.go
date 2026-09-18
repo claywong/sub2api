@@ -296,13 +296,6 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		if idleTimeout := a.GetSessionIdleTimeoutMinutes(); idleTimeout > 0 {
 			out.SessionIdleTimeoutMin = &idleTimeout
 		}
-		if rpm := a.GetBaseRPM(); rpm > 0 {
-			out.BaseRPM = &rpm
-			strategy := a.GetRPMStrategy()
-			out.RPMStrategy = &strategy
-			buffer := a.GetRPMStickyBuffer()
-			out.RPMStickyBuffer = &buffer
-		}
 		// 用户消息队列模式
 		if mode := a.GetUserMsgQueueMode(); mode != "" {
 			out.UserMsgQueueMode = &mode
@@ -338,9 +331,19 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
+	// base_rpm 限流不限平台、不限账号类型（含国产供应商 apikey）；
+	// 字段本身即 opt-in，未设置（0）时不输出。
+	if rpm := a.GetBaseRPM(); rpm > 0 {
+		out.BaseRPM = &rpm
+		strategy := a.GetRPMStrategy()
+		out.RPMStrategy = &strategy
+		buffer := a.GetRPMStickyBuffer()
+		out.RPMStickyBuffer = &buffer
+	}
+
 	// 私有扩展：会话数量控制对 Anthropic API Key 账号也生效（upstream 仅 OAuth/SetupToken）
 	// 组合 !IsAnthropicOAuthOrSetupToken() && SupportsSessionLimit() 精确命中 API Key，
-	// 避免把窗口费用 / RPM / TLS 等 OAuth-only 字段一并暴露给 API Key。
+	// 避免把窗口费用 / TLS 等 OAuth-only 字段一并暴露给 API Key。
 	if !a.IsAnthropicOAuthOrSetupToken() && a.SupportsSessionLimit() {
 		if maxSessions := a.GetMaxSessions(); maxSessions > 0 {
 			out.MaxSessions = &maxSessions

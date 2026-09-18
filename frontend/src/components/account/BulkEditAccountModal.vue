@@ -1268,7 +1268,9 @@
       </div>
 
       <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
-      <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- RPM 限流：不限平台与账号类型（含国产供应商 apikey）。
+           base_rpm 本身即 opt-in（0 = 不限制），故不按类型收窄显示。 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
             id="bulk-edit-rpm-limit-label"
@@ -1372,24 +1374,25 @@
             </div>
           </div>
 
-        <!-- 用户消息限速模式（独立于 RPM 开关，始终可见） -->
-        <div class="mt-4">
-          <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') }}</label>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
-            {{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueueHint') }}
-          </p>
-          <div class="flex space-x-2">
-            <button type="button" v-for="opt in umqModeOptions" :key="opt.value"
-              @click="userMsgQueueMode = userMsgQueueMode === opt.value ? null : opt.value"
-              :class="[
-                'px-3 py-1.5 text-sm rounded-md border transition-colors',
-                userMsgQueueMode === opt.value
-                  ? 'bg-primary-600 text-white border-primary-600'
-                  : 'bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-dark-500 hover:bg-gray-50 dark:hover:bg-dark-600'
-              ]">
-              {{ opt.label }}
-            </button>
-          </div>
+      </div>
+
+      <!-- 用户消息限速模式（Anthropic OAuth/SetupToken 专属，独立于 RPM 开关） -->
+      <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
+          {{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueueHint') }}
+        </p>
+        <div class="flex space-x-2">
+          <button type="button" v-for="opt in umqModeOptions" :key="opt.value"
+            @click="userMsgQueueMode = userMsgQueueMode === opt.value ? null : opt.value"
+            :class="[
+              'px-3 py-1.5 text-sm rounded-md border transition-colors',
+              userMsgQueueMode === opt.value
+                ? 'bg-primary-600 text-white border-primary-600'
+                : 'bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-dark-500 hover:bg-gray-50 dark:hover:bg-dark-600'
+            ]">
+            {{ opt.label }}
+          </button>
         </div>
       </div>
 
