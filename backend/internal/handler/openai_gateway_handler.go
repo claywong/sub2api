@@ -2165,9 +2165,9 @@ type openAISlotErrorWriter func(status int, errType, code, message string)
 // countAccountRPMOnAdmission 在准入成功（抢到并发槽位）后递增账号分钟级 RPM 计数。
 // 放在准入收口而非转发成功后：OpenAI 侧转发路径分散在 responses / chat /
 // images / embeddings / ws 等端点，准入点是唯一同时覆盖全部端点与 WaitPlan
-// 排队路径的位置。仅对设置了 base_rpm 的 OAuth/SetupToken 账号生效。
+// 排队路径的位置。凡设置了 base_rpm 的账号均生效（不限类型，含国产 apikey）。
 func (h *OpenAIGatewayHandler) countAccountRPMOnAdmission(ctx context.Context, account *service.Account, reqLog *zap.Logger) {
-	if account == nil || !account.IsOAuth() || account.GetBaseRPM() <= 0 {
+	if account == nil || account.GetBaseRPM() <= 0 {
 		return
 	}
 	if err := h.gatewayService.IncrementAccountRPM(ctx, account.ID); err != nil {

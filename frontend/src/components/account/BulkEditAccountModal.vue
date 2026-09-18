@@ -1268,8 +1268,9 @@
       </div>
 
       <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
-      <!-- RPM 限流：所有平台的 OAuth/SetupToken 账号（base_rpm=0 表示不限制） -->
-      <div v-if="allOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- RPM 限流：不限平台与账号类型（含国产供应商 apikey）。
+           base_rpm 本身即 opt-in（0 = 不限制），故不按类型收窄显示。 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
             id="bulk-edit-rpm-limit-label"
@@ -1620,15 +1621,6 @@ const allAnthropicOAuthOrSetupToken = computed(() => {
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'anthropic' &&
-    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
-  )
-})
-
-// 与后端 Account.IsOAuth() 对齐：RPM 限流不限平台，凡 OAuth/SetupToken 均生效。
-// 要求已选类型非空，避免未选中任何账号时误显示。
-const allOAuthOrSetupToken = computed(() => {
-  return (
-    targetSelectedTypes.value.length > 0 &&
     targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
   )
 })

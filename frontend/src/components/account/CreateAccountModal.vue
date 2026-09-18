@@ -2618,11 +2618,9 @@
         </div>
       </div>
 
-      <!-- RPM 限流（所有平台的 OAuth/SetupToken 账号；base_rpm=0 表示不限制） -->
-      <div
-        v-if="isOAuthFlow"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
+      <!-- RPM 限流：不限平台与账号类型（含国产供应商 apikey）。
+           base_rpm 本身即 opt-in（0 = 不限制），故不按类型收窄显示。 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <!-- RPM Limit: 三区模型（绿区正常 / 黄区仅粘性 / 红区不可调度） -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -5501,10 +5499,10 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
 }
 
 // applyRpmLimitExtra 把 RPM 限流配置注入 extra。
-// base_rpm 对所有平台的 OAuth/SetupToken 账号生效（后端 Account.IsOAuth 判定），
+// base_rpm 不限平台与账号类型（含国产供应商 apikey），由字段本身 opt-in，
 // 因此各平台的 extra 构造器都要调用它，而非只在 Anthropic 路径写入。
 const applyRpmLimitExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (!isOAuthFlow.value || !rpmLimitEnabled.value) {
+  if (!rpmLimitEnabled.value) {
     return base
   }
   const DEFAULT_BASE_RPM = 15

@@ -33,10 +33,11 @@ func rpmScopeAccount(id int64, platform, accType string, baseRPM int) *Account {
 	}
 }
 
-// TestAccountRPMAppliesToAllOAuthPlatforms 固定 base_rpm 限流的适用范围：
-// 所有平台的 OAuth/SetupToken 账号都受限，apikey / bedrock 不受限。
-// 历史行为只对 Anthropic OAuth/SetupToken 生效，这里防止回退。
-func TestAccountRPMAppliesToAllOAuthPlatforms(t *testing.T) {
+// TestAccountRPMAppliesToAllPlatformsAndTypes 固定 base_rpm 限流的适用范围：
+// 不限平台、不限账号类型，凡设置了 base_rpm 就受限。
+// 历史上两次收窄都漏了平台/类型（先只限 Anthropic OAuth，后只限所有 OAuth，
+// 都漏掉国产供应商 apikey），这里防止再次回退。
+func TestAccountRPMAppliesToAllPlatformsAndTypes(t *testing.T) {
 	const baseRPM = 10
 	cases := []struct {
 		name     string
@@ -51,8 +52,14 @@ func TestAccountRPMAppliesToAllOAuthPlatforms(t *testing.T) {
 		{"gemini oauth", PlatformGemini, AccountTypeOAuth, true},
 		{"grok oauth", PlatformGrok, AccountTypeOAuth, true},
 		{"antigravity oauth", PlatformAntigravity, AccountTypeOAuth, true},
-		{"anthropic apikey not limited", PlatformAnthropic, AccountTypeAPIKey, false},
-		{"openai apikey not limited", PlatformOpenAI, AccountTypeAPIKey, false},
+		// apikey 类账号同样受限：国产供应商（zhipu/kimi/deepseek/minimax）均为 apikey
+		{"zhipu apikey", PlatformZhipu, AccountTypeAPIKey, true},
+		{"kimi apikey", PlatformKimi, AccountTypeAPIKey, true},
+		{"deepseek apikey", PlatformDeepseek, AccountTypeAPIKey, true},
+		{"minimax apikey", PlatformMiniMax, AccountTypeAPIKey, true},
+		{"anthropic apikey", PlatformAnthropic, AccountTypeAPIKey, true},
+		{"openai apikey", PlatformOpenAI, AccountTypeAPIKey, true},
+		{"anthropic bedrock", PlatformAnthropic, AccountTypeBedrock, true},
 	}
 
 	for _, tc := range cases {
@@ -80,7 +87,7 @@ func TestAccountRPMAppliesToAllOAuthPlatforms(t *testing.T) {
 
 // TestAccountRPMZeroMeansUnlimited 固定默认值语义：base_rpm=0 不限制。
 func TestAccountRPMZeroMeansUnlimited(t *testing.T) {
-	acc := rpmScopeAccount(1, PlatformOpenAI, AccountTypeOAuth, 0)
+	acc := rpmScopeAccount(1, PlatformZhipu, AccountTypeAPIKey, 0)
 	cache := &accountRPMScopeCacheStub{counts: map[int64]int{1: 9999}}
 
 	gw := &GatewayService{rpmCache: cache}
@@ -95,6 +102,7 @@ func TestAccountRPMZeroMeansUnlimited(t *testing.T) {
 
 // TestAccountRPMTieredZonesForOpenAI 固定 OpenAI 侧三区语义：
 // 绿区都可调度；黄区仅粘性；红区都不可调度。
+// 用 zhipu apikey 账号验证——apikey 也参与粘性绑定，三区语义一致。
 func TestAccountRPMTieredZonesForOpenAI(t *testing.T) {
 	const baseRPM = 10
 	// buffer 显式设为 2 → 黄区为 [10, 12)
@@ -112,7 +120,7 @@ func TestAccountRPMTieredZonesForOpenAI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			acc := rpmScopeAccount(1, PlatformOpenAI, AccountTypeOAuth, baseRPM)
+			acc := rpmScopeAccount(1, PlatformZhipu, AccountTypeAPIKey, baseRPM)
 			cache := &accountRPMScopeCacheStub{counts: map[int64]int{1: tt.current}}
 			oa := &OpenAIGatewayService{rpmCache: cache}
 
@@ -128,7 +136,7 @@ func TestAccountRPMTieredZonesForOpenAI(t *testing.T) {
 
 // TestAccountRPMFailOpenWithoutCache 固定 fail-open：无 Redis 时不阻塞调度。
 func TestAccountRPMFailOpenWithoutCache(t *testing.T) {
-	acc := rpmScopeAccount(1, PlatformOpenAI, AccountTypeOAuth, 1)
+	acc := rpmScopeAccount(1, PlatformZhipu, AccountTypeAPIKey, 1)
 
 	gw := &GatewayService{}
 	if !gw.isAccountSchedulableForRPM(context.Background(), acc, false) {

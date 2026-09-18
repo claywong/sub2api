@@ -2511,11 +2511,9 @@
         <p class="input-hint">{{ t('admin.accounts.autoResetCredit.thresholdHint') }}</p>
       </div>
 
-      <!-- RPM 限流（所有平台的 OAuth/SetupToken 账号；base_rpm=0 表示不限制） -->
-      <div
-        v-if="isOAuthAccount"
-        class="border-t border-gray-200 pt-4 dark:border-dark-600"
-      >
+      <!-- RPM 限流：不限平台与账号类型（含国产供应商 apikey）。
+           base_rpm 本身即 opt-in（0 = 不限制），故不按类型收窄显示。 -->
+      <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <!-- RPM Limit -->
         <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-600">
           <div class="mb-3 flex items-center justify-between">
@@ -3149,12 +3147,6 @@ const selectableGroups = computed(() => {
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
-
-// 与后端 Account.IsOAuth() 对齐：oauth / setup-token 两种类型，不限平台。
-// base_rpm 限流按此门禁展示与保存。
-const isOAuthAccount = computed(
-  () => props.account?.type === 'oauth' || props.account?.type === 'setup-token'
-)
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -5385,8 +5377,9 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // RPM 限流：对所有平台的 OAuth/SetupToken 账号生效（后端 Account.IsOAuth 判定）
-    if (isOAuthAccount.value) {
+    // RPM 限流：不限平台与账号类型（含国产供应商 apikey）。
+    // rpmLimitEnabled 关闭时也要走这段，才能把 base_rpm 重置为 0。
+    {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) || (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
       if (rpmLimitEnabled.value) {

@@ -331,15 +331,14 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		}
 	}
 
-	// base_rpm 限流对所有平台的 OAuth/SetupToken 账号生效（不限于 Anthropic）
-	if a.IsOAuth() {
-		if rpm := a.GetBaseRPM(); rpm > 0 {
-			out.BaseRPM = &rpm
-			strategy := a.GetRPMStrategy()
-			out.RPMStrategy = &strategy
-			buffer := a.GetRPMStickyBuffer()
-			out.RPMStickyBuffer = &buffer
-		}
+	// base_rpm 限流不限平台、不限账号类型（含国产供应商 apikey）；
+	// 字段本身即 opt-in，未设置（0）时不输出。
+	if rpm := a.GetBaseRPM(); rpm > 0 {
+		out.BaseRPM = &rpm
+		strategy := a.GetRPMStrategy()
+		out.RPMStrategy = &strategy
+		buffer := a.GetRPMStickyBuffer()
+		out.RPMStickyBuffer = &buffer
 	}
 
 	// 私有扩展：会话数量控制对 Anthropic API Key 账号也生效（upstream 仅 OAuth/SetupToken）

@@ -1515,10 +1515,10 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 // isOpenAIAccountSchedulableForRPM 检查账号是否可根据 base_rpm 进行调度。
 // 与 GatewayService.isAccountSchedulableForRPM 共用 Account 上的三区模型
 // （绿区正常 / 黄区仅粘性 / 红区不可调度）与 rpm: 计数器，语义保持一致。
-// 适用于所有平台的 OAuth/SetupToken 账号；base_rpm=0 表示不限制。
+// 不限平台、不限账号类型（含国产供应商 apikey）；base_rpm=0 表示不限制。
 // Redis 故障一律 fail-open，不阻塞调度。
 func (s *OpenAIGatewayService) isOpenAIAccountSchedulableForRPM(ctx context.Context, account *Account, isSticky bool) bool {
-	if account == nil || !account.IsOAuth() {
+	if account == nil {
 		return true
 	}
 	if account.GetBaseRPM() <= 0 {

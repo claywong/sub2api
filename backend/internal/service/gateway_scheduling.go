@@ -1399,7 +1399,7 @@ func (s *GatewayService) withRPMPrefetch(ctx context.Context, accounts []Account
 
 	var ids []int64
 	for i := range accounts {
-		if accounts[i].IsOAuth() && accounts[i].GetBaseRPM() > 0 {
+		if accounts[i].GetBaseRPM() > 0 {
 			ids = append(ids, accounts[i].ID)
 		}
 	}
@@ -1414,10 +1414,13 @@ func (s *GatewayService) withRPMPrefetch(ctx context.Context, accounts []Account
 	return context.WithValue(ctx, rpmPrefetchContextKey, counts)
 }
 
-// isAccountSchedulableForRPM 检查账号是否可根据 RPM 进行调度
-// 适用于所有平台的 OAuth/SetupToken 账号（base_rpm=0 时不限制）
+// isAccountSchedulableForRPM 检查账号是否可根据 RPM 进行调度。
+// 不限平台、不限账号类型：base_rpm 本身即 opt-in（0 = 不限制），
+// 由管理员显式设置后才参与限流。不再按类型白名单收窄——
+// 历史上先限 Anthropic OAuth、后限所有 OAuth，都漏掉了 apikey 类账号
+// （zhipu / kimi / deepseek 等国产供应商均为 apikey）。
 func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account *Account, isSticky bool) bool {
-	if !account.IsOAuth() {
+	if account == nil {
 		return true
 	}
 	baseRPM := account.GetBaseRPM()

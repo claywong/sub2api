@@ -735,8 +735,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
-		// base_rpm 限流对所有平台的 OAuth/SetupToken 账号生效
-		if acc.IsOAuth() && acc.GetBaseRPM() > 0 {
+		// base_rpm 限流不限平台、不限账号类型（含国产供应商 apikey）
+		if acc.GetBaseRPM() > 0 {
 			rpmAccountIDs = append(rpmAccountIDs, acc.ID)
 		}
 		if acc.IsAnthropicOAuthOrSetupToken() {
