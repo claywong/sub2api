@@ -561,6 +561,11 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
+	// base_rpm 限流：粘性会话享受黄区缓冲，仅红区才让出账号。
+	// 不清除绑定——RPM 是分钟级瞬时状态，下一分钟即恢复。
+	if !s.service.isOpenAIAccountSchedulableForRPM(ctx, account, true) {
+		return nil, false, nil
+	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape && !req.DisableStickyEscape {
 		slog.Info("sticky_escape_triggered",
@@ -1318,6 +1323,10 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		now := time.Now()
 		if isGrokTeamModelRateLimited(account, upstreamModel, now) ||
 			isGrokModelQuotaBlocked(account.ID, upstreamModel, now) {
+			continue
+		}
+		// base_rpm 限流：加权粘性回退同样享受黄区缓冲
+		if !s.service.isOpenAIAccountSchedulableForRPM(ctx, account, true) {
 			continue
 		}
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)

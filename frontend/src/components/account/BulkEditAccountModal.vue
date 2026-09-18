@@ -1268,7 +1268,8 @@
       </div>
 
       <!-- RPM Limit (仅全部为 Anthropic OAuth/SetupToken 时显示) -->
-      <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- RPM 限流：所有平台的 OAuth/SetupToken 账号（base_rpm=0 表示不限制） -->
+      <div v-if="allOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label
             id="bulk-edit-rpm-limit-label"
@@ -1372,24 +1373,25 @@
             </div>
           </div>
 
-        <!-- 用户消息限速模式（独立于 RPM 开关，始终可见） -->
-        <div class="mt-4">
-          <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') }}</label>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
-            {{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueueHint') }}
-          </p>
-          <div class="flex space-x-2">
-            <button type="button" v-for="opt in umqModeOptions" :key="opt.value"
-              @click="userMsgQueueMode = userMsgQueueMode === opt.value ? null : opt.value"
-              :class="[
-                'px-3 py-1.5 text-sm rounded-md border transition-colors',
-                userMsgQueueMode === opt.value
-                  ? 'bg-primary-600 text-white border-primary-600'
-                  : 'bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-dark-500 hover:bg-gray-50 dark:hover:bg-dark-600'
-              ]">
-              {{ opt.label }}
-            </button>
-          </div>
+      </div>
+
+      <!-- 用户消息限速模式（Anthropic OAuth/SetupToken 专属，独立于 RPM 开关） -->
+      <div v-if="allAnthropicOAuthOrSetupToken" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <label class="input-label">{{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueue') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400 mb-2">
+          {{ t('admin.accounts.quotaControl.rpmLimit.userMsgQueueHint') }}
+        </p>
+        <div class="flex space-x-2">
+          <button type="button" v-for="opt in umqModeOptions" :key="opt.value"
+            @click="userMsgQueueMode = userMsgQueueMode === opt.value ? null : opt.value"
+            :class="[
+              'px-3 py-1.5 text-sm rounded-md border transition-colors',
+              userMsgQueueMode === opt.value
+                ? 'bg-primary-600 text-white border-primary-600'
+                : 'bg-white dark:bg-dark-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-dark-500 hover:bg-gray-50 dark:hover:bg-dark-600'
+            ]">
+            {{ opt.label }}
+          </button>
         </div>
       </div>
 
@@ -1618,6 +1620,15 @@ const allAnthropicOAuthOrSetupToken = computed(() => {
   return (
     targetSelectedPlatforms.value.length === 1 &&
     targetSelectedPlatforms.value[0] === 'anthropic' &&
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
+  )
+})
+
+// 与后端 Account.IsOAuth() 对齐：RPM 限流不限平台，凡 OAuth/SetupToken 均生效。
+// 要求已选类型非空，避免未选中任何账号时误显示。
+const allOAuthOrSetupToken = computed(() => {
+  return (
+    targetSelectedTypes.value.length > 0 &&
     targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
   )
 })

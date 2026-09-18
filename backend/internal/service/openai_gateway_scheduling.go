@@ -975,6 +975,12 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
+	// base_rpm 限流：粘性会话享受黄区缓冲，仅红区才让出账号。
+	// 注意不删除粘性绑定——RPM 是分钟级瞬时状态，下一分钟即恢复，
+	// 删绑定会让会话永久漂移到别的账号。
+	if !s.isOpenAIAccountSchedulableForRPM(ctx, account, true) {
+		return nil
+	}
 	account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 	if account == nil || !s.openAIAccountMatchesSchedulingGroup(account, groupID) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1203,6 +1209,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if !s.isOpenAIAccountSchedulableForRPM(ctx, account, true) {
+						// base_rpm 红区：让出账号但保留粘性绑定（分钟级状态，下分钟恢复）
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
@@ -1504,6 +1512,53 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	return accounts, nil
 }
 
+// isOpenAIAccountSchedulableForRPM 检查账号是否可根据 base_rpm 进行调度。
+// 与 GatewayService.isAccountSchedulableForRPM 共用 Account 上的三区模型
+// （绿区正常 / 黄区仅粘性 / 红区不可调度）与 rpm: 计数器，语义保持一致。
+// 适用于所有平台的 OAuth/SetupToken 账号；base_rpm=0 表示不限制。
+// Redis 故障一律 fail-open，不阻塞调度。
+func (s *OpenAIGatewayService) isOpenAIAccountSchedulableForRPM(ctx context.Context, account *Account, isSticky bool) bool {
+	if account == nil || !account.IsOAuth() {
+		return true
+	}
+	if account.GetBaseRPM() <= 0 {
+		return true
+	}
+
+	var currentRPM int
+	if count, ok := rpmFromPrefetchContext(ctx, account.ID); ok {
+		currentRPM = count
+	} else if s.rpmCache != nil {
+		if count, err := s.rpmCache.GetRPM(ctx, account.ID); err == nil {
+			currentRPM = count
+		}
+		// 失败开放：GetRPM 错误时允许调度
+	}
+
+	switch account.CheckRPMSchedulability(currentRPM) {
+	case WindowCostSchedulable:
+		return true
+	case WindowCostStickyOnly:
+		return isSticky
+	case WindowCostNotSchedulable:
+		return false
+	}
+	return true
+}
+
+// IncrementAccountRPM 递增账号的分钟级 RPM 计数。
+// 在准入收口（acquireOpenAIAccountSlot 抢到槽位）处调用，而非转发成功后——
+// OpenAI 侧转发路径分散在 responses/chat/images/embeddings/ws 等多个端点，
+// 准入点是唯一能覆盖全部端点且同时覆盖 WaitPlan 排队路径的位置。
+// 已知 TOCTOU 竞态：与 WindowCost 一致的 soft-limit 权衡，高并发下可能短暂超限。
+func (s *OpenAIGatewayService) IncrementAccountRPM(ctx context.Context, accountID int64) error {
+	if s == nil || s.rpmCache == nil {
+		return nil
+	}
+	_, err := s.rpmCache.IncrementRPM(ctx, accountID)
+	return err
+}
+
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {
 	if s.concurrencyService == nil {
 		return &AcquireResult{Acquired: true, ReleaseFunc: func() {}}, nil
@@ -1550,6 +1605,10 @@ func (s *OpenAIGatewayService) resolveFreshSchedulableOpenAIAccountBeforeProfit(
 		return nil
 	}
 	if s.isOpenAIProxyStreamQuarantined(ctx, fresh) {
+		return nil
+	}
+	// base_rpm 限流：非粘性候选，黄区（base_rpm ~ base_rpm+buffer）即不可用
+	if !s.isOpenAIAccountSchedulableForRPM(ctx, fresh, false) {
 		return nil
 	}
 	return fresh

@@ -65,6 +65,11 @@ const isAnthropicOAuthOrSetupToken = computed(() =>
   (props.account.type === 'oauth' || props.account.type === 'setup-token')
 )
 
+// 与后端 Account.IsOAuth() 对齐：RPM 限流不限平台，凡 OAuth/SetupToken 均生效
+const isOAuthAccount = computed(() =>
+  props.account.type === 'oauth' || props.account.type === 'setup-token'
+)
+
 const showWindowCost = computed(() =>
   isAnthropicOAuthOrSetupToken.value &&
   props.account.window_cost_limit != null &&
@@ -123,7 +128,7 @@ const sessionLimitTooltip = computed(() => {
 
 // ====== RPM ======
 const showRpmLimit = computed(() =>
-  isAnthropicOAuthOrSetupToken.value &&
+  isOAuthAccount.value &&
   props.account.base_rpm != null &&
   props.account.base_rpm > 0
 )

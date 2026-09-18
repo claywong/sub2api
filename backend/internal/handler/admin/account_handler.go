@@ -735,6 +735,10 @@ func (h *AccountHandler) List(c *gin.Context) {
 	sessionIdleTimeouts := make(map[int64]time.Duration) // 各账号的会话空闲超时配置
 	for i := range accounts {
 		acc := &accounts[i]
+		// base_rpm 限流对所有平台的 OAuth/SetupToken 账号生效
+		if acc.IsOAuth() && acc.GetBaseRPM() > 0 {
+			rpmAccountIDs = append(rpmAccountIDs, acc.ID)
+		}
 		if acc.IsAnthropicOAuthOrSetupToken() {
 			if acc.GetWindowCostLimit() > 0 {
 				windowCostAccountIDs = append(windowCostAccountIDs, acc.ID)
@@ -743,11 +747,8 @@ func (h *AccountHandler) List(c *gin.Context) {
 				sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
 				sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 			}
-			if acc.GetBaseRPM() > 0 {
-				rpmAccountIDs = append(rpmAccountIDs, acc.ID)
-			}
 		} else if acc.SupportsSessionLimit() && acc.GetMaxSessions() > 0 {
-			// 私有扩展：Anthropic API Key 账号也参与活跃会话数统计（窗口费用 / RPM 仍仅 OAuth/SetupToken）
+			// 私有扩展：Anthropic API Key 账号也参与活跃会话数统计（窗口费用仍仅 OAuth/SetupToken）
 			sessionLimitAccountIDs = append(sessionLimitAccountIDs, acc.ID)
 			sessionIdleTimeouts[acc.ID] = time.Duration(acc.GetSessionIdleTimeoutMinutes()) * time.Minute
 		}
