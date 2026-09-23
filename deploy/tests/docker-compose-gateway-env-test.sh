@@ -25,13 +25,13 @@ for compose_file in \
 do
   tab=$(printf '\t')
   while IFS="$tab" read -r key value; do
-    # .env.example intentionally includes high-capacity tuning examples for
-    # these values. An unconfigured Compose deployment must retain the
-    # backend defaults instead of silently adopting the examples.
+    # .env.example includes tuning examples for these values. An unconfigured
+    # Compose deployment must retain the backend defaults instead.
     case "$key" in
       GATEWAY_MAX_CONNS_PER_HOST) value=1024 ;;
       GATEWAY_MAX_IDLE_CONNS) value=2560 ;;
       GATEWAY_MAX_IDLE_CONNS_PER_HOST) value=120 ;;
+      GATEWAY_OPENAI_RESPONSE_HEADER_TIMEOUT) value=0 ;;
     esac
 
     expected=$(printf '      - %s=${%s:-%s}' "$key" "$key" "$value")
