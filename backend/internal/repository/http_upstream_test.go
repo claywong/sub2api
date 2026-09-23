@@ -694,7 +694,7 @@ func (s *HTTPUpstreamSuite) TestOpenAIProfileHTTP2DisabledUsesHTTP1Transport() {
 
 func (s *HTTPUpstreamSuite) TestOpenAIHarvestProfileDisablesKeepAlives() {
 	svc := s.newService()
-	entry, err := svc.getClientEntry("socks5h://user:pass@harvest.example:31", 41, 5, service.HTTPUpstreamProfileOpenAIHarvest, false, false)
+	entry, err := svc.getClientEntry("socks5h://user:pass@harvest.example:31", 41, 5, service.HTTPUpstreamProfileOpenAIHarvest, false, false, 0)
 	require.NoError(s.T(), err)
 	require.Equal(s.T(), upstreamProtocolModeOpenAIH1NoReuse, entry.protocolMode)
 	transport, ok := entry.client.Transport.(*http.Transport)
