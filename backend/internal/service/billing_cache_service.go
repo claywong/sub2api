@@ -746,8 +746,13 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 路由命中时才由中间件写入，未命中的请求取不到值会导致配额静默放行；显式参数让
 // 漏传在编译期暴露。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string, requestedModel string) error {
-	// 简易模式：跳过所有计费检查
-	if s.cfg.RunMode == config.RunModeSimple {
+	// 简易模式默认跳过所有计费检查. An explicit key-window opt-in keeps
+	// balance/subscription/platform checks bypassed while enforcing the three
+	// API-key monetary windows from the database source of truth.
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		if s.cfg.SimpleModeKeyRateLimitEnabled {
+			return s.checkSimpleModeAPIKeyRateLimits(ctx, apiKey)
+		}
 		return nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
@@ -792,6 +797,34 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		return err
 	}
 
+	return nil
+}
+
+// checkSimpleModeAPIKeyRateLimits is deliberately DB-authoritative. Redis
+// updates are asynchronous and can be dropped or missed after a committed
+// transaction, so using the cache here could let a limited simple-mode key
+// continue past its configured window. A read failure fails closed because
+// the operator explicitly opted into enforcement.
+func (s *BillingCacheService) checkSimpleModeAPIKeyRateLimits(ctx context.Context, apiKey *APIKey) error {
+	if apiKey == nil || !apiKey.HasRateLimits() {
+		return nil
+	}
+	if s.apiKeyRateLimitLoader == nil {
+		return ErrBillingServiceUnavailable
+	}
+	data, err := s.apiKeyRateLimitLoader.GetRateLimitData(ctx, apiKey.ID)
+	if err != nil || data == nil {
+		return ErrBillingServiceUnavailable
+	}
+	if apiKey.RateLimit5h > 0 && data.EffectiveUsage5h() >= apiKey.RateLimit5h {
+		return ErrAPIKeyRateLimit5hExceeded
+	}
+	if apiKey.RateLimit1d > 0 && data.EffectiveUsage1d() >= apiKey.RateLimit1d {
+		return ErrAPIKeyRateLimit1dExceeded
+	}
+	if apiKey.RateLimit7d > 0 && data.EffectiveUsage7d() >= apiKey.RateLimit7d {
+		return ErrAPIKeyRateLimit7dExceeded
+	}
 	return nil
 }
 
