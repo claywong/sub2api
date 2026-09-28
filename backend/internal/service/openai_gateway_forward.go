@@ -1523,6 +1523,16 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// UA 会命中其前置 Cloudflare bot 拦截（CF 1010/403），并被计入账号 403 strike。
 	applyOpenCodeUpstreamUserAgent(account, targetURL, req.Header)
 
+	// 私有扩展：国产供应商原生 Responses 出站（kimi/deepseek/minimax 的 Codex 流量不经
+	// chat_completions 与 Anthropic 直通，需在此单独归一）。放在自定义 UA / ForceCodexCLI
+	// 之后保证归一生效，放在账号级覆写之前保证管理员覆写仍优先。
+	// companion 实现见 openai_gateway_messages_anthropic_native_fingerprint.go。
+	if account.UsesNativeCNResponses() {
+		if fpTarget := accountAnthropicFingerprintTarget(account, c); fpTarget != anthropicFingerprintOff {
+			applyFingerprintNormalizeUserAgent(account, req.Header, fpTarget)
+		}
+	}
+
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, body, openCodeSessionHintBody(promptCacheKey))

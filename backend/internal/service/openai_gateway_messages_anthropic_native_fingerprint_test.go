@@ -225,13 +225,13 @@ func TestResolveAnthropicFingerprintTarget(t *testing.T) {
 	}
 }
 
-func TestApplyCCFingerprintNormalizeUserAgent(t *testing.T) {
+func TestApplyFingerprintNormalizeUserAgent(t *testing.T) {
 	account := fpNormalizeTestAccount(11)
 
 	// claudecode 目标 → claude-cli UA
 	h := http.Header{}
 	h.Set("user-agent", "python-requests/2.31")
-	applyCCFingerprintNormalizeUserAgent(account, h, anthropicFingerprintClaudeCode)
+	applyFingerprintNormalizeUserAgent(account, h, anthropicFingerprintClaudeCode)
 	if got, want := h.Get("user-agent"), anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode); got != want {
 		t.Fatalf("claudecode UA = %q, want %q", got, want)
 	}
@@ -239,7 +239,7 @@ func TestApplyCCFingerprintNormalizeUserAgent(t *testing.T) {
 	// codex 目标 → codex-tui UA（与 claudecode 不同）
 	h2 := http.Header{}
 	h2.Set("user-agent", "python-requests/2.31")
-	applyCCFingerprintNormalizeUserAgent(account, h2, anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(account, h2, anthropicFingerprintCodex)
 	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex)
 	if got := h2.Get("user-agent"); got != codexUA {
 		t.Fatalf("codex UA = %q, want %q", got, codexUA)
@@ -248,7 +248,7 @@ func TestApplyCCFingerprintNormalizeUserAgent(t *testing.T) {
 	// off 目标 → 不改
 	h3 := http.Header{}
 	h3.Set("user-agent", "python-requests/2.31")
-	applyCCFingerprintNormalizeUserAgent(account, h3, anthropicFingerprintOff)
+	applyFingerprintNormalizeUserAgent(account, h3, anthropicFingerprintOff)
 	if got := h3.Get("user-agent"); got != "python-requests/2.31" {
 		t.Fatalf("off must not touch UA, got %q", got)
 	}
@@ -262,14 +262,14 @@ func TestApplyCCFingerprintNormalizeUserAgent(t *testing.T) {
 	}
 	h4 := http.Header{}
 	h4.Set("user-agent", "python-requests/2.31")
-	applyCCFingerprintNormalizeUserAgent(overridden, h4, anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(overridden, h4, anthropicFingerprintCodex)
 	if got := h4.Get("user-agent"); got != "python-requests/2.31" {
 		t.Fatalf("override account must skip normalize, got %q", got)
 	}
 
 	// nil 安全
-	applyCCFingerprintNormalizeUserAgent(nil, h4, anthropicFingerprintCodex)
-	applyCCFingerprintNormalizeUserAgent(account, nil, anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(nil, h4, anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(account, nil, anthropicFingerprintCodex)
 }
 
 func TestAnthropicFingerprintNormalizeSwitchesFromExtra(t *testing.T) {

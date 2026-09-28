@@ -3787,9 +3787,12 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
 
-// 指纹归一化对 CN 供应商 api_key 账号生效：anthropic/adaptive 走原生 Anthropic 直通，
-// chat_completions 走 CC 出站路径，两条出站路径都已接入归一化。
-const showAnthropicFingerprintNormalize = computed(() => isCNApiKeyAccount.value)
+// 指纹归一化仅对国产供应商 api_key 账号生效（与后端 accountAnthropicFingerprintTarget 的
+// IsCNProvider 判定一致）。不复用 isCNApiKeyAccount：它包含 opencode_go，而 OpenCode Go
+// 依赖规范 UA 过 Cloudflare，归一化覆盖 UA 会触发 403。
+const showAnthropicFingerprintNormalize = computed(
+  () => props.account?.type === 'apikey' && isCNProviderPlatform(props.account.platform)
+)
 
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },

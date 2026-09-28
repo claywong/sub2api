@@ -221,11 +221,10 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 
 	// 私有扩展：CN 供应商 chat_completions 出站路径的指纹归一化。adaptive 协议
 	// 账号的 Codex 流量（/v1/responses 转 CC）走这里；按入站客户端类型选目标，
-	// 归一 UA 为 claude-cli / codex-tui 形态。仅 CN 供应商生效，避免影响 Grok/官方 OpenAI。
-	if account.IsCNProvider() {
-		if fpTarget := accountAnthropicFingerprintTarget(account, c); fpTarget != anthropicFingerprintOff {
-			applyCCFingerprintNormalizeUserAgent(account, upstreamReq.Header, fpTarget)
-		}
+	// 归一 UA 为 claude-cli / codex-tui 形态。仅 CN 供应商生效（accountAnthropicFingerprintTarget
+	// 内部判定），避免影响 Grok / OpenCode Go / 官方 OpenAI。
+	if fpTarget := accountAnthropicFingerprintTarget(account, c); fpTarget != anthropicFingerprintOff {
+		applyFingerprintNormalizeUserAgent(account, upstreamReq.Header, fpTarget)
 	}
 
 	if account.Platform == PlatformGrok {

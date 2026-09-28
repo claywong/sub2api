@@ -140,8 +140,6 @@ const (
 	FieldRpmLimit = "rpm_limit"
 	// FieldAllowBalanceFallback holds the string denoting the allow_balance_fallback field in the database.
 	FieldAllowBalanceFallback = "allow_balance_fallback"
-	// FieldFingerprintNormalizeEnabled holds the string denoting the fingerprint_normalize_enabled field in the database.
-	FieldFingerprintNormalizeEnabled = "fingerprint_normalize_enabled"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
 	FieldMaxReasoningEffort = "max_reasoning_effort"
 	// FieldMaxReasoningEffortOverLimit holds the string denoting the max_reasoning_effort_over_limit field in the database.
@@ -291,7 +289,6 @@ var Columns = []string{
 	FieldCodexModelsManifestConfig,
 	FieldRpmLimit,
 	FieldAllowBalanceFallback,
-	FieldFingerprintNormalizeEnabled,
 	FieldMaxReasoningEffort,
 	FieldMaxReasoningEffortOverLimit,
 	FieldReasoningEffortMappings,
@@ -431,8 +428,6 @@ var (
 	DefaultRpmLimit int
 	// DefaultAllowBalanceFallback holds the default value on creation for the "allow_balance_fallback" field.
 	DefaultAllowBalanceFallback bool
-	// DefaultFingerprintNormalizeEnabled holds the default value on creation for the "fingerprint_normalize_enabled" field.
-	DefaultFingerprintNormalizeEnabled bool
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
 	DefaultMaxReasoningEffort string
 	// MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
@@ -727,11 +722,6 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowBalanceFallback orders the results by the allow_balance_fallback field.
 func ByAllowBalanceFallback(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowBalanceFallback, opts...).ToFunc()
-}
-
-// ByFingerprintNormalizeEnabled orders the results by the fingerprint_normalize_enabled field.
-func ByFingerprintNormalizeEnabled(opts ...sql.OrderTermOption) OrderOption {
-	return sql.OrderByField(FieldFingerprintNormalizeEnabled, opts...).ToFunc()
 }
 
 // ByMaxReasoningEffort orders the results by the max_reasoning_effort field.

@@ -22172,7 +22172,6 @@ type GroupMutation struct {
 	rpm_limit                               *int
 	addrpm_limit                            *int
 	allow_balance_fallback                  *bool
-	fingerprint_normalize_enabled           *bool
 	max_reasoning_effort                    *string
 	max_reasoning_effort_over_limit         *string
 	reasoning_effort_mappings               *[]domain.ReasoningEffortMapping
@@ -25369,42 +25368,6 @@ func (m *GroupMutation) ResetAllowBalanceFallback() {
 	m.allow_balance_fallback = nil
 }
 
-// SetFingerprintNormalizeEnabled sets the "fingerprint_normalize_enabled" field.
-func (m *GroupMutation) SetFingerprintNormalizeEnabled(b bool) {
-	m.fingerprint_normalize_enabled = &b
-}
-
-// FingerprintNormalizeEnabled returns the value of the "fingerprint_normalize_enabled" field in the mutation.
-func (m *GroupMutation) FingerprintNormalizeEnabled() (r bool, exists bool) {
-	v := m.fingerprint_normalize_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldFingerprintNormalizeEnabled returns the old "fingerprint_normalize_enabled" field's value of the Group entity.
-// If the Group object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *GroupMutation) OldFingerprintNormalizeEnabled(ctx context.Context) (v bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldFingerprintNormalizeEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldFingerprintNormalizeEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldFingerprintNormalizeEnabled: %w", err)
-	}
-	return oldValue.FingerprintNormalizeEnabled, nil
-}
-
-// ResetFingerprintNormalizeEnabled resets all changes to the "fingerprint_normalize_enabled" field.
-func (m *GroupMutation) ResetFingerprintNormalizeEnabled() {
-	m.fingerprint_normalize_enabled = nil
-}
-
 // SetMaxReasoningEffort sets the "max_reasoning_effort" field.
 func (m *GroupMutation) SetMaxReasoningEffort(s string) {
 	m.max_reasoning_effort = &s
@@ -26034,7 +25997,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 69)
+	fields := make([]string, 0, 68)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26221,9 +26184,6 @@ func (m *GroupMutation) Fields() []string {
 	if m.allow_balance_fallback != nil {
 		fields = append(fields, group.FieldAllowBalanceFallback)
 	}
-	if m.fingerprint_normalize_enabled != nil {
-		fields = append(fields, group.FieldFingerprintNormalizeEnabled)
-	}
 	if m.max_reasoning_effort != nil {
 		fields = append(fields, group.FieldMaxReasoningEffort)
 	}
@@ -26374,8 +26334,6 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.RpmLimit()
 	case group.FieldAllowBalanceFallback:
 		return m.AllowBalanceFallback()
-	case group.FieldFingerprintNormalizeEnabled:
-		return m.FingerprintNormalizeEnabled()
 	case group.FieldMaxReasoningEffort:
 		return m.MaxReasoningEffort()
 	case group.FieldMaxReasoningEffortOverLimit:
@@ -26521,8 +26479,6 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldRpmLimit(ctx)
 	case group.FieldAllowBalanceFallback:
 		return m.OldAllowBalanceFallback(ctx)
-	case group.FieldFingerprintNormalizeEnabled:
-		return m.OldFingerprintNormalizeEnabled(ctx)
 	case group.FieldMaxReasoningEffort:
 		return m.OldMaxReasoningEffort(ctx)
 	case group.FieldMaxReasoningEffortOverLimit:
@@ -26977,13 +26933,6 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAllowBalanceFallback(v)
-		return nil
-	case group.FieldFingerprintNormalizeEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetFingerprintNormalizeEnabled(v)
 		return nil
 	case group.FieldMaxReasoningEffort:
 		v, ok := value.(string)
@@ -27723,9 +27672,6 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldAllowBalanceFallback:
 		m.ResetAllowBalanceFallback()
-		return nil
-	case group.FieldFingerprintNormalizeEnabled:
-		m.ResetFingerprintNormalizeEnabled()
 		return nil
 	case group.FieldMaxReasoningEffort:
 		m.ResetMaxReasoningEffort()
