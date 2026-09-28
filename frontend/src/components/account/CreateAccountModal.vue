@@ -626,7 +626,7 @@
         </div>
       </div>
 
-      <!-- Anthropic 指纹归一化（私有扩展，仅 CN 供应商 api_key）：两个独立开关 -->
+      <!-- Anthropic 指纹归一化（私有扩展，仅智谱 api_key）：四个独立开关 -->
       <div v-if="showAnthropicFingerprintNormalize" class="mt-4">
         <label class="input-label">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.title') }}</label>
         <p class="input-hint mb-2">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.description') }}</p>
@@ -637,6 +637,14 @@
         <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
           <input v-model="anthropicFingerprintNormalizeCodex" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
           {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.codexSwitch') }}
+        </label>
+        <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+          <input v-model="anthropicFingerprintNormalizeZCode" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.zcodeSwitch') }}
+        </label>
+        <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+          <input v-model="anthropicFingerprintRestrictClients" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.restrictClientsSwitch') }}
         </label>
       </div>
 
@@ -4470,9 +4478,11 @@ const codexFingerprintModeOptions = computed(() => [
 ])
 const anthropicFingerprintNormalizeCodex = ref(false)
 const anthropicFingerprintNormalizeClaudeCode = ref(false)
-// 指纹归一化对 CN 供应商生效：anthropic/adaptive 走原生 Anthropic 直通，
-// chat_completions 走 CC 出站路径，两条出站路径都已接入归一化。
-const showAnthropicFingerprintNormalize = computed(() => isCNPlatform.value)
+const anthropicFingerprintNormalizeZCode = ref(false)
+const anthropicFingerprintRestrictClients = ref(false)
+// 指纹归一化仅对智谱账号生效（与后端 accountAnthropicFingerprintTarget 一致）。
+// 智谱在创建弹窗只有 api_key 一种接入方式，按平台判断即可。
+const showAnthropicFingerprintNormalize = computed(() => form.platform === 'zhipu')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
@@ -5494,7 +5504,7 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.codex_fingerprint_mode
   }
-  // Anthropic 指纹归一化：两个独立开关，false 不落键（opt-in），true 显式落键。
+  // Anthropic 指纹归一化：四个独立开关，false 不落键（opt-in），true 显式落键。
   if (anthropicFingerprintNormalizeCodex.value) {
     extra.anthropic_fingerprint_normalize_codex = true
   } else {
@@ -5504,6 +5514,16 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.anthropic_fingerprint_normalize_claudecode = true
   } else {
     delete extra.anthropic_fingerprint_normalize_claudecode
+  }
+  if (anthropicFingerprintNormalizeZCode.value) {
+    extra.anthropic_fingerprint_normalize_zcode = true
+  } else {
+    delete extra.anthropic_fingerprint_normalize_zcode
+  }
+  if (anthropicFingerprintRestrictClients.value) {
+    extra.anthropic_fingerprint_restrict_clients = true
+  } else {
+    delete extra.anthropic_fingerprint_restrict_clients
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value

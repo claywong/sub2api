@@ -1,21 +1,22 @@
 // 私有扩展（不属于 upstream sub2api）。
 //
-// 本文件为 CN 供应商 Anthropic 协议直通路径（openai_gateway_messages_anthropic_native.go）
-// 提供出站指纹归一化能力，对应账号级配置 account.Extra["anthropic_fingerprint_normalize"]
-// （off / claudecode / codex，migration 910 移除了旧的分组级开关）。开启后对出站
-// 请求做归一，让同一上游账号的所有拼车用户在供应商侧呈现为「同一个客户端」：
-//  1. metadata.user_id 的 device_id/account_uuid 改写为账号级恒定值（session_id 保留）
-//  2. 删除 body.system 中 Claude Code 注入的 x-anthropic-billing-header 块
-//  3. User-Agent 归一：claudecode → claude-cli/<EffectiveCLIVersion>；
-//     codex → 规范 codex-tui UA（版本均走面板/自动同步，不再写死）
+// 本文件为智谱（zhipu / GLM）账号的出站请求提供指纹归一化能力，让同一上游账号的
+// 拼车用户在供应商侧按客户端类型各自收敛为「同一个客户端」。
 //
-// 所含符号：
-//   - anthropicFingerprintNormalizeMode / anthropicFingerprintNormalizeModeFromExtra
-//   - Account.GetAnthropicFingerprintNormalizeMode
-//   - NormalizeNativeAnthropicRequestBody / NormalizeNativeAnthropicRequestHeaders
+// 配置：账号级三个归一化开关（codex / claudecode / zcode）+ 一个客户端准入开关
+// （restrict_clients），默认关闭。目标解析与准入判定见
+// openai_gateway_messages_anthropic_native_fingerprint_target.go，生效范围仅智谱。
 //
-// merge 策略：upstream 不含本文件；openai_gateway_messages_anthropic_native.go
-// 中仅有 2 处调用 hook，merge 时保留即可。
+// 出站 hook（均经 accountAnthropicFingerprintTarget 判定）：
+//   - Anthropic 直通（openai_gateway_messages_anthropic_native.go）：body 改写
+//     metadata.user_id 身份字段、剥 billing header 块；header 归一 UA、x-stainless-*、originator
+//   - chat_completions（openai_gateway_cc_pipeline.go::sendCCUpstreamRequest）：归一 UA、originator
+//
+// 旧的分组级开关 groups.fingerprint_normalize_enabled 已不再读写，列暂保留以保证回滚安全。
+//
+// merge 策略：upstream 不含本文件；上述两个文件中的调用 hook，merge 时保留即可。
+//
+// @author wangzhong
 package service
 
 import (
@@ -28,38 +29,43 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
-	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
 // anthropicFingerprintNormalizeMode 是一次请求解析后的**最终归一化目标形态**
-// （不是账号静态配置值）。账号侧配置是两个独立开关（见下方 Extra key），
-// 由 resolveAnthropicFingerprintTarget 结合入站客户端类型解析成本类型。
+// （不是账号静态配置值），由 resolveAnthropicFingerprintTarget 解析。
 type anthropicFingerprintNormalizeMode string
 
 const (
 	// anthropicFingerprintOff 不做归一化，原样透传客户端指纹。
 	anthropicFingerprintOff anthropicFingerprintNormalizeMode = "off"
 	// anthropicFingerprintClaudeCode 归一成 Claude Code（claude-cli）形态：
-	// UA = claude-cli/<EffectiveCLIVersion>，身份字段账号级恒定，删 billing header。
+	// UA 版本段统一为 EffectiveCLIVersion（入口段保留），身份字段账号级恒定，删 billing header。
 	anthropicFingerprintClaudeCode anthropicFingerprintNormalizeMode = "claudecode"
-	// anthropicFingerprintCodex 归一成 Codex（codex-tui）形态：
-	// UA = 规范 codex-tui UA（版本走 Codex 自动同步），身份字段账号级恒定。
+	// anthropicFingerprintCodex 归一成 Codex 形态：UA + originator 取 OAuth 同源的
+	// 规范身份（resolveCodexOutboundIdentity），身份字段账号级恒定。
 	anthropicFingerprintCodex anthropicFingerprintNormalizeMode = "codex"
+	// anthropicFingerprintZCode 归一成 ZCode 形态：UA 的 ZCode 版本与 node 运行时统一为
+	// zcodeCanonicalVersion / zcodeCanonicalNodeRuntime，其余段保留。
+	anthropicFingerprintZCode anthropicFingerprintNormalizeMode = "zcode"
 )
 
-// 账号级归一化配置：两个独立开关（account.Extra），可任意组合，互不产生错配。
-//   - codex 开关：只把 Codex 客户端的出站请求归一成 codex-tui 形态
-//   - claudecode 开关：只把非 Codex 客户端（Claude Code 等）归一成 claude-cli 形态
-//
-// 让同一上游账号的拼车用户在供应商侧按客户端类型各自收敛成一个稳定客户端。
-// adaptive 协议账号同时服务两类客户端时，两个开关都开即可分别归一。
-// 两个开关都关 = 不归一（默认，opt-in）。
 const (
-	anthropicFingerprintNormalizeCodexExtraKey      = "anthropic_fingerprint_normalize_codex"
-	anthropicFingerprintNormalizeClaudeCodeExtraKey = "anthropic_fingerprint_normalize_claudecode"
+	// zcodeCanonicalVersion ZCode 规范版本。ZCode 无公开版本源，无法自动同步，
+	// 取线上智谱流量最新观测版本（2026-09），升级时改此常量。
+	zcodeCanonicalVersion = "3.14.3"
+	// zcodeCanonicalNodeRuntime ZCode 规范 node 运行时主版本。
+	zcodeCanonicalNodeRuntime = "24"
+)
+
+var (
+	// claudeCLIUAVersionRe 匹配 claude-cli UA 首段版本号（含预发布后缀）。
+	claudeCLIUAVersionRe = regexp.MustCompile(`(?i)^claude-cli/[0-9][^\s]*`)
+	// zcodeUAVersionRe 匹配 ZCode UA 首段版本号。
+	zcodeUAVersionRe = regexp.MustCompile(`(?i)^zcode/[0-9][^\s]*`)
+	// zcodeUANodeRuntimeRe 匹配 ZCode UA 中的 node 运行时段。
+	zcodeUANodeRuntimeRe = regexp.MustCompile(`runtime/node\.js/[0-9][^\s]*`)
 )
 
 // anthropicBillingHeaderBlockRe 匹配 system prompt 中 Claude Code 注入的
@@ -83,68 +89,6 @@ func anthropicFingerprintExtraFlag(extra map[string]any, key string) bool {
 	default:
 		return false
 	}
-}
-
-// AnthropicFingerprintNormalizeCodexEnabled 报告账号是否开启「Codex 客户端归一化」。
-func (a *Account) AnthropicFingerprintNormalizeCodexEnabled() bool {
-	if a == nil {
-		return false
-	}
-	return anthropicFingerprintExtraFlag(a.Extra, anthropicFingerprintNormalizeCodexExtraKey)
-}
-
-// AnthropicFingerprintNormalizeClaudeCodeEnabled 报告账号是否开启「Claude Code 客户端归一化」。
-func (a *Account) AnthropicFingerprintNormalizeClaudeCodeEnabled() bool {
-	if a == nil {
-		return false
-	}
-	return anthropicFingerprintExtraFlag(a.Extra, anthropicFingerprintNormalizeClaudeCodeExtraKey)
-}
-
-// resolveAnthropicFingerprintTarget 按两个独立开关 + 入站客户端类型解析本次请求的
-// 最终归一化目标。每个开关只把对应客户端归一成它自己的身份，天然不产生错配：
-//   - Codex 客户端：codexEnabled 开则归一成 codex，否则 off
-//   - 非 Codex 客户端：claudeCodeEnabled 开则归一成 claudecode，否则 off
-func resolveAnthropicFingerprintTarget(codexEnabled, claudeCodeEnabled, isCodexClient bool) anthropicFingerprintNormalizeMode {
-	if isCodexClient {
-		if codexEnabled {
-			return anthropicFingerprintCodex
-		}
-		return anthropicFingerprintOff
-	}
-	if claudeCodeEnabled {
-		return anthropicFingerprintClaudeCode
-	}
-	return anthropicFingerprintOff
-}
-
-// isCodexInboundClient 判断入站请求是否来自 Codex 官方客户端（按 UA / originator
-// 头识别）。c 为空时返回 false。
-func isCodexInboundClient(c *gin.Context) bool {
-	if c == nil || c.Request == nil {
-		return false
-	}
-	return openai.IsCodexOfficialClientByHeaders(
-		c.Request.Header.Get("User-Agent"),
-		c.Request.Header.Get("originator"),
-	)
-}
-
-// accountAnthropicFingerprintTarget 便捷组合：读账号两个开关 + 判入站客户端类型，
-// 解析出本次请求的最终归一化目标。
-//
-// 仅国产供应商（kimi/zhipu/deepseek/minimax）生效：OpenCode Go 等上游依赖
-// applyOpenCodeUpstreamUserAgent 写入的规范 UA 通过 Cloudflare 前置拦截，被覆盖会
-// 触发 CF 1010/403 并计入账号 403 strike。所有出站 hook 都经本函数判定，限制只写这一处。
-func accountAnthropicFingerprintTarget(account *Account, c *gin.Context) anthropicFingerprintNormalizeMode {
-	if account == nil || !account.IsCNProvider() {
-		return anthropicFingerprintOff
-	}
-	return resolveAnthropicFingerprintTarget(
-		account.AnthropicFingerprintNormalizeCodexEnabled(),
-		account.AnthropicFingerprintNormalizeClaudeCodeEnabled(),
-		isCodexInboundClient(c),
-	)
 }
 
 // anthropicFingerprintCanonicalDeviceID 返回账号级恒定的 device_id（64 位 hex，
@@ -181,28 +125,63 @@ func NormalizeNativeAnthropicRequestBody(account *Account, body []byte, mode ant
 	return body
 }
 
-// anthropicFingerprintNormalizedUserAgent 返回指定模式的出站归一化 User-Agent。
-//   - claudecode：claude-cli/<EffectiveCLIVersion>，版本走面板/自动同步（不再写死）。
-//   - codex：规范 codex-tui UA，版本走 Codex 面板/自动同步（codexCanonicalUserAgent）。
+// anthropicFingerprintNormalizedUserAgent 按目标形态由入站 UA 计算出站 UA：
+//   - claudecode：入站是 claude-cli/ 时只替换版本段为 EffectiveCLIVersion，保留入口段
+//     （cli / claude-vscode / sdk-ts ...，与各入口不同的请求体保持自洽）；
+//     入站 UA 缺失或无法解析时兜底为规范 claude.DefaultUserAgent()。
+//   - codex：OAuth 同源的规范 Codex UA（面板 → 自动同步 → 内置）。
+//   - zcode：替换 ZCode 版本段与 node 运行时段，其余段保留；入站非 ZCode 时返回空。
 //
 // 无法解析时返回空串，调用方保持原 UA 不动。
-func anthropicFingerprintNormalizedUserAgent(mode anthropicFingerprintNormalizeMode) string {
+func anthropicFingerprintNormalizedUserAgent(mode anthropicFingerprintNormalizeMode, inboundUA string) string {
+	inboundUA = strings.TrimSpace(inboundUA)
 	switch mode {
 	case anthropicFingerprintClaudeCode:
+		if claudeCLIUAVersionRe.MatchString(inboundUA) {
+			return claudeCLIUAVersionRe.ReplaceAllLiteralString(inboundUA, claudeCLIUserAgentProduct+"/"+claude.EffectiveCLIVersion())
+		}
 		return claude.DefaultUserAgent()
 	case anthropicFingerprintCodex:
-		return codexCanonicalUserAgent()
+		return resolveCodexOutboundIdentity("").userAgent
+	case anthropicFingerprintZCode:
+		if !zcodeUAVersionRe.MatchString(inboundUA) {
+			return ""
+		}
+		ua := zcodeUAVersionRe.ReplaceAllLiteralString(inboundUA, "ZCode/"+zcodeCanonicalVersion)
+		return zcodeUANodeRuntimeRe.ReplaceAllLiteralString(ua, "runtime/node.js/"+zcodeCanonicalNodeRuntime)
 	default:
 		return ""
 	}
 }
 
+// applyFingerprintNormalizeIdentityHeaders 写入归一化 UA；codex 形态同时写入配套
+// originator（与 OAuth 出站同源，UA 首段与 originator 必须成对）。
+// 账号级显式覆写的 user-agent / originator 保留管理员值。
+// 先删全部大小写形态再写入：直通构造器按客户端原始大小写透传，不清理会残留旧值。
+func applyFingerprintNormalizeIdentityHeaders(account *Account, h http.Header, mode anthropicFingerprintNormalizeMode, inboundUA string) {
+	if _, overridden := account.HeaderOverrideValue("user-agent"); !overridden {
+		if ua := anthropicFingerprintNormalizedUserAgent(mode, inboundUA); ua != "" {
+			deleteHeaderAllForms(h, "user-agent")
+			setHeaderRaw(h, resolveWireCasing("user-agent"), ua)
+		}
+	}
+	if mode != anthropicFingerprintCodex {
+		return
+	}
+	if _, overridden := account.HeaderOverrideValue("originator"); overridden {
+		return
+	}
+	if originator := resolveCodexOutboundIdentity("").originator; originator != "" {
+		deleteHeaderAllForms(h, "originator")
+		setHeaderRaw(h, resolveWireCasing("originator"), originator)
+	}
+}
+
 // NormalizeNativeAnthropicRequestHeaders 对直通出站 headers 做指纹归一化：
-// 按 mode 归一 User-Agent（claudecode / codex 形态）+ 兜底剥离 billing header
-// 头（该头不在 allowedHeaders 白名单，正常路径本就不会透传，此处防御账号级
-// HeaderOverride 显式注入的情况）。
-// 账号级显式配置的 user-agent 覆写优先于归一化默认值（管理员意图优先）。
-func NormalizeNativeAnthropicRequestHeaders(account *Account, h http.Header, mode anthropicFingerprintNormalizeMode) {
+// 按 mode 归一 UA / originator / x-stainless-*，并兜底剥离 billing header 头（该头不在
+// allowedHeaders 白名单，正常路径本就不会透传，此处防御账号级 HeaderOverride 显式注入）。
+// inboundUA 为客户端原始 UA，用于保留入口段的版本替换。
+func NormalizeNativeAnthropicRequestHeaders(account *Account, h http.Header, mode anthropicFingerprintNormalizeMode, inboundUA string) {
 	if h == nil || mode == anthropicFingerprintOff {
 		return
 	}
@@ -210,15 +189,8 @@ func NormalizeNativeAnthropicRequestHeaders(account *Account, h http.Header, mod
 		deleteHeaderAllForms(h, "x-anthropic-billing-header")
 		return
 	}
-	// UA 先删全部大小写形态再写入：直通构造器按客户端原始大小写透传，
-	// 不清理会残留旧值，出站同时带两个 UA。
-	if _, overridden := account.HeaderOverrideValue("user-agent"); !overridden {
-		if ua := anthropicFingerprintNormalizedUserAgent(mode); ua != "" {
-			deleteHeaderAllForms(h, "user-agent")
-			setHeaderRaw(h, resolveWireCasing("user-agent"), ua)
-		}
-	}
-	normalizeStainlessHeaders(account, h, mode)
+	applyFingerprintNormalizeIdentityHeaders(account, h, mode, inboundUA)
+	normalizeStainlessHeaders(account, h, mode, inboundUA)
 	deleteHeaderAllForms(h, "x-anthropic-billing-header")
 }
 
@@ -234,28 +206,30 @@ var anthropicFingerprintStainlessIdentityKeys = []string{
 }
 
 // normalizeStainlessHeaders 统一直通出站的 x-stainless-* 身份头：
-//   - claudecode：请求中已有的身份键改写为 claude.DefaultHeaders() 规范值（只改不增，
-//     与 IdentityService.ApplyFingerprint 语义一致），消除不同客户端版本的 SDK 差异；
-//   - codex：删除全部 x-stainless-*，真实 Codex 客户端不发送这组头，留着会暴露非 Codex。
+//   - claudecode：请求中已有的身份键改写为 claudeCodeCanonicalStainlessHeaders() 规范值
+//     （只改不增，与 IdentityService.ApplyFingerprint 语义一致）；改写前先从当前请求学习
+//     与生效 CLI 版本配对的 SDK / 运行时版本，使规范值跟随版本同步；
+//   - codex / zcode：删除全部 x-stainless-*，这两类真实客户端不发送这组头，留着会暴露身份。
 //
 // 账号级显式覆写的键保留管理员值。anthropic-beta 不在此处理：它与请求体能力字段联动
 // （sanitizeAnthropicBodyForBetaTokens），统一会导致上游 400。
-func normalizeStainlessHeaders(account *Account, h http.Header, mode anthropicFingerprintNormalizeMode) {
+func normalizeStainlessHeaders(account *Account, h http.Header, mode anthropicFingerprintNormalizeMode, inboundUA string) {
 	switch mode {
 	case anthropicFingerprintClaudeCode:
-		canonical := claude.DefaultHeaders()
+		learnClaudeCodeStainlessVersions(inboundUA, h)
+		canonical := claudeCodeCanonicalStainlessHeaders()
 		for _, key := range anthropicFingerprintStainlessIdentityKeys {
 			if _, overridden := account.HeaderOverrideValue(key); overridden || getHeaderRaw(h, key) == "" {
 				continue
 			}
-			value := canonicalHeaderValue(canonical, key)
+			value := canonical[key]
 			if value == "" {
 				continue
 			}
 			deleteHeaderAllForms(h, key)
 			setHeaderRaw(h, resolveWireCasing(key), value)
 		}
-	case anthropicFingerprintCodex:
+	case anthropicFingerprintCodex, anthropicFingerprintZCode:
 		for name := range h {
 			lower := strings.ToLower(name)
 			if !strings.HasPrefix(lower, "x-stainless-") {
@@ -269,32 +243,31 @@ func normalizeStainlessHeaders(account *Account, h http.Header, mode anthropicFi
 	}
 }
 
-// canonicalHeaderValue 按不区分大小写的键名从 claude.DefaultHeaders() 取值。
-func canonicalHeaderValue(canonical map[string]string, key string) string {
-	for name, value := range canonical {
-		if strings.EqualFold(name, key) {
-			return value
-		}
-	}
-	return ""
-}
-
-// applyFingerprintNormalizeUserAgent 对出站请求做 UA 指纹归一化，三条出站路径共用：
-// Anthropic 直通（NormalizeNativeAnthropicRequestHeaders）、chat_completions
-// （sendCCUpstreamRequest）、国产供应商原生 Responses（buildUpstreamRequest）。
-// target 已由 resolveAnthropicFingerprintTarget 解析。
-// 语义：总是写入归一化 UA（请求原本没带 UA 也补上），保证出站 UA 恒定；
-// 账号级显式 user-agent 覆写优先（管理员意图优先）。
-// 注：只归一 UA，不主动注入 originator（第三方 CN 上游对 originator 无要求，避免污染）。
-func applyFingerprintNormalizeUserAgent(account *Account, h http.Header, target anthropicFingerprintNormalizeMode) {
+// applyFingerprintNormalizeUserAgent 对 chat_completions 出站请求做身份头归一化
+// （sendCCUpstreamRequest 调用；Anthropic 直通在 NormalizeNativeAnthropicRequestHeaders 处理）。
+// 语义：总是写入归一化 UA（请求原本没带 UA 也补上），codex 形态配套写 originator；
+// 账号级显式覆写优先（管理员意图优先）。
+//
+// 设备标识无需额外收敛：CC 请求体由结构体重建（不含 client_metadata / prompt_cache_key），
+// 出站头只透传 openaiCCRawAllowedHeaders 白名单，installation / session / thread 等
+// Codex 设备标识在转换时已全部丢弃，上游不可见。
+func applyFingerprintNormalizeUserAgent(account *Account, h http.Header, target anthropicFingerprintNormalizeMode, inboundUA string) {
 	if h == nil || account == nil || target == anthropicFingerprintOff {
 		return
 	}
-	if _, overridden := account.HeaderOverrideValue("user-agent"); overridden {
+	// CC 构造器使用 Go 规范大小写（h.Set），与其后的 ApplyHeaderOverrides 一致。
+	if _, overridden := account.HeaderOverrideValue("user-agent"); !overridden {
+		if ua := anthropicFingerprintNormalizedUserAgent(target, inboundUA); ua != "" {
+			h.Set("user-agent", ua)
+		}
+	}
+	if target != anthropicFingerprintCodex {
 		return
 	}
-	if ua := anthropicFingerprintNormalizedUserAgent(target); ua != "" {
-		h.Set("user-agent", ua)
+	if _, overridden := account.HeaderOverrideValue("originator"); !overridden {
+		if originator := resolveCodexOutboundIdentity("").originator; originator != "" {
+			h.Set("originator", originator)
+		}
 	}
 }
 

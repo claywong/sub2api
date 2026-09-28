@@ -170,7 +170,7 @@
           </div>
           <p class="input-hint">{{ t(`admin.accounts.cnProviders.apiProtocol.${cnProtocolDescKey}Desc`) }}</p>
         </div>
-        <!-- Anthropic 指纹归一化（私有扩展，仅 CN 供应商 api_key）：两个独立开关 -->
+        <!-- Anthropic 指纹归一化（私有扩展，仅智谱 api_key）：四个独立开关 -->
         <div v-if="showAnthropicFingerprintNormalize">
           <label class="input-label">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.title') }}</label>
           <p class="input-hint mb-2">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.description') }}</p>
@@ -181,6 +181,14 @@
           <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
             <input v-model="anthropicFingerprintNormalizeCodex" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
             {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.codexSwitch') }}
+          </label>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintNormalizeZCode" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.zcodeSwitch') }}
+          </label>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintRestrictClients" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.restrictClientsSwitch') }}
           </label>
         </div>
         <OpenCodeGoProtocolRulesEditor
@@ -3749,6 +3757,8 @@ type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const anthropicFingerprintNormalizeCodex = ref(false)
 const anthropicFingerprintNormalizeClaudeCode = ref(false)
+const anthropicFingerprintNormalizeZCode = ref(false)
+const anthropicFingerprintRestrictClients = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3787,11 +3797,9 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
 
-// 指纹归一化仅对国产供应商 api_key 账号生效（与后端 accountAnthropicFingerprintTarget 的
-// IsCNProvider 判定一致）。不复用 isCNApiKeyAccount：它包含 opencode_go，而 OpenCode Go
-// 依赖规范 UA 过 Cloudflare，归一化覆盖 UA 会触发 403。
+// 指纹归一化仅对智谱 api_key 账号生效（与后端 accountAnthropicFingerprintTarget 一致）。
 const showAnthropicFingerprintNormalize = computed(
-  () => props.account?.type === 'apikey' && isCNProviderPlatform(props.account.platform)
+  () => props.account?.type === 'apikey' && props.account.platform === 'zhipu'
 )
 
 const openAIWSModeOptions = computed(() => [
@@ -4241,6 +4249,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexFingerprintMode.value = 'off'
   anthropicFingerprintNormalizeCodex.value = false
   anthropicFingerprintNormalizeClaudeCode.value = false
+  anthropicFingerprintNormalizeZCode.value = false
+  anthropicFingerprintRestrictClients.value = false
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4300,11 +4310,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         : 'off')
     }
     // Anthropic 指纹归一化（CN 供应商 apikey）：缺省/非法值按 off 呈现，
-    // 两个独立开关，兼容 bool 与字符串 "true"，与后端读取侧 opt-in 语义一致。
+    // 四个独立开关，兼容 bool 与字符串 "true"，与后端读取侧 opt-in 语义一致。
     anthropicFingerprintNormalizeCodex.value =
       extra?.anthropic_fingerprint_normalize_codex === true || extra?.anthropic_fingerprint_normalize_codex === 'true'
     anthropicFingerprintNormalizeClaudeCode.value =
       extra?.anthropic_fingerprint_normalize_claudecode === true || extra?.anthropic_fingerprint_normalize_claudecode === 'true'
+    anthropicFingerprintNormalizeZCode.value =
+      extra?.anthropic_fingerprint_normalize_zcode === true || extra?.anthropic_fingerprint_normalize_zcode === 'true'
+    anthropicFingerprintRestrictClients.value =
+      extra?.anthropic_fingerprint_restrict_clients === true || extra?.anthropic_fingerprint_restrict_clients === 'true'
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
     if (compactMappings && typeof compactMappings === 'object') {
@@ -5848,7 +5862,7 @@ const handleSubmit = async () => {
         }
       }
 
-      // Anthropic 指纹归一化：两个独立开关，false 不落键（opt-in），true 显式落键。
+      // Anthropic 指纹归一化：四个独立开关，false 不落键（opt-in），true 显式落键。
       if (anthropicFingerprintNormalizeCodex.value) {
         newExtra.anthropic_fingerprint_normalize_codex = true
       } else {
@@ -5858,6 +5872,16 @@ const handleSubmit = async () => {
         newExtra.anthropic_fingerprint_normalize_claudecode = true
       } else {
         delete newExtra.anthropic_fingerprint_normalize_claudecode
+      }
+      if (anthropicFingerprintNormalizeZCode.value) {
+        newExtra.anthropic_fingerprint_normalize_zcode = true
+      } else {
+        delete newExtra.anthropic_fingerprint_normalize_zcode
+      }
+      if (anthropicFingerprintRestrictClients.value) {
+        newExtra.anthropic_fingerprint_restrict_clients = true
+      } else {
+        delete newExtra.anthropic_fingerprint_restrict_clients
       }
 
       updatePayload.extra = newExtra

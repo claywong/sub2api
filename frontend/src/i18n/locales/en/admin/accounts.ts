@@ -133,9 +133,11 @@ export default {
         },
         anthropicFingerprintNormalize: {
           title: 'Anthropic Fingerprint Normalize',
-          description: 'Normalize outbound requests to a per-account canonical client identity (unify User-Agent with auto-synced version; the native Anthropic passthrough also rewrites device_id and strips the billing header) so account-sharing users converge to a single client at the provider. The two switches work independently, normalizing each inbound client type separately and combinable in any way. Applies to both the Anthropic passthrough and Chat Completions outbound paths of this CN provider account.',
-          claudecodeSwitch: 'Normalize Claude Code clients (→ claude-cli)',
-          codexSwitch: 'Normalize Codex clients (→ codex-tui)',
+          description: 'Normalize outbound requests to a per-account canonical client identity (unify User-Agent with auto-synced version; the native Anthropic passthrough also rewrites device_id and strips the billing header) so account-sharing users converge to a single client at the provider. The three normalize switches apply per inbound client type and combine freely; clients without an enabled switch are forwarded unchanged. "Block other clients" only allows Codex / Claude Code / ZCode. Zhipu accounts only; applies to both the Anthropic passthrough and Chat Completions outbound paths.',
+          claudecodeSwitch: 'Normalize Claude Code clients (CLI / IDE / SDK; unify version, keep entrypoint)',
+          codexSwitch: 'Normalize Codex clients (UA and originator, same as OpenAI OAuth convergence)',
+          zcodeSwitch: 'Normalize ZCode clients (unify ZCode version and runtime)',
+          restrictClientsSwitch: 'Block other clients (only Codex / Claude Code / ZCode allowed; others get 403)',
         },
         zhipuTeam: {
           title: 'Team Plan Organization / Project ID',

@@ -336,9 +336,11 @@ export default {
         },
         anthropicFingerprintNormalize: {
           title: 'Anthropic 指纹归一化',
-          description: '把出站请求归一为账号级统一客户端身份（统一 User-Agent，版本跟随自动同步；Anthropic 直通路径还会改写 device_id、剥离 billing header），让多用户共享账号在供应商侧收敛为同一客户端。两个开关独立生效，按入站客户端类型分别归一，可任意组合。对该 CN 供应商账号的 Anthropic 直通与 Chat Completions 出站路径均生效。',
-          claudecodeSwitch: '归一化 Claude Code 客户端（→ claude-cli）',
-          codexSwitch: '归一化 Codex 客户端（→ codex-tui）',
+          description: '把出站请求归一为账号级统一客户端身份（统一 User-Agent，版本跟随自动同步；Anthropic 直通路径还会改写 device_id、剥离 billing header），让多用户共享账号在供应商侧收敛为同一客户端。三个归一化开关按入站客户端类型分别生效，可任意组合，未开启的客户端原样转发；「禁止其他客户端」开启后只允许 Codex / Claude Code / ZCode 调用。仅智谱账号可用，对 Anthropic 直通与 Chat Completions 出站路径均生效。',
+          claudecodeSwitch: '归一化 Claude Code 客户端（CLI / IDE / SDK，统一版本、保留入口）',
+          codexSwitch: '归一化 Codex 客户端（UA 与 originator 同 OpenAI OAuth 收敛）',
+          zcodeSwitch: '归一化 ZCode 客户端（统一 ZCode 版本与运行时）',
+          restrictClientsSwitch: '禁止其他客户端（仅允许 Codex / Claude Code / ZCode，其他客户端返回 403）',
         },
         zhipuTeam: {
           title: '团队版组织 / 项目 ID',

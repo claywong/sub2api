@@ -992,8 +992,8 @@
         </div>
       </div>
 
-      <!-- Anthropic 指纹归一化（私有扩展，仅 CN 供应商 apikey） -->
-      <div v-if="allCNApiKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+      <!-- Anthropic 指纹归一化（私有扩展，仅智谱 apikey） -->
+      <div v-if="allZhipuApiKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.title') }}</label>
           <input
@@ -1014,6 +1014,14 @@
           <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
             <input v-model="anthropicFingerprintNormalizeCodex" type="checkbox" data-testid="bulk-anthropic-fp-codex" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
             {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.codexSwitch') }}
+          </label>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintNormalizeZCode" type="checkbox" data-testid="bulk-anthropic-fp-zcode" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.zcodeSwitch') }}
+          </label>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintRestrictClients" type="checkbox" data-testid="bulk-anthropic-fp-restrict-clients" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.restrictClientsSwitch') }}
           </label>
         </div>
       </div>
@@ -1530,7 +1538,6 @@ import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
   buildHeaderOverridesObject,
   isHeaderOverrideCapable,
-  isCNProviderPlatform,
   validateHeaderOverrideRows,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
@@ -1746,16 +1753,17 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
 
-// Anthropic 指纹归一化（私有扩展）：批量仅对全部为 CN 供应商 apikey 账号开放。
-// 批量弹窗不感知每个账号的 api_protocol，故仅按平台/类型放宽；后端读取侧
-// 对非直通账号即使误设也不会命中归一化调用点。
+// Anthropic 指纹归一化（私有扩展）：批量仅对全部为智谱 apikey 账号开放
+// （与后端 accountAnthropicFingerprintTarget 一致）。
 const enableAnthropicFingerprintNormalize = ref(false)
 const anthropicFingerprintNormalizeCodex = ref(false)
 const anthropicFingerprintNormalizeClaudeCode = ref(false)
-const allCNApiKey = computed(() => {
+const anthropicFingerprintNormalizeZCode = ref(false)
+const anthropicFingerprintRestrictClients = ref(false)
+const allZhipuApiKey = computed(() => {
   return (
-    targetSelectedPlatforms.value.length > 0 &&
-    targetSelectedPlatforms.value.every(p => isCNProviderPlatform(p)) &&
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'zhipu' &&
     targetSelectedTypes.value.length > 0 &&
     targetSelectedTypes.value.every(t => t === 'apikey')
   )
@@ -2157,10 +2165,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableAnthropicFingerprintNormalize.value) {
     const extra = ensureExtra()
-    // 批量走 JSONB 顶层合并，两个开关都必须显式落 bool（与 codex_fingerprint_mode 同理，
+    // 批量走 JSONB 顶层合并，四个开关都必须显式落 bool（与 codex_fingerprint_mode 同理，
     // 删键只表示"本次不更新"，清不掉账号已有值，且只删不写会让 payload 退化为空更新）。
     extra.anthropic_fingerprint_normalize_codex = anthropicFingerprintNormalizeCodex.value
     extra.anthropic_fingerprint_normalize_claudecode = anthropicFingerprintNormalizeClaudeCode.value
+    extra.anthropic_fingerprint_normalize_zcode = anthropicFingerprintNormalizeZCode.value
+    extra.anthropic_fingerprint_restrict_clients = anthropicFingerprintRestrictClients.value
   }
 
   if (enableOpenAICompactMode.value) {
@@ -2433,6 +2443,8 @@ watch(
       enableAnthropicFingerprintNormalize.value = false
       anthropicFingerprintNormalizeCodex.value = false
       anthropicFingerprintNormalizeClaudeCode.value = false
+      anthropicFingerprintNormalizeZCode.value = false
+      anthropicFingerprintRestrictClients.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

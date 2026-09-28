@@ -78,7 +78,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 
 	// 私有扩展：账号级配置开启时做出站指纹归一化（companion 实现见
 	// openai_gateway_messages_anthropic_native_fingerprint.go）。
-	// 两个独立开关 + 入站客户端类型解析归一化目标（此路为 /v1/messages，通常非 Codex）。
+	// 账号开关 + 入站客户端类型解析归一化目标。
 	fpNormalizeMode := accountAnthropicFingerprintTarget(account, c)
 	if fpNormalizeMode != anthropicFingerprintOff {
 		body = NormalizeNativeAnthropicRequestBody(account, body, fpNormalizeMode)
@@ -227,9 +227,10 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 
 	// 私有扩展：账号级配置开启时做出站 header 归一化（UA 统一、剥 billing header）。
 	// 三条 native anthropic 路（messages/responses/chat_completions）共用本构造器，
-	// 按两个独立开关 + 入站客户端类型选归一目标。
+	// 按账号开关 + 入站客户端类型选归一目标。
 	if fpTarget := accountAnthropicFingerprintTarget(account, c); fpTarget != anthropicFingerprintOff {
-		NormalizeNativeAnthropicRequestHeaders(account, req.Header, fpTarget)
+		NormalizeNativeAnthropicRequestHeaders(account, req.Header, fpTarget, inboundUserAgent(c))
+		applyZCodeIdentityHeaders(account, req.Header, fpTarget, inboundRequestHeaders(c))
 	}
 
 	return req, body, nil

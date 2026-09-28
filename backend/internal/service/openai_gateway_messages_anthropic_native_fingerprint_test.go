@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/tidwall/gjson"
 )
 
@@ -147,9 +148,9 @@ func TestNormalizeNativeAnthropicRequestHeaders(t *testing.T) {
 	h.Set("User-Agent", "some-sdk/0.1.2")
 	h.Set("x-anthropic-billing-header", "cc_version=2.1.81.a1b")
 
-	NormalizeNativeAnthropicRequestHeaders(account, h, anthropicFingerprintClaudeCode)
+	NormalizeNativeAnthropicRequestHeaders(account, h, anthropicFingerprintClaudeCode, "")
 
-	wantUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode)
+	wantUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode, "")
 	if got := h.Get("User-Agent"); got != wantUA {
 		t.Fatalf("User-Agent = %q, want %q", got, wantUA)
 	}
@@ -169,7 +170,7 @@ func TestNormalizeNativeAnthropicRequestHeaders(t *testing.T) {
 	h2.Set("x-anthropic-billing-header", "cc_version=2.1.81.a1b")
 	// 真实链路顺序：先应用账号级覆写，再做归一化
 	overridden.ApplyHeaderOverrides(h2)
-	NormalizeNativeAnthropicRequestHeaders(overridden, h2, anthropicFingerprintClaudeCode)
+	NormalizeNativeAnthropicRequestHeaders(overridden, h2, anthropicFingerprintClaudeCode, "")
 	if got := h2.Get("User-Agent"); got != "claude-cli/9.9.9" {
 		t.Fatalf("account-level UA override must win, got %q", got)
 	}
@@ -180,7 +181,7 @@ func TestNormalizeNativeAnthropicRequestHeaders(t *testing.T) {
 	// off 模式不改动
 	h3 := http.Header{}
 	h3.Set("User-Agent", "some-sdk/0.1.2")
-	NormalizeNativeAnthropicRequestHeaders(account, h3, anthropicFingerprintOff)
+	NormalizeNativeAnthropicRequestHeaders(account, h3, anthropicFingerprintOff, "")
 	if got := h3.Get("User-Agent"); got != "some-sdk/0.1.2" {
 		t.Fatalf("off mode must not touch UA, got %q", got)
 	}
@@ -188,40 +189,97 @@ func TestNormalizeNativeAnthropicRequestHeaders(t *testing.T) {
 	// codex 模式：UA 归一为 codex-tui 形态（非 claude-cli）
 	h4 := http.Header{}
 	h4.Set("User-Agent", "some-sdk/0.1.2")
-	NormalizeNativeAnthropicRequestHeaders(account, h4, anthropicFingerprintCodex)
-	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex)
+	NormalizeNativeAnthropicRequestHeaders(account, h4, anthropicFingerprintCodex, "")
+	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex, "")
 	if got := h4.Get("User-Agent"); got != codexUA {
 		t.Fatalf("codex UA = %q, want %q", got, codexUA)
 	}
 
 	// nil 安全
-	NormalizeNativeAnthropicRequestHeaders(nil, nil, anthropicFingerprintClaudeCode)
-	NormalizeNativeAnthropicRequestHeaders(nil, h2, anthropicFingerprintClaudeCode)
+	NormalizeNativeAnthropicRequestHeaders(nil, nil, anthropicFingerprintClaudeCode, "")
+	NormalizeNativeAnthropicRequestHeaders(nil, h2, anthropicFingerprintClaudeCode, "")
 }
 
 func TestResolveAnthropicFingerprintTarget(t *testing.T) {
+	all := anthropicFingerprintSwitches{codex: true, claudeCode: true, zcode: true}
 	cases := []struct {
-		name     string
-		codexOn  bool
-		claudeOn bool
-		isCodex  bool
-		want     anthropicFingerprintNormalizeMode
+		name   string
+		sw     anthropicFingerprintSwitches
+		client anthropicFingerprintClient
+		want   anthropicFingerprintNormalizeMode
 	}{
-		{"both off, codex client", false, false, true, anthropicFingerprintOff},
-		{"both off, cc client", false, false, false, anthropicFingerprintOff},
-		{"codex on, codex client -> codex", true, false, true, anthropicFingerprintCodex},
-		{"codex on, cc client -> off (cc switch off)", true, false, false, anthropicFingerprintOff},
-		{"cc on, cc client -> claudecode", false, true, false, anthropicFingerprintClaudeCode},
-		{"cc on, codex client -> off (codex switch off)", false, true, true, anthropicFingerprintOff},
-		{"both on, codex client -> codex", true, true, true, anthropicFingerprintCodex},
-		{"both on, cc client -> claudecode", true, true, false, anthropicFingerprintClaudeCode},
+		{"全关", anthropicFingerprintSwitches{}, anthropicFingerprintClientClaudeCode, anthropicFingerprintOff},
+		{"codex 开 + codex 客户端", anthropicFingerprintSwitches{codex: true}, anthropicFingerprintClientCodex, anthropicFingerprintCodex},
+		{"codex 开 + claude 客户端 → off", anthropicFingerprintSwitches{codex: true}, anthropicFingerprintClientClaudeCode, anthropicFingerprintOff},
+		{"claudecode 开 + claude 客户端", anthropicFingerprintSwitches{claudeCode: true}, anthropicFingerprintClientClaudeCode, anthropicFingerprintClaudeCode},
+		{"claudecode 开 + zcode 客户端 → off", anthropicFingerprintSwitches{claudeCode: true}, anthropicFingerprintClientZCode, anthropicFingerprintOff},
+		{"zcode 开 + zcode 客户端", anthropicFingerprintSwitches{zcode: true}, anthropicFingerprintClientZCode, anthropicFingerprintZCode},
+		{"全开 + codex", all, anthropicFingerprintClientCodex, anthropicFingerprintCodex},
+		{"全开 + claude", all, anthropicFingerprintClientClaudeCode, anthropicFingerprintClaudeCode},
+		{"全开 + other 客户端 → off（不归一）", all, anthropicFingerprintClientOther, anthropicFingerprintOff},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := resolveAnthropicFingerprintTarget(tc.codexOn, tc.claudeOn, tc.isCodex); got != tc.want {
-				t.Fatalf("resolve(codex=%v, cc=%v, isCodex=%v) = %q, want %q", tc.codexOn, tc.claudeOn, tc.isCodex, got, tc.want)
+			if got := resolveAnthropicFingerprintTarget(tc.sw, tc.client); got != tc.want {
+				t.Fatalf("resolve = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestClassifyAnthropicFingerprintClient(t *testing.T) {
+	cases := []struct {
+		ua, originator string
+		want           anthropicFingerprintClient
+	}{
+		{"claude-cli/2.1.200 (external, cli)", "", anthropicFingerprintClientClaudeCode},
+		{"claude-cli/2.1.200 (external, claude-vscode, agent-sdk/0.2.1)", "", anthropicFingerprintClientClaudeCode},
+		{"claude-cli/2.1.200 (external, sdk-ts, agent-sdk/0.2.1)", "", anthropicFingerprintClientClaudeCode},
+		{"ZCode/3.14.1 ai-sdk/provider-utils/4.0.27 runtime/node.js/24", "", anthropicFingerprintClientZCode},
+		{"codex_cli_rs/0.125.0 (Mac OS X arm64) dumb (codex_cli_rs; 0.125.0)", "", anthropicFingerprintClientCodex},
+		{"codex-tui/0.125.0 (Mac OS X arm64) ghostty/1.0 (codex-tui; 0.125.0)", "", anthropicFingerprintClientCodex},
+		{"some-sdk/1.0", "codex_cli_rs", anthropicFingerprintClientCodex},
+		{"litellm/1.70.0", "", anthropicFingerprintClientOther},
+		{"curl/8.0", "", anthropicFingerprintClientOther},
+		{"", "", anthropicFingerprintClientOther},
+	}
+	for _, tc := range cases {
+		if got := classifyAnthropicFingerprintClient(tc.ua, tc.originator); got != tc.want {
+			t.Fatalf("classify(%q, %q) = %d, want %d", tc.ua, tc.originator, got, tc.want)
+		}
+	}
+}
+
+func TestAnthropicFingerprintNormalizedUserAgentRewrite(t *testing.T) {
+	v := claude.EffectiveCLIVersion()
+
+	// claudecode：只替换版本段，入口段保留
+	for _, tc := range []struct{ in, want string }{
+		{"claude-cli/2.1.100 (external, cli)", "claude-cli/" + v + " (external, cli)"},
+		{"claude-cli/2.1.100 (external, claude-vscode, agent-sdk/0.2.1)", "claude-cli/" + v + " (external, claude-vscode, agent-sdk/0.2.1)"},
+		{"claude-cli/2.1.100-beta.1 (external, sdk-ts, agent-sdk/0.2.1)", "claude-cli/" + v + " (external, sdk-ts, agent-sdk/0.2.1)"},
+		{"litellm/1.70.0", claude.DefaultUserAgent()},
+		{"", claude.DefaultUserAgent()},
+	} {
+		if got := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode, tc.in); got != tc.want {
+			t.Fatalf("claudecode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+
+	// zcode：替换 ZCode 版本与 node 运行时，ai-sdk 段保留；非 ZCode 入站返回空
+	for _, tc := range []struct{ in, want string }{
+		{"ZCode/3.11.2 ai-sdk/provider-utils/4.0.27 runtime/node.js/22", "ZCode/" + zcodeCanonicalVersion + " ai-sdk/provider-utils/4.0.27 runtime/node.js/" + zcodeCanonicalNodeRuntime},
+		{"ZCode/3.14.1 ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/24", "ZCode/" + zcodeCanonicalVersion + " ai/6.0.193 ai-sdk/provider-utils/4.0.27 runtime/node.js/" + zcodeCanonicalNodeRuntime},
+		{"litellm/1.70.0", ""},
+	} {
+		if got := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintZCode, tc.in); got != tc.want {
+			t.Fatalf("zcode(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+
+	// codex：与 OAuth 同源的规范身份
+	if got, want := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex, "litellm/1.0"), resolveCodexOutboundIdentity("").userAgent; got != want {
+		t.Fatalf("codex UA = %q, want %q", got, want)
 	}
 }
 
@@ -231,16 +289,16 @@ func TestApplyFingerprintNormalizeUserAgent(t *testing.T) {
 	// claudecode 目标 → claude-cli UA
 	h := http.Header{}
 	h.Set("user-agent", "python-requests/2.31")
-	applyFingerprintNormalizeUserAgent(account, h, anthropicFingerprintClaudeCode)
-	if got, want := h.Get("user-agent"), anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode); got != want {
+	applyFingerprintNormalizeUserAgent(account, h, anthropicFingerprintClaudeCode, "")
+	if got, want := h.Get("user-agent"), anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode, ""); got != want {
 		t.Fatalf("claudecode UA = %q, want %q", got, want)
 	}
 
 	// codex 目标 → codex-tui UA（与 claudecode 不同）
 	h2 := http.Header{}
 	h2.Set("user-agent", "python-requests/2.31")
-	applyFingerprintNormalizeUserAgent(account, h2, anthropicFingerprintCodex)
-	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(account, h2, anthropicFingerprintCodex, "")
+	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex, "")
 	if got := h2.Get("user-agent"); got != codexUA {
 		t.Fatalf("codex UA = %q, want %q", got, codexUA)
 	}
@@ -248,7 +306,7 @@ func TestApplyFingerprintNormalizeUserAgent(t *testing.T) {
 	// off 目标 → 不改
 	h3 := http.Header{}
 	h3.Set("user-agent", "python-requests/2.31")
-	applyFingerprintNormalizeUserAgent(account, h3, anthropicFingerprintOff)
+	applyFingerprintNormalizeUserAgent(account, h3, anthropicFingerprintOff, "")
 	if got := h3.Get("user-agent"); got != "python-requests/2.31" {
 		t.Fatalf("off must not touch UA, got %q", got)
 	}
@@ -262,14 +320,14 @@ func TestApplyFingerprintNormalizeUserAgent(t *testing.T) {
 	}
 	h4 := http.Header{}
 	h4.Set("user-agent", "python-requests/2.31")
-	applyFingerprintNormalizeUserAgent(overridden, h4, anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(overridden, h4, anthropicFingerprintCodex, "")
 	if got := h4.Get("user-agent"); got != "python-requests/2.31" {
 		t.Fatalf("override account must skip normalize, got %q", got)
 	}
 
 	// nil 安全
-	applyFingerprintNormalizeUserAgent(nil, h4, anthropicFingerprintCodex)
-	applyFingerprintNormalizeUserAgent(account, nil, anthropicFingerprintCodex)
+	applyFingerprintNormalizeUserAgent(nil, h4, anthropicFingerprintCodex, "")
+	applyFingerprintNormalizeUserAgent(account, nil, anthropicFingerprintCodex, "")
 }
 
 func TestAnthropicFingerprintNormalizeSwitchesFromExtra(t *testing.T) {

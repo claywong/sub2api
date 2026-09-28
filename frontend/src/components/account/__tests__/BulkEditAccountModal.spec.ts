@@ -226,6 +226,29 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(true)
   })
 
+  // 批量走 JSONB 顶层合并：勾选「编辑该项」后三个归一化开关与客户端准入开关都必须显式落 bool。
+  it('智谱 API Key 批量编辑指纹归一化时四个开关显式提交', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['zhipu'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-anthropic-fingerprint-normalize-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-anthropic-fp-zcode"]').setValue(true)
+    await wrapper.get('[data-testid="bulk-anthropic-fp-restrict-clients"]').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        anthropic_fingerprint_normalize_codex: false,
+        anthropic_fingerprint_normalize_claudecode: false,
+        anthropic_fingerprint_normalize_zcode: true,
+        anthropic_fingerprint_restrict_clients: true
+      }
+    })
+  })
+
   it.each(['kimi', 'zhipu', 'deepseek', 'minimax'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
     const wrapper = mountModal({
       selectedPlatforms: [platform],

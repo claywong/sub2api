@@ -1361,7 +1361,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		forwardBody := mappedBodyForMessages(channelMappingMsg.Mapped, channelMappingMsg.MappedModel)
 		writerSizeBeforeForward := c.Writer.Size()
 		// 私有扩展：Anthropic 直通指纹归一化已改为账号级配置
-		// （account.Extra["anthropic_fingerprint_normalize"]），转发层直接读账号，
+		// （account.Extra["anthropic_fingerprint_normalize_*"]），转发层直接读账号，
 		// 不再从分组注入。companion 实现见 openai_gateway_messages_anthropic_native_fingerprint.go
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {

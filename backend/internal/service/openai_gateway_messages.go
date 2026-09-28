@@ -53,6 +53,12 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}
+	// 私有扩展：智谱账号客户端准入（见 openai_gateway_messages_anthropic_native_fingerprint_target.go）。
+	if shouldRejectAnthropicFingerprintClient(account, c) {
+		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+		writeAnthropicError(c, http.StatusForbidden, "permission_error", anthropicFingerprintRestrictedClientMessage)
+		return nil, errAnthropicFingerprintClientRestricted
+	}
 
 	// OpenCode Go：按模型原生协议分流。规则未命中兜底 Chat Completions。
 	if account.IsOpenCodeGo() {

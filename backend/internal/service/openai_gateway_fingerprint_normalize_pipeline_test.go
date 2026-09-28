@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -51,6 +52,12 @@ func fpPipelineContext(t *testing.T, userAgent, originator string) *gin.Context 
 // sendCCAndCaptureUA 经 sendCCUpstreamRequest 发出请求，返回上游收到的 User-Agent。
 func sendCCAndCaptureUA(t *testing.T, account *Account, c *gin.Context, targetURL string) string {
 	t.Helper()
+	return sendCCAndCaptureHeaders(t, account, c, targetURL).Get("User-Agent")
+}
+
+// sendCCAndCaptureHeaders 经 sendCCUpstreamRequest 发出请求，返回上游收到的请求头。
+func sendCCAndCaptureHeaders(t *testing.T, account *Account, c *gin.Context, targetURL string) http.Header {
+	t.Helper()
 	upstream := &openCodeSessionHTTPUpstream{}
 	svc := openCodeSessionTestService()
 	svc.httpUpstream = upstream
@@ -61,14 +68,23 @@ func sendCCAndCaptureUA(t *testing.T, account *Account, c *gin.Context, targetUR
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.NotNil(t, upstream.request)
-	return upstream.request.Header.Get("User-Agent")
+	return upstream.request.Header
+}
+
+// fpPipelineAccountWith 构造开启指定 Extra 开关键的智谱账号。
+func fpPipelineAccountWith(keys ...string) *Account {
+	account := fpPipelineAccount(PlatformZhipu, false, false)
+	for _, key := range keys {
+		account.Extra[key] = true
+	}
+	return account
 }
 
 // adaptive 智谱账号的 Codex 流量（/v1/responses 转 chat_completions）走 CC 出站路径。
 func TestFingerprintNormalizeCCPipeline(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex)
-	claudeUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode)
+	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex, "")
+	claudeUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode, "")
 	require.NotEmpty(t, codexUA)
 	require.NotEmpty(t, claudeUA)
 
@@ -122,31 +138,41 @@ func TestFingerprintNormalizeSkipsOpenCodeGo(t *testing.T) {
 	require.Equal(t, anthropicFingerprintOff, accountAnthropicFingerprintTarget(enabled, fpPipelineContext(t, fpPipelineCodexUA, "codex-tui")))
 }
 
-// kimi / deepseek / minimax 的 adaptive 账号，Codex 流量走原生 Responses 端点（buildUpstreamRequest）。
-func TestFingerprintNormalizeNativeCNResponses(t *testing.T) {
+// 生效范围仅智谱：其他国产供应商即使 extra 里写了开关也不归一。
+func TestFingerprintNormalizeOnlyZhipu(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	codexUA := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintCodex)
-	svc := openCodeSessionTestService()
-	body := []byte(`{"model":"deepseek-v4","input":"hello"}`)
 
-	for _, platform := range []string{PlatformDeepseek, PlatformKimi, PlatformMiniMax} {
+	for _, platform := range []string{PlatformKimi, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformOpenAI} {
 		t.Run(platform, func(t *testing.T) {
-			account := fpPipelineAccount(platform, true, false)
-			require.True(t, account.UsesNativeCNResponses(), "前置条件：该平台 adaptive 账号应走原生 Responses")
-
-			c := fpPipelineContext(t, fpPipelineCodexUA, "codex-tui")
-			req, err := svc.buildUpstreamRequest(context.Background(), c, account, body, "sk-test", false, "", false)
-			require.NoError(t, err)
-			require.Equal(t, codexUA, req.Header.Get("User-Agent"))
+			account := fpPipelineAccount(platform, true, true)
+			for _, ua := range []string{fpPipelineCodexUA, fpPipelineClaudeUA} {
+				c := fpPipelineContext(t, ua, "")
+				require.Equal(t, anthropicFingerprintOff, accountAnthropicFingerprintTarget(account, c))
+			}
 		})
 	}
 
-	t.Run("开关关闭时 UA 原样", func(t *testing.T) {
-		account := fpPipelineAccount(PlatformDeepseek, false, false)
+	t.Run("CC 出站：DeepSeek 开关全开 UA 仍原样", func(t *testing.T) {
 		c := fpPipelineContext(t, fpPipelineCodexUA, "codex-tui")
-		req, err := svc.buildUpstreamRequest(context.Background(), c, account, body, "sk-test", false, "", false)
+		got := sendCCAndCaptureUA(t, fpPipelineAccount(PlatformDeepseek, true, true), c, "https://api.deepseek.com/chat/completions")
+		require.Equal(t, fpPipelineCodexUA, got)
+	})
+
+	t.Run("原生 Responses 出站：DeepSeek 开关全开 UA 仍原样", func(t *testing.T) {
+		account := fpPipelineAccount(PlatformDeepseek, true, true)
+		require.True(t, account.UsesNativeCNResponses(), "前置条件：DeepSeek adaptive 账号走原生 Responses")
+		c := fpPipelineContext(t, fpPipelineCodexUA, "codex-tui")
+		req, err := openCodeSessionTestService().buildUpstreamRequest(
+			context.Background(), c, account, []byte(`{"model":"deepseek-v4","input":"hello"}`), "sk-test", false, "", false,
+		)
 		require.NoError(t, err)
 		require.Equal(t, fpPipelineCodexUA, req.Header.Get("User-Agent"))
+	})
+
+	t.Run("智谱开关全开才生效", func(t *testing.T) {
+		account := fpPipelineAccount(PlatformZhipu, true, true)
+		require.Equal(t, anthropicFingerprintCodex, accountAnthropicFingerprintTarget(account, fpPipelineContext(t, fpPipelineCodexUA, "codex-tui")))
+		require.Equal(t, anthropicFingerprintClaudeCode, accountAnthropicFingerprintTarget(account, fpPipelineContext(t, fpPipelineClaudeUA, "")))
 	})
 }
 
@@ -162,18 +188,19 @@ func TestNormalizeNativeAnthropicStainlessHeaders(t *testing.T) {
 	}
 
 	t.Run("claudecode：已有身份键改写为规范值，只改不增，逐请求键不动", func(t *testing.T) {
+		resetClaudeCodeStainlessLearned(t)
 		h := stainless()
-		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(21), h, anthropicFingerprintClaudeCode)
-		require.Equal(t, "0.94.0", getHeaderRaw(h, "x-stainless-package-version"))
-		require.Equal(t, "Linux", getHeaderRaw(h, "x-stainless-os"))
-		require.Equal(t, "v24.3.0", getHeaderRaw(h, "x-stainless-runtime-version"))
+		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(21), h, anthropicFingerprintClaudeCode, "")
+		require.Equal(t, claudeCodeStainlessFallbackPackageVer, getHeaderRaw(h, "x-stainless-package-version"))
+		require.Equal(t, claudeCodeStainlessOS, getHeaderRaw(h, "x-stainless-os"))
+		require.Equal(t, claudeCodeStainlessFallbackRuntimeVer, getHeaderRaw(h, "x-stainless-runtime-version"))
 		require.Equal(t, "", getHeaderRaw(h, "x-stainless-arch"), "请求里没有的身份键不应新增")
 		require.Equal(t, "2", getHeaderRaw(h, "x-stainless-retry-count"), "retry-count 是逐请求值，不属于身份")
 	})
 
 	t.Run("codex：删除全部 x-stainless-*", func(t *testing.T) {
 		h := stainless()
-		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(22), h, anthropicFingerprintCodex)
+		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(22), h, anthropicFingerprintCodex, "")
 		for name := range h {
 			require.NotContains(t, name, "tainless", "codex 目标下不应残留 x-stainless 头：%s", name)
 		}
@@ -188,22 +215,22 @@ func TestNormalizeNativeAnthropicStainlessHeaders(t *testing.T) {
 		}
 		h := stainless()
 		account.ApplyHeaderOverrides(h)
-		NormalizeNativeAnthropicRequestHeaders(account, h, anthropicFingerprintCodex)
+		NormalizeNativeAnthropicRequestHeaders(account, h, anthropicFingerprintCodex, "")
 		require.Equal(t, "Windows", getHeaderRaw(h, "x-stainless-os"))
 		require.Equal(t, "", getHeaderRaw(h, "x-stainless-package-version"))
 	})
 
 	t.Run("UA 总是写入，且不残留不同大小写的旧 UA", func(t *testing.T) {
-		want := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode)
+		want := anthropicFingerprintNormalizedUserAgent(anthropicFingerprintClaudeCode, "")
 
 		missing := http.Header{}
-		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(24), missing, anthropicFingerprintClaudeCode)
+		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(24), missing, anthropicFingerprintClaudeCode, "")
 		require.Equal(t, want, getHeaderRaw(missing, "user-agent"), "请求原本没带 UA 也要补上")
 
 		dup := http.Header{}
 		dup["user-agent"] = []string{"raw-lower/1.0"}
 		dup.Set("User-Agent", "canonical/1.0")
-		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(25), dup, anthropicFingerprintClaudeCode)
+		NormalizeNativeAnthropicRequestHeaders(fpNormalizeTestAccount(25), dup, anthropicFingerprintClaudeCode, "")
 		var values []string
 		for name, vals := range dup {
 			if http.CanonicalHeaderKey(name) == "User-Agent" {
@@ -211,5 +238,219 @@ func TestNormalizeNativeAnthropicStainlessHeaders(t *testing.T) {
 			}
 		}
 		require.Equal(t, []string{want}, values)
+	})
+}
+
+// ZCode 开关、IDE 入口保留、Codex originator 配套。
+func TestFingerprintNormalizeClientScopes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	codexIdentity := resolveCodexOutboundIdentity("")
+	const vscodeUA = "claude-cli/2.1.100 (external, claude-vscode, agent-sdk/0.2.1)"
+	const zcodeUA = "ZCode/3.11.2 ai-sdk/provider-utils/4.0.27 runtime/node.js/22"
+
+	t.Run("codex：UA 与 originator 成对写入（OAuth 同源）", func(t *testing.T) {
+		c := fpPipelineContext(t, fpPipelineCodexUA, "codex_cli_rs")
+		h := sendCCAndCaptureHeaders(t, fpPipelineAccountWith(anthropicFingerprintNormalizeCodexExtraKey), c, fpPipelineZhipuCC)
+		require.Equal(t, codexIdentity.userAgent, h.Get("User-Agent"))
+		require.Equal(t, codexIdentity.originator, h.Get("originator"))
+	})
+
+	t.Run("claudecode：IDE 入口段保留，只统一版本", func(t *testing.T) {
+		account := fpPipelineAccountWith(anthropicFingerprintNormalizeClaudeCodeExtraKey)
+		h := http.Header{}
+		h.Set("User-Agent", vscodeUA)
+		NormalizeNativeAnthropicRequestHeaders(account, h, accountAnthropicFingerprintTarget(account, fpPipelineContext(t, vscodeUA, "")), vscodeUA)
+		require.Equal(t, "claude-cli/"+claude.EffectiveCLIVersion()+" (external, claude-vscode, agent-sdk/0.2.1)", getHeaderRaw(h, "user-agent"))
+		require.Empty(t, getHeaderRaw(h, "originator"), "非 codex 形态不写 originator")
+	})
+
+	t.Run("claudecode 开关不覆盖 other 客户端", func(t *testing.T) {
+		c := fpPipelineContext(t, "litellm/1.70.0", "")
+		got := sendCCAndCaptureUA(t, fpPipelineAccountWith(anthropicFingerprintNormalizeClaudeCodeExtraKey), c, fpPipelineZhipuCC)
+		require.Equal(t, "litellm/1.70.0", got)
+	})
+
+	t.Run("zcode：版本与 node 运行时统一", func(t *testing.T) {
+		c := fpPipelineContext(t, zcodeUA, "")
+		got := sendCCAndCaptureUA(t, fpPipelineAccountWith(anthropicFingerprintNormalizeZCodeExtraKey), c, fpPipelineZhipuCC)
+		require.Equal(t, "ZCode/"+zcodeCanonicalVersion+" ai-sdk/provider-utils/4.0.27 runtime/node.js/"+zcodeCanonicalNodeRuntime, got)
+	})
+
+	t.Run("账号级 originator 覆写优先", func(t *testing.T) {
+		account := fpPipelineAccountWith(anthropicFingerprintNormalizeCodexExtraKey)
+		account.Credentials[credKeyHeaderOverrideEnabled] = true
+		account.Credentials[credKeyHeaderOverrides] = map[string]any{"originator": "admin-pinned"}
+		c := fpPipelineContext(t, fpPipelineCodexUA, "codex_cli_rs")
+		require.Equal(t, "admin-pinned", getHeaderRaw(sendCCAndCaptureHeaders(t, account, c, fpPipelineZhipuCC), "originator"))
+	})
+}
+
+// 客户端准入：开启后只允许 Codex / Claude Code / ZCode，其他客户端 403。
+func TestAnthropicFingerprintRestrictClients(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const zcodeUA = "ZCode/3.14.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/24"
+	restricted := fpPipelineAccountWith(anthropicFingerprintRestrictClientsExtraKey)
+
+	t.Run("判定：三类客户端放行，其他拒绝", func(t *testing.T) {
+		for _, ua := range []string{fpPipelineCodexUA, fpPipelineClaudeUA, zcodeUA} {
+			require.False(t, shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, ua, "")), ua)
+		}
+		require.False(t, shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, "some-sdk/1.0", "codex_cli_rs")), "originator 识别为 Codex")
+		for _, ua := range []string{"litellm/1.70.0", "curl/8.0", ""} {
+			require.True(t, shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, ua, "")), ua)
+		}
+	})
+
+	t.Run("默认关闭不拦截", func(t *testing.T) {
+		require.False(t, shouldRejectAnthropicFingerprintClient(fpPipelineAccountWith(), fpPipelineContext(t, "litellm/1.70.0", "")))
+	})
+
+	t.Run("非智谱账号即使写了开关也不拦截", func(t *testing.T) {
+		account := fpPipelineAccount(PlatformDeepseek, false, false)
+		account.Extra[anthropicFingerprintRestrictClientsExtraKey] = true
+		require.False(t, shouldRejectAnthropicFingerprintClient(account, fpPipelineContext(t, "litellm/1.70.0", "")))
+	})
+
+	t.Run("/v1/messages 入口：403 且不请求上游", func(t *testing.T) {
+		c := fpPipelineContext(t, "litellm/1.70.0", "")
+		upstream := &openCodeSessionHTTPUpstream{}
+		svc := openCodeSessionTestService()
+		svc.httpUpstream = upstream
+		body := []byte(`{"model":"glm-5.1","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`)
+		_, err := svc.ForwardAsAnthropic(context.Background(), c, restricted, body, "", "")
+		require.ErrorIs(t, err, errAnthropicFingerprintClientRestricted)
+		require.Equal(t, http.StatusForbidden, c.Writer.Status())
+		require.Nil(t, upstream.request, "被拒绝的请求不应发往上游")
+	})
+
+	t.Run("/v1/chat/completions 入口：403 且不请求上游", func(t *testing.T) {
+		c := fpPipelineContext(t, "litellm/1.70.0", "")
+		upstream := &openCodeSessionHTTPUpstream{}
+		svc := openCodeSessionTestService()
+		svc.httpUpstream = upstream
+		body := []byte(`{"model":"glm-5.1","messages":[{"role":"user","content":"hi"}]}`)
+		_, err := svc.ForwardAsChatCompletions(context.Background(), c, restricted, body, "", "")
+		require.ErrorIs(t, err, errAnthropicFingerprintClientRestricted)
+		require.Equal(t, http.StatusForbidden, c.Writer.Status())
+		require.Nil(t, upstream.request)
+	})
+
+	t.Run("/v1/responses 入口：403 且不请求上游", func(t *testing.T) {
+		c := fpPipelineContext(t, "litellm/1.70.0", "")
+		upstream := &openCodeSessionHTTPUpstream{}
+		svc := openCodeSessionTestService()
+		svc.httpUpstream = upstream
+		_, err := svc.Forward(context.Background(), c, restricted, []byte(`{"model":"glm-5.1","input":"hi"}`))
+		require.ErrorIs(t, err, errAnthropicFingerprintClientRestricted)
+		require.Equal(t, http.StatusForbidden, c.Writer.Status())
+		require.Nil(t, upstream.request)
+	})
+}
+
+// resetClaudeCodeStainlessLearned 清空学习到的 stainless 版本，测试结束后恢复。
+func resetClaudeCodeStainlessLearned(t *testing.T) {
+	t.Helper()
+	claudeCodeStainlessLearnedMu.Lock()
+	saved := claudeCodeStainlessLearned
+	claudeCodeStainlessLearned = claudeCodeStainlessVersions{}
+	claudeCodeStainlessLearnedMu.Unlock()
+	t.Cleanup(func() {
+		claudeCodeStainlessLearnedMu.Lock()
+		claudeCodeStainlessLearned = saved
+		claudeCodeStainlessLearnedMu.Unlock()
+	})
+}
+
+// x-stainless 版本类规范值跟随生效 CLI 版本：从同版本真实客户端学习，否则回退兜底值。
+func TestClaudeCodeStainlessVersionLearning(t *testing.T) {
+	resetClaudeCodeStainlessLearned(t)
+	effective := claude.EffectiveCLIVersion()
+	inbound := func(pkg, runtime string) http.Header {
+		h := http.Header{}
+		setHeaderRaw(h, resolveWireCasing("x-stainless-package-version"), pkg)
+		setHeaderRaw(h, resolveWireCasing("x-stainless-runtime-version"), runtime)
+		return h
+	}
+	canonical := func() (string, string) {
+		c := claudeCodeCanonicalStainlessHeaders()
+		return c[claudeCodeStainlessPackageVersionHeader], c[claudeCodeStainlessRuntimeVersionHeader]
+	}
+
+	pkg, runtime := canonical()
+	require.Equal(t, claudeCodeStainlessFallbackPackageVer, pkg, "未学习时回退兜底值")
+	require.Equal(t, claudeCodeStainlessFallbackRuntimeVer, runtime)
+
+	learnClaudeCodeStainlessVersions("claude-cli/0.0.1 (external, cli)", inbound("9.9.9", "v99.0.0"))
+	pkg, _ = canonical()
+	require.Equal(t, claudeCodeStainlessFallbackPackageVer, pkg, "非生效版本的客户端不参与学习")
+
+	learnClaudeCodeStainlessVersions("claude-cli/"+effective+" (external, cli)", inbound("bad", "v1"))
+	pkg, _ = canonical()
+	require.Equal(t, claudeCodeStainlessFallbackPackageVer, pkg, "畸形值不参与学习")
+
+	learnClaudeCodeStainlessVersions("claude-cli/"+effective+" (external, claude-vscode, agent-sdk/0.2.1)", inbound("0.120.0", "v26.5.0"))
+	pkg, runtime = canonical()
+	require.Equal(t, "0.120.0", pkg, "同生效版本的真实客户端被学习")
+	require.Equal(t, "v26.5.0", runtime)
+
+	claudeCodeStainlessLearnedMu.Lock()
+	claudeCodeStainlessLearned.cliVersion = "0.0.1"
+	claudeCodeStainlessLearnedMu.Unlock()
+	pkg, _ = canonical()
+	require.Equal(t, claudeCodeStainlessFallbackPackageVer, pkg, "生效版本切换后学习值失效，回退兜底值")
+}
+
+// 开 ZCode 开关后补齐 X-ZCode-* 身份头，并删除 x-stainless-*。
+func TestZCodeIdentityHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const zcodeUA = "ZCode/3.14.1 ai-sdk/provider-utils/4.0.27 runtime/node.js/24"
+	account := fpPipelineAccountWith(anthropicFingerprintNormalizeZCodeExtraKey)
+
+	t.Run("CC 出站：规范身份头 + 入站会话 / 请求 ID 沿用", func(t *testing.T) {
+		c := fpPipelineContext(t, zcodeUA, "")
+		c.Request.Header.Set("X-Title", zcodeTitleCLI)
+		c.Request.Header.Set("X-Session-Id", "sess-inbound")
+		c.Request.Header.Set("X-Request-Id", "req-inbound")
+		c.Request.Header.Set("X-Platform", "win32-x64")
+		h := sendCCAndCaptureHeaders(t, account, c, fpPipelineZhipuCC)
+		require.Equal(t, zcodeCanonicalVersion, h.Get("X-ZCode-App-Version"))
+		require.Equal(t, zcodeTitleCLI, h.Get("X-Title"), "保留入站的 CLI 身份")
+		require.Equal(t, zcodeReferer, h.Get("HTTP-Referer"))
+		require.Equal(t, zcodeCanonicalPlatform, h.Get("X-Platform"), "设备属性统一为账号级值")
+		require.Equal(t, zcodeCanonicalTimezone, h.Get("X-Client-Timezone"))
+		require.Equal(t, "sess-inbound", h.Get("X-Session-Id"))
+		require.Equal(t, "req-inbound", h.Get("X-Request-Id"))
+		require.NotEmpty(t, h.Get("X-Query-Id"), "入站缺失的请求级 ID 由网关生成")
+		require.NotEmpty(t, h.Get("X-ZCode-Trace-Id"))
+	})
+
+	t.Run("入站缺会话 ID：按账号确定性派生", func(t *testing.T) {
+		first := sendCCAndCaptureHeaders(t, account, fpPipelineContext(t, zcodeUA, ""), fpPipelineZhipuCC)
+		second := sendCCAndCaptureHeaders(t, account, fpPipelineContext(t, zcodeUA, ""), fpPipelineZhipuCC)
+		require.NotEmpty(t, first.Get("X-Session-Id"))
+		require.Equal(t, first.Get("X-Session-Id"), second.Get("X-Session-Id"))
+		require.Equal(t, zcodeTitleElectron, first.Get("X-Title"), "缺失时取桌面身份")
+	})
+
+	t.Run("Anthropic 直通：删除 x-stainless-*", func(t *testing.T) {
+		h := http.Header{}
+		setHeaderRaw(h, resolveWireCasing("x-stainless-os"), "MacOS")
+		NormalizeNativeAnthropicRequestHeaders(account, h, anthropicFingerprintZCode, zcodeUA)
+		applyZCodeIdentityHeaders(account, h, anthropicFingerprintZCode, nil)
+		require.Empty(t, getHeaderRaw(h, "x-stainless-os"))
+		require.Equal(t, zcodeCanonicalVersion, h.Get("X-ZCode-App-Version"))
+	})
+
+	t.Run("非 zcode 目标不注入", func(t *testing.T) {
+		h := sendCCAndCaptureHeaders(t, account, fpPipelineContext(t, fpPipelineClaudeUA, ""), fpPipelineZhipuCC)
+		require.Empty(t, h.Get("X-ZCode-App-Version"))
+	})
+
+	t.Run("账号级覆写优先", func(t *testing.T) {
+		overridden := fpPipelineAccountWith(anthropicFingerprintNormalizeZCodeExtraKey)
+		overridden.Credentials[credKeyHeaderOverrideEnabled] = true
+		overridden.Credentials[credKeyHeaderOverrides] = map[string]any{"x-platform": "linux-x64"}
+		h := sendCCAndCaptureHeaders(t, overridden, fpPipelineContext(t, zcodeUA, ""), fpPipelineZhipuCC)
+		require.Equal(t, "linux-x64", getHeaderRaw(h, "x-platform"))
 	})
 }
