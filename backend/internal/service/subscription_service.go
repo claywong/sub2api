@@ -57,6 +57,9 @@ type SubscriptionService struct {
 
 	maintenanceQueue *SubscriptionMaintenanceQueue
 	now              func() time.Time
+
+	// 私有扩展：重置订阅用量时同步重置按模型配额用量（见 subscription_model_quota_reset.go）
+	modelQuotaResetter subscriptionModelQuotaResetter
 }
 
 // NewSubscriptionService 创建订阅服务
@@ -896,6 +899,9 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	// 日窗口锚点取当天 0 点：手动重置只清空用量，不改变“每天 0 点刷新”的节奏。
 	// 周/月窗口保持锚定重置时刻（期限对齐滚动窗口语义）。
 	if err := s.userSubRepo.ResetUsageWindows(ctx, sub.ID, resetDaily, resetWeekly, resetMonthly, timezone.StartOfDay(now), now); err != nil {
+		return nil, err
+	}
+	if err := s.resetModelQuotaUsage(ctx, sub, resetDaily, resetWeekly, resetMonthly); err != nil {
 		return nil, err
 	}
 	// Invalidate L1 ristretto cache. Ristretto's Del() is asynchronous by design,

@@ -155,6 +155,13 @@ func (s *ModelQuotaUsageService) ResetUsage(
 	if err := s.usageRepo.ResetUsageWindows(ctx, userID, groupID, ruleKey, resetDaily, resetWeekly, resetMonthly, timezone.Now()); err != nil {
 		return err
 	}
+	return s.InvalidateUsageCache(ctx, userID, groupID, ruleKey)
+}
+
+// InvalidateUsageCache 失效按模型用量的 Redis 缓存（ruleKey 为空则失效该分组下全部规则）。
+//
+// 事务内重置时，提交后需再调用一次：事务未提交期间并发读可能把旧用量回填进缓存。
+func (s *ModelQuotaUsageService) InvalidateUsageCache(ctx context.Context, userID, groupID int64, ruleKey string) error {
 	if s.billingCache == nil {
 		return nil
 	}

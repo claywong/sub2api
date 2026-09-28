@@ -176,7 +176,8 @@ func (r *userGroupModelUsageRepository) ResetUsageWindows(
 	if !resetDaily && !resetWeekly && !resetMonthly {
 		return nil
 	}
-	update := r.client.UserGroupModelUsage.Update().
+	// 跟随调用方事务：订阅批量重置会在同一事务内同时归零订阅用量与按模型用量
+	update := clientFromContext(ctx, r.client).UserGroupModelUsage.Update().
 		Where(
 			usergroupmodelusage.UserIDEQ(userID),
 			usergroupmodelusage.GroupIDEQ(groupID),

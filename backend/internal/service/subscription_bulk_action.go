@@ -107,6 +107,11 @@ func (s *SubscriptionService) BulkSubscriptionAction(ctx context.Context, input 
 				if cacheErr := s.invalidateSubscriptionCaches(changed.UserID, changed.GroupID); cacheErr != nil {
 					log.Printf("[SubscriptionBulkAction] committed action=%s subscription_id=%d cache_error=%s", input.Action, id, logredact.RedactText(cacheErr.Error()))
 				}
+				if input.Action == "reset_quota" {
+					if cacheErr := s.invalidateModelQuotaUsageCache(ctx, changed.UserID, changed.GroupID); cacheErr != nil {
+						log.Printf("[SubscriptionBulkAction] committed action=%s subscription_id=%d model_quota_cache_error=%s", input.Action, id, logredact.RedactText(cacheErr.Error()))
+					}
+				}
 			}
 		}
 		item := BulkSubscriptionActionItemResult{SubscriptionID: id, Success: err == nil}
