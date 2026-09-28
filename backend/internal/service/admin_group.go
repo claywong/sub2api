@@ -619,7 +619,6 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
 		RPMLimit:                    input.RPMLimit,
 		AllowBalanceFallback:        input.AllowBalanceFallback,
-		FingerprintNormalizeEnabled: input.FingerprintNormalizeEnabled,
 		MaxReasoningEffort:          maxReasoningEffort,
 		MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
 		ReasoningEffortMappings:     reasoningEffortMappings,
@@ -1027,9 +1026,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.AllowBalanceFallback != nil {
 		group.AllowBalanceFallback = *input.AllowBalanceFallback
-	}
-	if input.FingerprintNormalizeEnabled != nil {
-		group.FingerprintNormalizeEnabled = *input.FingerprintNormalizeEnabled
 	}
 	if input.MaxReasoningEffort != nil {
 		maxReasoningEffort, err := normalizeMaxReasoningEffortForPlatform(group.Platform, *input.MaxReasoningEffort)

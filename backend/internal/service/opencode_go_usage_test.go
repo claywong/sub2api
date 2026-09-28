@@ -217,7 +217,7 @@ func (s *openCodeGoUsageHTTPStub) Do(req *http.Request, proxyURL string, _ int64
 	return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(bytes.NewReader(s.body)), Request: req}, nil
 }
 
-func (s *openCodeGoUsageHTTPStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (s *openCodeGoUsageHTTPStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	return s.Do(req, proxyURL, accountID, concurrency)
 }
 

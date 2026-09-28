@@ -659,9 +659,6 @@ export interface AdminGroup extends Group {
 
   // 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
   allow_balance_fallback?: boolean
-
-  // Anthropic 直通出站指纹归一化开关（私有扩展）
-  fingerprint_normalize_enabled?: boolean
 }
 
 export interface ModelAllowlist {
@@ -891,8 +888,6 @@ export interface CreateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   allow_balance_fallback?: boolean
-  // Anthropic 直通出站指纹归一化开关（私有扩展）
-  fingerprint_normalize_enabled?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
 }
@@ -961,8 +956,6 @@ export interface UpdateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   allow_balance_fallback?: boolean
-  // Anthropic 直通出站指纹归一化开关（私有扩展）；未传表示不改动
-  fingerprint_normalize_enabled?: boolean
   copy_accounts_from_group_ids?: number[]
 }
 

@@ -626,6 +626,20 @@
         </div>
       </div>
 
+      <!-- Anthropic 指纹归一化（私有扩展，仅 CN 供应商 api_key）：两个独立开关 -->
+      <div v-if="showAnthropicFingerprintNormalize" class="mt-4">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.title') }}</label>
+        <p class="input-hint mb-2">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.description') }}</p>
+        <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+          <input v-model="anthropicFingerprintNormalizeClaudeCode" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.claudecodeSwitch') }}
+        </label>
+        <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+          <input v-model="anthropicFingerprintNormalizeCodex" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+          {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.codexSwitch') }}
+        </label>
+      </div>
+
       <!-- Zhipu 团队版 Coding Plan：组织/项目 ID（可选，填写后额度探测走团队版端点） -->
       <div v-if="form.platform === 'zhipu' && accountMode === 'coding'" class="mt-4">
         <div class="flex items-center">
@@ -4454,6 +4468,11 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
+const anthropicFingerprintNormalizeCodex = ref(false)
+const anthropicFingerprintNormalizeClaudeCode = ref(false)
+// 指纹归一化对 CN 供应商生效：anthropic/adaptive 走原生 Anthropic 直通，
+// chat_completions 走 CC 出站路径，两条出站路径都已接入归一化。
+const showAnthropicFingerprintNormalize = computed(() => isCNPlatform.value)
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
 const anthropicPassthroughEnabled = ref(false)
 const anthropicAPIKeyAuthScheme = ref<AnthropicAPIKeyAuthScheme>('x_api_key')
@@ -5474,6 +5493,17 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   } else {
     delete extra.codex_fingerprint_mode
+  }
+  // Anthropic 指纹归一化：两个独立开关，false 不落键（opt-in），true 显式落键。
+  if (anthropicFingerprintNormalizeCodex.value) {
+    extra.anthropic_fingerprint_normalize_codex = true
+  } else {
+    delete extra.anthropic_fingerprint_normalize_codex
+  }
+  if (anthropicFingerprintNormalizeClaudeCode.value) {
+    extra.anthropic_fingerprint_normalize_claudecode = true
+  } else {
+    delete extra.anthropic_fingerprint_normalize_claudecode
   }
   if (openAICompactMode.value !== 'auto') {
     extra.openai_compact_mode = openAICompactMode.value

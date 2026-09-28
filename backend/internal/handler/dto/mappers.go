@@ -168,7 +168,6 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		RateLimitedAccountCount:     g.RateLimitedAccountCount,
 		SortOrder:                   g.SortOrder,
 		AllowBalanceFallback:        g.AllowBalanceFallback,
-		FingerprintNormalizeEnabled: g.FingerprintNormalizeEnabled,
 	}
 	if len(g.AccountGroups) > 0 {
 		out.AccountGroups = make([]AccountGroup, 0, len(g.AccountGroups))

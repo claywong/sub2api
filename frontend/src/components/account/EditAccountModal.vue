@@ -170,6 +170,19 @@
           </div>
           <p class="input-hint">{{ t(`admin.accounts.cnProviders.apiProtocol.${cnProtocolDescKey}Desc`) }}</p>
         </div>
+        <!-- Anthropic 指纹归一化（私有扩展，仅 CN 供应商 api_key）：两个独立开关 -->
+        <div v-if="showAnthropicFingerprintNormalize">
+          <label class="input-label">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.title') }}</label>
+          <p class="input-hint mb-2">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.description') }}</p>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintNormalizeClaudeCode" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.claudecodeSwitch') }}
+          </label>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintNormalizeCodex" type="checkbox" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.codexSwitch') }}
+          </label>
+        </div>
         <OpenCodeGoProtocolRulesEditor
           v-if="account.platform === 'opencode_go' && editApiProtocol === 'adaptive'"
           v-model:rows="editOpenCodeGoProtocolRules"
@@ -3734,6 +3747,8 @@ const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
 type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
+const anthropicFingerprintNormalizeCodex = ref(false)
+const anthropicFingerprintNormalizeClaudeCode = ref(false)
 type CodexImageToolMode = 'inherit' | 'enabled' | 'disabled' | 'block'
 const codexImageToolMode = ref<CodexImageToolMode>('inherit')
 type AnthropicAPIKeyAuthScheme = 'x_api_key' | 'authorization_bearer'
@@ -3771,6 +3786,10 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
+
+// 指纹归一化对 CN 供应商 api_key 账号生效：anthropic/adaptive 走原生 Anthropic 直通，
+// chat_completions 走 CC 出站路径，两条出站路径都已接入归一化。
+const showAnthropicFingerprintNormalize = computed(() => isCNApiKeyAccount.value)
 
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
@@ -4217,6 +4236,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   codexCLIOnlyEnabled.value = false
   codexCLIOnlyAppServerEnabled.value = false
   codexFingerprintMode.value = 'off'
+  anthropicFingerprintNormalizeCodex.value = false
+  anthropicFingerprintNormalizeClaudeCode.value = false
   codexImageToolMode.value = 'inherit'
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
@@ -4275,6 +4296,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? fpMode as CodexFingerprintMode
         : 'off')
     }
+    // Anthropic 指纹归一化（CN 供应商 apikey）：缺省/非法值按 off 呈现，
+    // 两个独立开关，兼容 bool 与字符串 "true"，与后端读取侧 opt-in 语义一致。
+    anthropicFingerprintNormalizeCodex.value =
+      extra?.anthropic_fingerprint_normalize_codex === true || extra?.anthropic_fingerprint_normalize_codex === 'true'
+    anthropicFingerprintNormalizeClaudeCode.value =
+      extra?.anthropic_fingerprint_normalize_claudecode === true || extra?.anthropic_fingerprint_normalize_claudecode === 'true'
     const credentials = newAccount.credentials as Record<string, unknown> | undefined
     const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
     if (compactMappings && typeof compactMappings === 'object') {
@@ -5816,6 +5843,18 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.codex_fingerprint_mode
         }
+      }
+
+      // Anthropic 指纹归一化：两个独立开关，false 不落键（opt-in），true 显式落键。
+      if (anthropicFingerprintNormalizeCodex.value) {
+        newExtra.anthropic_fingerprint_normalize_codex = true
+      } else {
+        delete newExtra.anthropic_fingerprint_normalize_codex
+      }
+      if (anthropicFingerprintNormalizeClaudeCode.value) {
+        newExtra.anthropic_fingerprint_normalize_claudecode = true
+      } else {
+        delete newExtra.anthropic_fingerprint_normalize_claudecode
       }
 
       updatePayload.extra = newExtra

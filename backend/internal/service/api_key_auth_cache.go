@@ -136,9 +136,6 @@ type APIKeyAuthGroupSnapshot struct {
 	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
 	AllowBalanceFallback bool `json:"allow_balance_fallback"`
 
-	// Anthropic 直通出站指纹归一化开关（私有扩展）
-	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
-
 	// 分组利润控制：调度准入门在直连热路径上读的就是这份快照——门解析
 	// （resolveOpenAIProfitControlGate / resolveProfitControlGroup）优先取
 	// 认证中间件放入 ctx 的 Group，而它正是本快照物化出来的对象，生产绝大

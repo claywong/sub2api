@@ -100,10 +100,6 @@ type Group struct {
 	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
 	AllowBalanceFallback bool
 
-	// Anthropic 直通出站指纹归一化开关（私有扩展）
-	// 开启后 CN 供应商 Anthropic 协议直通的出站请求归一为账号级统一身份
-	FingerprintNormalizeEnabled bool
-
 	// OpenAI Messages 调度配置（仅 openai 平台使用）
 	AllowMessagesDispatch       bool
 	AllowLive                   bool

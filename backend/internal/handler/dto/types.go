@@ -206,9 +206,6 @@ type AdminGroup struct {
 
 	// 订阅额度耗尽后是否允许回退到余额计费（私有扩展）
 	AllowBalanceFallback bool `json:"allow_balance_fallback"`
-
-	// Anthropic 直通出站指纹归一化开关（私有扩展）
-	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
 }
 
 type Account struct {

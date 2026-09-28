@@ -799,39 +799,6 @@
                 </span>
               </div>
             </div>
-            <!-- Anthropic 指纹归一化开关（私有扩展） -->
-            <div>
-              <label class="input-label">{{ t("admin.groups.subscription.fingerprintNormalize.title") }}</label>
-              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.subscription.fingerprintNormalize.description") }}
-              </p>
-              <div class="flex items-center gap-3">
-                <button
-                  type="button"
-                  @click="createForm.fingerprint_normalize_enabled = !createForm.fingerprint_normalize_enabled"
-                  :class="[
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    createForm.fingerprint_normalize_enabled
-                      ? 'bg-primary-500'
-                      : 'bg-gray-300 dark:bg-dark-600',
-                  ]"
-                >
-                  <span
-                    :class="[
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                      createForm.fingerprint_normalize_enabled ? 'translate-x-6' : 'translate-x-1',
-                    ]"
-                  />
-                </button>
-                <span class="text-sm text-gray-500 dark:text-gray-400">
-                  {{
-                    createForm.fingerprint_normalize_enabled
-                      ? t("admin.groups.subscription.fingerprintNormalize.enabled")
-                      : t("admin.groups.subscription.fingerprintNormalize.disabled")
-                  }}
-                </span>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -2502,39 +2469,6 @@
                     editForm.allow_balance_fallback
                       ? t("admin.groups.subscription.balanceFallback.enabled")
                       : t("admin.groups.subscription.balanceFallback.disabled")
-                  }}
-                </span>
-              </div>
-            </div>
-            <!-- Anthropic 指纹归一化开关（私有扩展） -->
-            <div>
-              <label class="input-label">{{ t("admin.groups.subscription.fingerprintNormalize.title") }}</label>
-              <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
-                {{ t("admin.groups.subscription.fingerprintNormalize.description") }}
-              </p>
-              <div class="flex items-center gap-3">
-                <button
-                  type="button"
-                  @click="editForm.fingerprint_normalize_enabled = !editForm.fingerprint_normalize_enabled"
-                  :class="[
-                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-                    editForm.fingerprint_normalize_enabled
-                      ? 'bg-primary-500'
-                      : 'bg-gray-300 dark:bg-dark-600',
-                  ]"
-                >
-                  <span
-                    :class="[
-                      'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                      editForm.fingerprint_normalize_enabled ? 'translate-x-6' : 'translate-x-1',
-                    ]"
-                  />
-                </button>
-                <span class="text-sm text-gray-500 dark:text-gray-400">
-                  {{
-                    editForm.fingerprint_normalize_enabled
-                      ? t("admin.groups.subscription.fingerprintNormalize.enabled")
-                      : t("admin.groups.subscription.fingerprintNormalize.disabled")
                   }}
                 </span>
               </div>
@@ -5153,7 +5087,6 @@ const createForm = reactive({
   // 订阅额度耗尽后是否允许回退到余额计费
   allow_balance_fallback: false,
   // Anthropic 直通出站指纹归一化开关（私有扩展）
-  fingerprint_normalize_enabled: false,
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
@@ -5523,7 +5456,6 @@ const editForm = reactive({
   // 订阅额度耗尽后是否允许回退到余额计费
   allow_balance_fallback: false,
   // Anthropic 直通出站指纹归一化开关（私有扩展）
-  fingerprint_normalize_enabled: false,
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
@@ -5968,7 +5900,6 @@ const closeCreateModal = () => {
   createForm.copy_accounts_from_group_ids = [];
   createForm.rpm_limit = 0;
   createForm.allow_balance_fallback = false;
-  createForm.fingerprint_normalize_enabled = false;
   createForm.max_reasoning_effort = "";
   createForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   createForm.reasoning_effort_mappings = [];
@@ -6280,7 +6211,6 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.rpm_limit = group.rpm_limit ?? 0;
   editForm.allow_balance_fallback = group.allow_balance_fallback ?? false;
   // Anthropic 直通出站指纹归一化开关（私有扩展）
-  editForm.fingerprint_normalize_enabled = group.fingerprint_normalize_enabled ?? false;
   editForm.max_reasoning_effort = normalizeReasoningEffortForPlatform(
     group.platform,
     group.max_reasoning_effort,

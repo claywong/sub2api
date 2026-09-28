@@ -76,10 +76,12 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	body = StripEmptyTextBlocks(body)
 	body = FilterWebSearchHistoryBlocks(body, upstreamModel)
 
-	// 私有扩展：分组开关开启时做出站指纹归一化（companion 实现见
+	// 私有扩展：账号级配置开启时做出站指纹归一化（companion 实现见
 	// openai_gateway_messages_anthropic_native_fingerprint.go）。
-	if anthropicFingerprintNormalizeEnabled(c) {
-		body = NormalizeNativeAnthropicRequestBody(account, body)
+	// 两个独立开关 + 入站客户端类型解析归一化目标（此路为 /v1/messages，通常非 Codex）。
+	fpNormalizeMode := accountAnthropicFingerprintTarget(account, c)
+	if fpNormalizeMode != anthropicFingerprintOff {
+		body = NormalizeNativeAnthropicRequestBody(account, body, fpNormalizeMode)
 	}
 
 	logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] account=%d(%s) platform=%s model=%s upstream=%s stream=%v",
@@ -223,9 +225,11 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	payloads := append([][]byte{body}, sessionBodies...)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, payloads...)
 
-	// 私有扩展：分组开关开启时做出站 header 归一化（UA 统一、剥 billing header）。
-	if anthropicFingerprintNormalizeEnabled(c) {
-		NormalizeNativeAnthropicRequestHeaders(account, req.Header)
+	// 私有扩展：账号级配置开启时做出站 header 归一化（UA 统一、剥 billing header）。
+	// 三条 native anthropic 路（messages/responses/chat_completions）共用本构造器，
+	// 按两个独立开关 + 入站客户端类型选归一目标。
+	if fpTarget := accountAnthropicFingerprintTarget(account, c); fpTarget != anthropicFingerprintOff {
+		NormalizeNativeAnthropicRequestHeaders(account, req.Header, fpTarget)
 	}
 
 	return req, body, nil

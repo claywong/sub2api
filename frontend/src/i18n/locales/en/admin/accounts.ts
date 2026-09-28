@@ -131,6 +131,12 @@ export default {
           responses: 'Responses',
           responsesDesc: 'Provider’s native Responses endpoint — ideal for Codex.',
         },
+        anthropicFingerprintNormalize: {
+          title: 'Anthropic Fingerprint Normalize',
+          description: 'Normalize outbound requests to a per-account canonical client identity (unify User-Agent with auto-synced version; the native Anthropic passthrough also rewrites device_id and strips the billing header) so account-sharing users converge to a single client at the provider. The two switches work independently, normalizing each inbound client type separately and combinable in any way. Applies to both the Anthropic passthrough and Chat Completions outbound paths of this CN provider account.',
+          claudecodeSwitch: 'Normalize Claude Code clients (→ claude-cli)',
+          codexSwitch: 'Normalize Codex clients (→ codex-tui)',
+        },
         zhipuTeam: {
           title: 'Team Plan Organization / Project ID',
           organization: 'Organization ID (team plan, optional)',

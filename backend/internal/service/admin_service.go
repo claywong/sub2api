@@ -301,8 +301,6 @@ type CreateGroupInput struct {
 	RPMLimit int
 	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
 	AllowBalanceFallback bool
-	// Anthropic 直通出站指纹归一化开关（私有扩展）
-	FingerprintNormalizeEnabled bool
 	// MaxReasoningEffort Anthropic/OpenAI 请求的推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string
 	// MaxReasoningEffortOverLimit 超过上限时的访问控制：downgrade（默认）或 deny。
@@ -387,8 +385,6 @@ type UpdateGroupInput struct {
 	RPMLimit *int
 	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动。
 	AllowBalanceFallback *bool
-	// Anthropic 直通出站指纹归一化开关（私有扩展）；nil 表示未提供不改动
-	FingerprintNormalizeEnabled *bool
 	// MaxReasoningEffort 空字符串表示清除上限；nil 表示未提供不改动。
 	MaxReasoningEffort *string
 	// MaxReasoningEffortOverLimit 空字符串视为 downgrade；nil 表示未提供不改动。

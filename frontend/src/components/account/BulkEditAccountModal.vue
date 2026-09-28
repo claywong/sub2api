@@ -992,6 +992,32 @@
         </div>
       </div>
 
+      <!-- Anthropic 指纹归一化（私有扩展，仅 CN 供应商 apikey） -->
+      <div v-if="allCNApiKey" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label class="input-label mb-0">{{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.title') }}</label>
+          <input
+            id="bulk-edit-anthropic-fingerprint-normalize-enabled"
+            v-model="enableAnthropicFingerprintNormalize"
+            type="checkbox"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div :class="!enableAnthropicFingerprintNormalize && 'pointer-events-none opacity-50'">
+          <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.description') }}
+          </p>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintNormalizeClaudeCode" type="checkbox" data-testid="bulk-anthropic-fp-claudecode" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.claudecodeSwitch') }}
+          </label>
+          <label class="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="anthropicFingerprintNormalizeCodex" type="checkbox" data-testid="bulk-anthropic-fp-codex" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+            {{ t('admin.accounts.cnProviders.anthropicFingerprintNormalize.codexSwitch') }}
+          </label>
+        </div>
+      </div>
+
       <!-- Upstream billing auto probe (any API-key platform) -->
       <div v-if="allBillingProbeCapable" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1504,6 +1530,7 @@ import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import {
   buildHeaderOverridesObject,
   isHeaderOverrideCapable,
+  isCNProviderPlatform,
   validateHeaderOverrideRows,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
@@ -1718,6 +1745,21 @@ const codexFingerprintModeOptions = computed(() => [
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
 ])
+
+// Anthropic 指纹归一化（私有扩展）：批量仅对全部为 CN 供应商 apikey 账号开放。
+// 批量弹窗不感知每个账号的 api_protocol，故仅按平台/类型放宽；后端读取侧
+// 对非直通账号即使误设也不会命中归一化调用点。
+const enableAnthropicFingerprintNormalize = ref(false)
+const anthropicFingerprintNormalizeCodex = ref(false)
+const anthropicFingerprintNormalizeClaudeCode = ref(false)
+const allCNApiKey = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length > 0 &&
+    targetSelectedPlatforms.value.every(p => isCNProviderPlatform(p)) &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'apikey')
+  )
+})
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const rpmLimitEnabled = ref(false)
@@ -2113,6 +2155,14 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
+  if (enableAnthropicFingerprintNormalize.value) {
+    const extra = ensureExtra()
+    // 批量走 JSONB 顶层合并，两个开关都必须显式落 bool（与 codex_fingerprint_mode 同理，
+    // 删键只表示"本次不更新"，清不掉账号已有值，且只删不写会让 payload 退化为空更新）。
+    extra.anthropic_fingerprint_normalize_codex = anthropicFingerprintNormalizeCodex.value
+    extra.anthropic_fingerprint_normalize_claudecode = anthropicFingerprintNormalizeClaudeCode.value
+  }
+
   if (enableOpenAICompactMode.value) {
     const extra = ensureExtra()
     extra.openai_compact_mode = openAICompactMode.value
@@ -2227,6 +2277,7 @@ const handleSubmit = async () => {
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
     enableCodexFingerprintMode.value ||
+    enableAnthropicFingerprintNormalize.value ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
@@ -2379,6 +2430,9 @@ watch(
       enableCodexCLIOnlyAppServer.value = false
       enableCodexFingerprintMode.value = false
       codexFingerprintMode.value = 'off'
+      enableAnthropicFingerprintNormalize.value = false
+      anthropicFingerprintNormalizeCodex.value = false
+      anthropicFingerprintNormalizeClaudeCode.value = false
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

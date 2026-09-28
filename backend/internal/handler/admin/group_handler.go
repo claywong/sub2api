@@ -247,9 +247,6 @@ type CreateGroupRequest struct {
 	RPMLimit int `json:"rpm_limit"`
 	// 订阅额度耗尽后是否允许回退到余额计费（仅 subscription 类型分组生效）
 	AllowBalanceFallback bool `json:"allow_balance_fallback"`
-	// Anthropic 直通出站指纹归一化开关（私有扩展）；开启后 CN 供应商
-	// Anthropic 协议直通的出站请求归一为账号级统一身份
-	FingerprintNormalizeEnabled bool `json:"anthropic_fingerprint_normalize_enabled"`
 	// Anthropic/OpenAI 请求推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// 超过上限时的访问控制：downgrade（默认）或 deny。
@@ -328,8 +325,6 @@ type UpdateGroupRequest struct {
 	RPMLimit *int `json:"rpm_limit"`
 	// 订阅额度耗尽后是否允许回退到余额计费；nil 表示未提供不改动
 	AllowBalanceFallback *bool `json:"allow_balance_fallback"`
-	// Anthropic 直通出站指纹归一化开关（私有扩展）；nil 表示未提供不改动
-	FingerprintNormalizeEnabled *bool `json:"anthropic_fingerprint_normalize_enabled"`
 	// Anthropic/OpenAI 请求推理强度上限；空字符串清除，nil 不修改。
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
 	// 超过上限时的访问控制；空字符串视为 downgrade，nil 不修改。
@@ -731,7 +726,6 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
-		FingerprintNormalizeEnabled:     req.FingerprintNormalizeEnabled,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
@@ -880,7 +874,6 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
-		FingerprintNormalizeEnabled:     req.FingerprintNormalizeEnabled,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit:     req.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
