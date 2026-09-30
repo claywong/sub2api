@@ -29,6 +29,9 @@ type PlazaModel struct {
 	LongContextBasis ContextPricingBasis
 	// TimePricing 计费会生效的分时倍率时段；无分时为 nil。
 	TimePricing *TimePricingSchedule
+	// RateFactor 分组单模型倍率系数（私有扩展），仅命中规则且 ≠1 时设置，零值表示未配置（按 1）；
+	// 展示实付倍率 = (用户专属倍率 ?? 分组倍率) × RateFactor，与计费口径一致。
+	RateFactor float64
 }
 
 // PlazaGroup 模型广场中以分组为顶层的条目。
@@ -212,6 +215,9 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 		for j := range pg.Models {
 			s.fillDisplayPricing(ctx, &pg.Models[j], g)
 			pg.Models[j].OfficialPricing = s.lookupOfficialPricing(ctx, pg.Models[j].Name, officialMemo)
+			if factor := g.ModelRateFactor(pg.Models[j].Name); factor != defaultModelRateFactor {
+				pg.Models[j].RateFactor = factor
+			}
 		}
 		out = append(out, *pg)
 	}

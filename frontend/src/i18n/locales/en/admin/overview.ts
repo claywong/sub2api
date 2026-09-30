@@ -1187,6 +1187,26 @@ export default {
           enabledButEmpty: 'Per-model quotas are enabled; add at least one rule'
         }
       },
+      modelRateMultipliers: {
+        title: 'Per-model rate multipliers',
+        hint: 'Set a rate factor for a single model or a whole model family. Effective rate = group rate (or the user-specific rate) × factor × peak factor. Usage records show the combined rate while the original cost stays at the official price. Entries accept exact model IDs and a trailing * wildcard (e.g. claude-opus*); the requested model is matched first, then the forwarded model. Exact entries beat wildcards, and among wildcards the longest prefix wins. Independent image/video rates are not multiplied by the factor.',
+        empty: 'No rules yet. Use the button below to add one.',
+        addRule: 'Add rule',
+        matchPlaceholder: 'e.g. claude-opus* or gpt-6-astra',
+        columns: {
+          match: 'Model / prefix',
+          multiplier: 'Factor',
+          effective: 'Effective rate (group rate × factor)'
+        },
+        errors: {
+          emptyMatch: 'Enter a model ID or prefix',
+          bareWildcard: 'A bare * is not allowed; adjust the group rate instead',
+          wildcardPosition: 'The * wildcard is only allowed at the end: {match}',
+          duplicate: 'Duplicate rule: {match}',
+          invalidMultiplier: 'The factor must be a number greater than 0: {match}',
+          enabledButEmpty: 'Per-model rate multipliers are enabled; add at least one rule'
+        }
+      },
       codexModelsManifest: {
         title: 'Pinned Accounts for Model Lists',
         hint: 'When enabled, ordinary model lists and Codex Model Manifest are discovered from the pinned accounts first, then merged and filtered using account mappings and the group model list. Rate-limited or overloaded pinned accounts are still used.',

@@ -648,6 +648,7 @@
           v-model:mappings="createForm.reasoning_effort_mappings"
         />
         <GroupModelQuotasField v-model="createModelQuotas" />
+        <GroupModelRateMultipliersField v-model="createModelRateMultipliers" :group-rate="createForm.rate_multiplier" />
         <div
           v-if="createForm.subscription_type !== 'subscription'"
           data-tour="group-form-exclusive"
@@ -2320,6 +2321,7 @@
           v-model:mappings="editForm.reasoning_effort_mappings"
         />
         <GroupModelQuotasField v-model="editModelQuotas" />
+        <GroupModelRateMultipliersField v-model="editModelRateMultipliers" :group-rate="editForm.rate_multiplier" />
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -4349,6 +4351,7 @@ import type {
   CompositeRouteMatchType,
   GroupPlatform,
   ModelQuotas,
+  ModelRateMultipliers,
   SubscriptionType,
 } from "@/types";
 import {
@@ -4373,6 +4376,7 @@ import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
 import GroupModelQuotasField from "@/components/admin/group/GroupModelQuotasField.vue";
+import GroupModelRateMultipliersField from "@/components/admin/group/GroupModelRateMultipliersField.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -4958,6 +4962,12 @@ function createInitialModelQuotas(): ModelQuotas {
 }
 const createModelQuotas = ref<ModelQuotas>(createInitialModelQuotas());
 const editModelQuotas = ref<ModelQuotas>(createInitialModelQuotas());
+// 单模型倍率系数（私有扩展）：与分组倍率相乘，见 docs/group-model-rate-multiplier.md
+function createInitialModelRateMultipliers(): ModelRateMultipliers {
+  return { enabled: false, rules: [] };
+}
+const createModelRateMultipliers = ref<ModelRateMultipliers>(createInitialModelRateMultipliers());
+const editModelRateMultipliers = ref<ModelRateMultipliers>(createInitialModelRateMultipliers());
 type ReasoningEffortPolicyFieldsExpose = {
   validate: () => boolean;
   resetValidation: () => void;
@@ -5906,6 +5916,7 @@ const closeCreateModal = () => {
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelAllowlistState(createModelAllowlistState);
   createModelQuotas.value = createInitialModelQuotas();
+  createModelRateMultipliers.value = createInitialModelRateMultipliers();
   createModelRoutingRules.value = [];
 };
 
@@ -6027,6 +6038,7 @@ const handleCreateGroup = async () => {
       ),
       model_allowlist: buildModelAllowlistConfig(createModelAllowlistState),
       model_quotas: createModelQuotas.value,
+      model_rate_multipliers: createModelRateMultipliers.value,
       // 创建时固定账号 manifest 固定发送关闭状态（后端创建路径禁止开启）
       codex_models_manifest_config: createCodexManifestDefaults(),
       supported_model_scopes: normalizeSupportedModelScopesForPlatform(
@@ -6226,6 +6238,9 @@ const handleEdit = async (group: AdminGroup) => {
   editModelQuotas.value = group.model_quotas
     ? { enabled: group.model_quotas.enabled, rules: (group.model_quotas.rules ?? []).map((rule) => ({ ...rule })) }
     : createInitialModelQuotas();
+  editModelRateMultipliers.value = group.model_rate_multipliers
+    ? { enabled: group.model_rate_multipliers.enabled, rules: (group.model_rate_multipliers.rules ?? []).map((rule) => ({ ...rule })) }
+    : createInitialModelRateMultipliers();
   // 固定账号 manifest 配置：回显配置并异步解析已存账号名称（失败显示 #<id>）
   const savedCodexManifestConfig =
     group.codex_models_manifest_config ?? createCodexManifestDefaults();
@@ -6375,6 +6390,7 @@ const handleUpdateGroup = async () => {
       ),
       model_allowlist: buildModelAllowlistConfig(editModelAllowlistState),
       model_quotas: editModelQuotas.value,
+      model_rate_multipliers: editModelRateMultipliers.value,
       // 非 openai 平台提交关闭状态，与后端归一化一致
       codex_models_manifest_config:
         editForm.platform === "openai"

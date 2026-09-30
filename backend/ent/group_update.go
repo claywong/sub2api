@@ -834,6 +834,20 @@ func (_u *GroupUpdate) SetNillableModelQuotas(v *domain.GroupModelQuotas) *Group
 	return _u
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_u *GroupUpdate) SetModelRateMultipliers(v domain.GroupModelRateMultipliers) *GroupUpdate {
+	_u.mutation.SetModelRateMultipliers(v)
+	return _u
+}
+
+// SetNillableModelRateMultipliers sets the "model_rate_multipliers" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableModelRateMultipliers(v *domain.GroupModelRateMultipliers) *GroupUpdate {
+	if v != nil {
+		_u.SetModelRateMultipliers(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdate) SetClaudeCodeOnly(v bool) *GroupUpdate {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -1835,6 +1849,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ModelQuotas(); ok {
 		_spec.SetField(group.FieldModelQuotas, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)
@@ -3062,6 +3079,20 @@ func (_u *GroupUpdateOne) SetNillableModelQuotas(v *domain.GroupModelQuotas) *Gr
 	return _u
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (_u *GroupUpdateOne) SetModelRateMultipliers(v domain.GroupModelRateMultipliers) *GroupUpdateOne {
+	_u.mutation.SetModelRateMultipliers(v)
+	return _u
+}
+
+// SetNillableModelRateMultipliers sets the "model_rate_multipliers" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableModelRateMultipliers(v *domain.GroupModelRateMultipliers) *GroupUpdateOne {
+	if v != nil {
+		_u.SetModelRateMultipliers(*v)
+	}
+	return _u
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (_u *GroupUpdateOne) SetClaudeCodeOnly(v bool) *GroupUpdateOne {
 	_u.mutation.SetClaudeCodeOnly(v)
@@ -4093,6 +4124,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ModelQuotas(); ok {
 		_spec.SetField(group.FieldModelQuotas, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.ModelRateMultipliers(); ok {
+		_spec.SetField(group.FieldModelRateMultipliers, field.TypeJSON, value)
 	}
 	if value, ok := _u.mutation.ClaudeCodeOnly(); ok {
 		_spec.SetField(group.FieldClaudeCodeOnly, field.TypeBool, value)

@@ -757,3 +757,51 @@ describe('PlazaModelPricingTable 分时计价', () => {
     expect(wrapper.find('[title*="modelPlaza.table.timePricingRowHint"]').exists()).toBe(false)
   })
 })
+
+describe('PlazaModelPricingTable 单模型倍率系数', () => {
+  it('实付价与倍率列 = 分组倍率 × 模型系数,并在 tooltip 披露合成方式', () => {
+    const wrapper = mountTable([tokenModel({ rate_factor: 2 })], 1.5)
+    const cells = wrapper.findAll('tbody tr td')
+    // 3 × 1.5 × 2 = 9
+    expect(cells[1].text()).toContain('$9.00')
+    expect(cells[7].text()).toBe('3x')
+    expect(cells[7].find('[title="modelPlaza.table.rateFactorHint"]').exists()).toBe(true)
+    // 官方列不乘系数
+    expect(cells[4].text()).toContain('$3.00')
+  })
+
+  it('用户专属倍率与系数相乘,划线原倍率同样带系数', () => {
+    const wrapper = mountTable([tokenModel({ rate_factor: 2 })], 1.5, 1.2)
+    expect(wrapper.find('td .line-through').text()).toBe('3x')
+    expect(wrapper.findAll('tbody tr td')[7].text()).toContain('2.4x')
+    // 3 × 1.2 × 2 = 7.2
+    expect(wrapper.text()).toContain('$7.20')
+  })
+
+  it('分时时段行在模型生效倍率上再乘时段倍率', () => {
+    const model = tokenModel({
+      rate_factor: 2,
+      time_pricing: { timezone: 'UTC', periods: [{ start_time: '00:00', end_time: '08:00', multiplier: 0.5 }] }
+    })
+    const periodCells = mountTable([model], 1.5).findAll('tbody tr')[1].findAll('td')
+    // 1.5 × 2 × 0.5 = 1.5
+    expect(periodCells[7].text()).toContain('1.5x')
+    expect(periodCells[1].text()).toContain('$4.50')
+  })
+
+  it('生图独立倍率不乘模型系数', () => {
+    const model = tokenModel({ name: 'img', rate_factor: 2, official_pricing: null })
+    model.pricing!.billing_mode = 'image'
+    model.pricing!.per_request_price = 1
+    const wrapper = mountTable([model], 1.5, null, { imageRateIndependent: true, imageRateMultiplier: 0.5 })
+    expect(wrapper.findAll('tbody tr td').at(-1)!.text()).toBe('0.5x')
+  })
+
+  it('未下发或非法系数按 1 处理,不渲染系数 tooltip', () => {
+    for (const factor of [undefined, 0, -1]) {
+      const cells = mountTable([tokenModel({ rate_factor: factor })], 1.5).findAll('tbody tr td')
+      expect(cells[7].text()).toBe('1.5x')
+      expect(cells[7].find('[title="modelPlaza.table.rateFactorHint"]').exists()).toBe(false)
+    }
+  })
+})

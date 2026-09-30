@@ -241,6 +241,7 @@ type CreateGroupRequest struct {
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
 	ModelQuotas                 service.GroupModelQuotas                  `json:"model_quotas"`
+	ModelRateMultipliers        service.GroupModelRateMultipliers         `json:"model_rate_multipliers"`
 	// 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）
@@ -319,6 +320,7 @@ type UpdateGroupRequest struct {
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
 	ModelQuotas                 *service.GroupModelQuotas                  `json:"model_quotas"`
+	ModelRateMultipliers        *service.GroupModelRateMultipliers         `json:"model_rate_multipliers"`
 	// 固定账号 manifest 配置；nil 表示不修改。
 	CodexModelsManifestConfig *service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
@@ -723,6 +725,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
 		ModelQuotas:                     req.ModelQuotas,
+		ModelRateMultipliers:            req.ModelRateMultipliers,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,
@@ -871,6 +874,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
 		ModelQuotas:                     req.ModelQuotas,
+		ModelRateMultipliers:            req.ModelRateMultipliers,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		AllowBalanceFallback:            req.AllowBalanceFallback,

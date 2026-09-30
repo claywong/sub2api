@@ -144,6 +144,7 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
 		SetModelQuotas(service.DomainGroupModelQuotas(groupIn.ModelQuotas)).
+		SetModelRateMultipliers(service.DomainGroupModelRateMultipliers(groupIn.ModelRateMultipliers)).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).
@@ -326,6 +327,7 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetMessagesDispatchModelConfig(groupIn.MessagesDispatchModelConfig).
 		SetModelAllowlist(service.DomainGroupModelAllowlist(groupIn.ModelAllowlist)).
 		SetModelQuotas(service.DomainGroupModelQuotas(groupIn.ModelQuotas)).
+		SetModelRateMultipliers(service.DomainGroupModelRateMultipliers(groupIn.ModelRateMultipliers)).
 		SetCodexModelsManifestConfig(groupIn.CodexModelsManifestConfig).
 		SetRpmLimit(groupIn.RPMLimit).
 		SetMaxReasoningEffort(groupIn.MaxReasoningEffort).

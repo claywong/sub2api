@@ -177,6 +177,8 @@ func cloneGroupForDuplicate(source *Group, operationID string) *Group {
 		// 按模型配额随分组复制：规则是纯配置（不含账号/用户引用），深拷贝规则切片即可。
 		// 用量按 (user, group, rule) 记录，新分组从零开始，无需搬运。
 		ModelQuotas: cloneGroupModelQuotas(source.ModelQuotas),
+		// 单模型倍率系数随分组复制：纯配置，复制规则切片即可。
+		ModelRateMultipliers: cloneGroupModelRateMultipliers(source.ModelRateMultipliers),
 		// 固定账号 manifest 配置指向源分组的账号 ID，复制后成员关系可能变化，重置为关闭且列表为空。
 		CodexModelsManifestConfig:   GroupCodexModelsManifestConfig{},
 		RPMLimit:                    source.RPMLimit,

@@ -111,6 +111,9 @@ type APIKeyAuthGroupSnapshot struct {
 	// ModelQuotas 按模型/模型前缀配额配置。判定侧直接读认证快照里的分组对象，
 	// 漏放会让缓存命中的请求静默跳过配额。
 	ModelQuotas GroupModelQuotas `json:"model_quotas,omitempty"`
+	// ModelRateMultipliers 单模型倍率系数。计费直接读认证快照里的分组对象，
+	// 漏放会让缓存命中的请求静默按 1 倍系数计费。
+	ModelRateMultipliers GroupModelRateMultipliers `json:"model_rate_multipliers,omitempty"`
 	// CodexModelsManifestConfig 与 ModelAllowlist 一样在认证快照分组里透传，
 	// Codex /models handler 直接读认证分组对象。
 	CodexModelsManifestConfig GroupCodexModelsManifestConfig `json:"codex_models_manifest_config,omitempty"`

@@ -205,6 +205,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if apiKey.GroupID != nil && apiKey.Group != nil {
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, apiKey.Group.RateMultiplier)
 	}
+	// 单模型倍率系数（私有扩展）：折入基础倍率，高峰/图片/视频倍率随之继承，见 group_model_rate_multiplier.go。
+	multiplier *= modelRateFactorFromAPIKey(apiKey, input.RequestedModel, input.OriginalModel, result.Model, result.UpstreamModel)
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。
 	// 高峰因子按请求级 PricingAt 现算（与利润门 D 同源同刻，跨峰谷请求不中途
 	// 变价）；未装配 PricingAt 的路径回退记录时刻，保持既有行为。不并入上面的

@@ -201,6 +201,12 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("按模型或模型前缀的日/周/月 USD 配额；与分组总限额是两层独立约束"),
 
+		// 分组级按模型/模型前缀倍率系数（私有扩展，added by migration 910）
+		field.JSON("model_rate_multipliers", domain.GroupModelRateMultipliers{}).
+			Default(domain.GroupModelRateMultipliers{}).
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按模型或模型前缀的倍率系数；与分组/用户专属倍率相乘"),
+
 		// Claude Code 客户端限制 (added by migration 029)
 		field.Bool("claude_code_only").
 			Default(false).

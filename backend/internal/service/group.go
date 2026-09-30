@@ -113,6 +113,9 @@ type Group struct {
 	// ModelQuotas 是按模型/模型前缀的日/周/月 USD 配额（私有扩展）。
 	// 与 DailyLimitUSD 等分组总限额是两层独立约束，两层都需满足才放行。
 	ModelQuotas GroupModelQuotas
+	// ModelRateMultipliers 是按模型/模型前缀的倍率系数（私有扩展），
+	// 计费时与分组倍率（或用户专属倍率）相乘，见 ModelRateFactor。
+	ModelRateMultipliers GroupModelRateMultipliers
 	// CodexModelsManifestConfig 开启后，普通模型列表与 Codex manifest 优先使用
 	// 固定账号列表拉取并合并，不经过调度器（仅 openai 平台）。
 	CodexModelsManifestConfig GroupCodexModelsManifestConfig

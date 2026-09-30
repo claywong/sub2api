@@ -100,6 +100,8 @@ const (
 	FieldModelPricing = "model_pricing"
 	// FieldModelQuotas holds the string denoting the model_quotas field in the database.
 	FieldModelQuotas = "model_quotas"
+	// FieldModelRateMultipliers holds the string denoting the model_rate_multipliers field in the database.
+	FieldModelRateMultipliers = "model_rate_multipliers"
 	// FieldClaudeCodeOnly holds the string denoting the claude_code_only field in the database.
 	FieldClaudeCodeOnly = "claude_code_only"
 	// FieldFallbackGroupID holds the string denoting the fallback_group_id field in the database.
@@ -269,6 +271,7 @@ var Columns = []string{
 	FieldLongContextPricingEnabled,
 	FieldModelPricing,
 	FieldModelQuotas,
+	FieldModelRateMultipliers,
 	FieldClaudeCodeOnly,
 	FieldFallbackGroupID,
 	FieldFallbackGroupIDOnInvalidRequest,
@@ -392,6 +395,8 @@ var (
 	DefaultLongContextPricingEnabled bool
 	// DefaultModelQuotas holds the default value on creation for the "model_quotas" field.
 	DefaultModelQuotas domain.GroupModelQuotas
+	// DefaultModelRateMultipliers holds the default value on creation for the "model_rate_multipliers" field.
+	DefaultModelRateMultipliers domain.GroupModelRateMultipliers
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.

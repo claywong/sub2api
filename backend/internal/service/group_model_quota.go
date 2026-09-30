@@ -99,41 +99,49 @@ func (q GroupModelQuotas) MatchRule(model string) *GroupModelQuotaRule {
 	if !q.Enabled || len(q.Rules) == 0 {
 		return nil
 	}
-	if strings.TrimSpace(model) == "" {
+	idx := bestModelRuleIndex(model, len(q.Rules), func(i int) string {
+		if !q.Rules[i].HasLimit() {
+			return ""
+		}
+		return ModelQuotaRuleKey(q.Rules[i].Match)
+	})
+	if idx < 0 {
 		return nil
 	}
-	candidates := groupModelAllowlistCandidates(model)
+	return &q.Rules[idx]
+}
 
-	var (
-		bestExact  *GroupModelQuotaRule
-		bestPrefix *GroupModelQuotaRule
-		bestLen    = -1
-	)
-	for i := range q.Rules {
-		rule := &q.Rules[i]
-		if !rule.HasLimit() {
-			continue
-		}
-		entry := ModelQuotaRuleKey(rule.Match)
+// bestModelRuleIndex 返回 model 命中的最具体规则下标，未命中返回 -1。
+// 按模型配额与单模型倍率共用这一套命中语义：
+//  1. exact 规则优先于 prefix 规则；
+//  2. 多条 prefix 同时命中时，前缀最长者优先；
+//  3. 同强度下先声明者优先。
+//
+// entryAt 返回第 i 条规则的归一化 match；返回空串表示该规则不参与命中。
+func bestModelRuleIndex(model string, n int, entryAt func(i int) string) int {
+	if strings.TrimSpace(model) == "" {
+		return -1
+	}
+	candidates := groupModelAllowlistCandidates(model)
+	bestExact, bestPrefix, bestLen := -1, -1, -1
+	for i := 0; i < n; i++ {
+		entry := entryAt(i)
 		if entry == "" {
 			continue
 		}
 		if strings.HasSuffix(entry, "*") {
 			prefix := strings.TrimSuffix(entry, "*")
-			if !matchesAnyCandidatePrefix(candidates, prefix) {
-				continue
-			}
 			// 最长前缀优先；等长时保留先声明者
-			if len(prefix) > bestLen {
-				bestPrefix, bestLen = rule, len(prefix)
+			if matchesAnyCandidatePrefix(candidates, prefix) && len(prefix) > bestLen {
+				bestPrefix, bestLen = i, len(prefix)
 			}
 			continue
 		}
-		if bestExact == nil && containsCandidate(candidates, entry) {
-			bestExact = rule
+		if bestExact < 0 && containsCandidate(candidates, entry) {
+			bestExact = i
 		}
 	}
-	if bestExact != nil {
+	if bestExact >= 0 {
 		return bestExact
 	}
 	return bestPrefix
@@ -197,22 +205,31 @@ func normalizeGroupModelQuotas(cfg GroupModelQuotas) (GroupModelQuotas, error) {
 	return out, nil
 }
 
-func normalizeModelQuotaRule(rule GroupModelQuotaRule) (GroupModelQuotaRule, error) {
-	match := strings.TrimSpace(rule.Match)
+// validateModelRuleMatch 校验按模型规则的 match（已 TrimSpace），合法返回空串。
+// subject 用于错误文案（如 "model quota"），bareWildcardHint 提示裸 "*" 的替代做法。
+//
+// 长度上限：rule_key 落库列为 VARCHAR(200)，超长规则能存进 jsonb 配置，但每次落账
+// 都会因 rule_key 溢出让整个计费事务失败，必须在配置入口拦截；单模型倍率沿用同一上限。
+func validateModelRuleMatch(match, subject, bareWildcardHint string) string {
 	if match == "" {
-		return rule, invalidModelQuota("model quota rule match cannot be empty")
+		return subject + " rule match cannot be empty"
 	}
 	if strings.Contains(strings.TrimSuffix(match, "*"), "*") {
-		return rule, invalidModelQuota(`wildcard "*" is only allowed at the end of a model quota rule`)
+		return fmt.Sprintf(`wildcard "*" is only allowed at the end of a %s rule`, subject)
 	}
 	if match == "*" {
-		return rule, invalidModelQuota(`model quota rule "*" is not allowed; use the group-level limits instead`)
+		return fmt.Sprintf(`%s rule "*" is not allowed; %s`, subject, bareWildcardHint)
 	}
-	// rule_key 落库列为 VARCHAR(200)：超长规则能存进 jsonb 配置，但每次落账
-	// 都会因 rule_key 溢出让整个计费事务失败（用量记不上、余额/订阅照扣的
-	// 竞态窗口扩大），必须在配置入口拦截。
 	if len(match) > modelQuotaMatchMaxLen {
-		return rule, invalidModelQuota(fmt.Sprintf("model quota rule match is longer than %d characters", modelQuotaMatchMaxLen))
+		return fmt.Sprintf("%s rule match is longer than %d characters", subject, modelQuotaMatchMaxLen)
+	}
+	return ""
+}
+
+func normalizeModelQuotaRule(rule GroupModelQuotaRule) (GroupModelQuotaRule, error) {
+	match := strings.TrimSpace(rule.Match)
+	if msg := validateModelRuleMatch(match, "model quota", "use the group-level limits instead"); msg != "" {
+		return rule, invalidModelQuota(msg)
 	}
 	for _, limit := range []*float64{rule.Daily, rule.Weekly, rule.Monthly} {
 		if limit != nil && *limit < 0 {

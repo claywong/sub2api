@@ -17,7 +17,9 @@ import (
 // v25: group model_quotas field（按模型/模型前缀配额）。
 // 必须递增：v24 及更早的缓存快照没有该字段，反序列化后 ModelQuotas 为零值，
 // 会让配置了配额的分组在缓存过期前静默放行。
-const apiKeyAuthSnapshotVersion = 25
+// v26: group model_rate_multipliers field（单模型倍率系数）。
+// 同理：v25 快照反序列化后系数为零值，会让配置了系数的分组在缓存过期前按 1 倍计费。
+const apiKeyAuthSnapshotVersion = 26
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -427,6 +429,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			ModelAllowlist:                  apiKey.Group.ModelAllowlist,
 			ModelQuotas:                     apiKey.Group.ModelQuotas,
+			ModelRateMultipliers:            apiKey.Group.ModelRateMultipliers,
 			CodexModelsManifestConfig:       apiKey.Group.CodexModelsManifestConfig,
 			RPMLimit:                        apiKey.Group.RPMLimit,
 			MaxReasoningEffort:              apiKey.Group.MaxReasoningEffort,
@@ -531,6 +534,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
 			ModelQuotas:                     snapshot.Group.ModelQuotas,
+			ModelRateMultipliers:            snapshot.Group.ModelRateMultipliers,
 			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,

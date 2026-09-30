@@ -58,7 +58,7 @@
       </thead>
       <tbody>
         <tr
-          v-for="{ model: m, period, key } in rows"
+          v-for="{ model: m, period, rate, key } in rows"
           :key="key"
           class="border-b border-gray-100 transition-colors last:border-b-0 hover:bg-gray-50/70 dark:border-dark-800 dark:hover:bg-dark-800/50"
         >
@@ -121,10 +121,10 @@
                   class="whitespace-nowrap text-xs leading-5"
                 >
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500" :title="tierHint(m)">{{ tierLabel(iv) }}</span>
-                  {{ paidPerMillion(iv.input_price, period) }}
+                  {{ paidPerMillion(iv.input_price, rate) }}
                 </div>
               </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.input_price, period) }}</template>
+              <template v-else>{{ paidPerMillion(m.pricing?.input_price, rate) }}</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
@@ -134,10 +134,10 @@
                   class="whitespace-nowrap text-xs leading-5"
                   :title="tierHint(m)"
                 >
-                  {{ paidPerMillion(iv.output_price, period) }}
+                  {{ paidPerMillion(iv.output_price, rate) }}
                 </div>
               </template>
-              <template v-else>{{ paidPerMillion(m.pricing?.output_price, period) }}</template>
+              <template v-else>{{ paidPerMillion(m.pricing?.output_price, rate) }}</template>
             </td>
             <td class="pz-cell px-3 py-2.5 align-middle">
               <template v-if="hasTierCachePricing(tokenIntervals(m))">
@@ -149,13 +149,13 @@
                 >
                   <template v-if="iv.cache_write_price != null || iv.cache_write_1h_price != null || iv.cache_read_price != null">
                     <span class="font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWriteShort') }}</span>
-                    {{ paidPerMillion(iv.cache_write_price, period) }}
+                    {{ paidPerMillion(iv.cache_write_price, rate) }}
                     <template v-if="iv.cache_write_1h_price != null"
-                      ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(iv.cache_write_1h_price, period)
+                      ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(iv.cache_write_1h_price, rate)
                       }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
                     >
                     <span class="ml-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') }}</span>
-                    {{ paidPerMillion(iv.cache_read_price, period) }}
+                    {{ paidPerMillion(iv.cache_read_price, rate) }}
                   </template>
                   <span v-else class="text-gray-400 dark:text-dark-500">-</span>
                 </div>
@@ -166,15 +166,15 @@
               >
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheWrite') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_write_price, period)
+                  {{ paidPerMillion(m.pricing?.cache_write_price, rate)
                   }}<template v-if="m.pricing?.cache_write_1h_price != null"
-                    ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(m.pricing.cache_write_1h_price, period)
+                    ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(m.pricing.cache_write_1h_price, rate)
                     }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
                   >
                 </div>
                 <div>
                   <span class="mr-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheRead') }}</span>
-                  {{ paidPerMillion(m.pricing?.cache_read_price, period) }}
+                  {{ paidPerMillion(m.pricing?.cache_read_price, rate) }}
                 </div>
               </div>
               <span v-else class="text-gray-400 dark:text-dark-500">-</span>
@@ -278,15 +278,15 @@
             <span v-else class="text-gray-400 dark:text-dark-500">-</span>
           </td>
 
-          <!-- 折扣倍率(分时时段行展示 生效倍率×时段倍率;生图独立倍率行展示独立倍率;专属倍率划线展示原倍率) -->
+          <!-- 折扣倍率(均含单模型系数;分时时段行展示 生效倍率×时段倍率;生图独立倍率行展示独立倍率;专属倍率划线展示原倍率) -->
           <td
             class="border-l border-gray-100 py-2.5 pl-3 pr-5 text-right align-middle font-mono text-xs dark:border-dark-700/60"
           >
             <span
               v-if="period"
               class="font-bold text-primary-600 dark:text-primary-400"
-              :title="t('modelPlaza.table.timePricingRateHint', { rate: effectiveRate, multiplier: period.multiplier })"
-              >{{ periodRate(period) }}x</span
+              :title="t('modelPlaza.table.timePricingRateHint', { rate: modelRate(m), multiplier: period.multiplier })"
+              >{{ rate }}x</span
             >
             <span
               v-else-if="usesIndependentMediaRate(m)"
@@ -294,10 +294,10 @@
               >{{ requestRate(m) }}x</span
             >
             <template v-else-if="hasCustomRate">
-              <span class="mr-1 text-gray-400 line-through dark:text-dark-500">{{ rateMultiplier }}x</span>
-              <span class="font-bold text-primary-600 dark:text-primary-400">{{ effectiveRate }}x</span>
+              <span class="mr-1 text-gray-400 line-through dark:text-dark-500">{{ modelBaseRate(m) }}x</span>
+              <span class="font-bold text-primary-600 dark:text-primary-400" :title="rateFactorHint(m)">{{ rate }}x</span>
             </template>
-            <span v-else class="font-bold text-gray-700 dark:text-gray-300">{{ effectiveRate }}x</span>
+            <span v-else class="font-bold text-gray-700 dark:text-gray-300" :title="rateFactorHint(m)">{{ rate }}x</span>
           </td>
         </tr>
       </tbody>
@@ -398,34 +398,63 @@ function billingModeLabel(m: PlazaModel): string {
 /** 价格统一保底 2 位小数,更长的有效小数原样保留。 */
 const MIN_DECIMALS = 2
 
-/** 表格行:每个模型一行标准价;配置了分时倍率的模型再按时段各加一行。 */
+/** 表格行:每个模型一行标准价;配置了分时倍率的模型再按时段各加一行。rate 为该行 token 实付倍率。 */
 interface PlazaRow {
   model: PlazaModel
   period: PlazaTimePricingPeriod | null
+  rate: number
   key: string
 }
 
 const rows = computed<PlazaRow[]>(() =>
   sortedModels.value.flatMap((m) => {
-    const base: PlazaRow = { model: m, period: null, key: `${m.platform}:${m.name}` }
+    const base: PlazaRow = { model: m, period: null, rate: modelRate(m), key: `${m.platform}:${m.name}` }
     const periodRows = timePeriods(m).map<PlazaRow>((p, idx) => ({
       model: m,
       period: p,
+      rate: periodRate(m, p),
       key: `${m.platform}:${m.name}:${idx}`
     }))
     return [base, ...periodRows]
   })
 )
 
-/** 时段行的生效倍率 = 生效倍率 × 时段倍率(去掉浮点噪声)。 */
-function periodRate(period: PlazaTimePricingPeriod): number {
-  return Math.round(effectiveRate.value * period.multiplier * 1000) / 1000
+/** 单模型倍率系数(后端仅在 ≠1 时下发),缺省或非法时按 1。 */
+function rateFactor(m: PlazaModel): number {
+  const factor = m.rate_factor
+  return typeof factor === 'number' && Number.isFinite(factor) && factor > 0 ? factor : 1
 }
 
-/** 实付价 = 渠道单价 × 生效倍率(时段行再乘时段倍率),按 $/1M token 展示。 */
-function paidPerMillion(value: number | null | undefined, period: PlazaTimePricingPeriod | null = null): string {
+/** 倍率乘积去掉浮点噪声(保留 6 位小数,不影响常规倍率的原样展示)。 */
+function roundRate(rate: number): number {
+  return Math.round(rate * 1e6) / 1e6
+}
+
+/** 模型 token 生效倍率 = (专属倍率 ?? 分组倍率) × 单模型系数,与后端计费口径一致。 */
+function modelRate(m: PlazaModel): number {
+  return roundRate(effectiveRate.value * rateFactor(m))
+}
+
+/** 专属倍率划线展示的原倍率同样带上单模型系数。 */
+function modelBaseRate(m: PlazaModel): number {
+  return roundRate(props.rateMultiplier * rateFactor(m))
+}
+
+/** 系数 ≠ 1 时在倍率列 tooltip 披露合成方式;否则不渲染 title。 */
+function rateFactorHint(m: PlazaModel): string | undefined {
+  const factor = rateFactor(m)
+  if (factor === 1) return undefined
+  return t('modelPlaza.table.rateFactorHint', { rate: effectiveRate.value, factor })
+}
+
+/** 时段行的生效倍率 = 模型生效倍率 × 时段倍率(去掉浮点噪声)。 */
+function periodRate(m: PlazaModel, period: PlazaTimePricingPeriod): number {
+  return Math.round(modelRate(m) * period.multiplier * 1000) / 1000
+}
+
+/** 实付价 = 渠道单价 × 行生效倍率,按 $/1M token 展示。 */
+function paidPerMillion(value: number | null | undefined, rate: number): string {
   if (value == null) return '-'
-  const rate = period ? periodRate(period) : effectiveRate.value
   return formatScaled(value * rate, PER_MILLION, MIN_DECIMALS)
 }
 
@@ -442,7 +471,7 @@ function requestRate(m: PlazaModel): number {
   }
   return billingMode(m) === BILLING_MODE_IMAGE && props.imageRateIndependent === true
     ? (props.imageRateMultiplier ?? 1)
-    : effectiveRate.value
+    : modelRate(m)
 }
 
 /** 非 token 单价乘该行生效倍率，不换算为每百万 token。 */

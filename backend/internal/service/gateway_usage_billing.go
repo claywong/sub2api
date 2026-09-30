@@ -824,6 +824,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		groupDefault := apiKey.Group.RateMultiplier
 		multiplier = s.ResolveUserGroupRateMultiplier(ctx, user.ID, *apiKey.GroupID, groupDefault)
 	}
+	// 单模型倍率系数（私有扩展）：与分组/用户专属倍率相乘，在高峰因子之前折入基础倍率，
+	// 图片/视频按次倍率随之继承（开启独立倍率时除外）。同样不并入 user:group 倍率缓存。
+	multiplier *= modelRateFactorFromAPIKey(apiKey, input.RequestedModel, input.OriginalModel, result.Model, result.UpstreamModel)
 	// token 倍率叠加高峰因子（token 计费含图片 token，图片按次倍率不受影响）。高峰因子按请求时刻现算，
 	// 不并入上面的 getUserGroupRateMultiplier，以免污染 user:group 倍率缓存。
 	pricingAt := input.PricingAt

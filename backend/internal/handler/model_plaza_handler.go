@@ -72,6 +72,8 @@ type modelPlazaModel struct {
 	LongContextBasis string `json:"long_context_basis,omitempty"`
 	// TimePricing 分时倍率时段，落在时段内的请求整单乘倍率；无分时省略。
 	TimePricing *modelPlazaTimePricing `json:"time_pricing,omitempty"`
+	// RateFactor 分组单模型倍率系数，实付倍率 = (用户专属倍率 ?? 分组倍率) × 系数；系数为 1 时省略。
+	RateFactor *float64 `json:"rate_factor,omitempty"`
 }
 
 // modelPlazaGroup 广场分组条目（白名单字段）。
@@ -197,6 +199,7 @@ func toModelPlazaGroupDTO(g *service.PlazaGroup, userRates map[int64]float64) mo
 			OfficialPricing:  toModelPlazaOfficialPricing(m.OfficialPricing),
 			LongContextBasis: string(m.LongContextBasis),
 			TimePricing:      toModelPlazaTimePricing(m.TimePricing),
+			RateFactor:       plazaRateFactorPtr(m.RateFactor),
 		})
 	}
 	dto := modelPlazaGroup{
@@ -238,6 +241,14 @@ func toModelPlazaTimePricing(p *service.TimePricingSchedule) *modelPlazaTimePric
 		})
 	}
 	return &modelPlazaTimePricing{Timezone: p.Timezone, WeekdaysOnly: p.WeekdaysOnly, Periods: periods}
+}
+
+// plazaRateFactorPtr 仅在单模型倍率系数生效（≠1 且 >0）时输出，前端缺省按 1 处理。
+func plazaRateFactorPtr(factor float64) *float64 {
+	if factor <= 0 || factor == 1 {
+		return nil
+	}
+	return &factor
 }
 
 // toModelPlazaOfficialPricing 转换官方参考价；nil 透传（前端显示 "-"）。

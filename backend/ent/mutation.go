@@ -22147,6 +22147,7 @@ type GroupMutation struct {
 	model_pricing                           *jsontext.Value
 	appendmodel_pricing                     jsontext.Value
 	model_quotas                            *domain.GroupModelQuotas
+	model_rate_multipliers                  *domain.GroupModelRateMultipliers
 	claude_code_only                        *bool
 	fallback_group_id                       *int64
 	addfallback_group_id                    *int64
@@ -24512,6 +24513,42 @@ func (m *GroupMutation) ResetModelQuotas() {
 	m.model_quotas = nil
 }
 
+// SetModelRateMultipliers sets the "model_rate_multipliers" field.
+func (m *GroupMutation) SetModelRateMultipliers(dmrm domain.GroupModelRateMultipliers) {
+	m.model_rate_multipliers = &dmrm
+}
+
+// ModelRateMultipliers returns the value of the "model_rate_multipliers" field in the mutation.
+func (m *GroupMutation) ModelRateMultipliers() (r domain.GroupModelRateMultipliers, exists bool) {
+	v := m.model_rate_multipliers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModelRateMultipliers returns the old "model_rate_multipliers" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldModelRateMultipliers(ctx context.Context) (v domain.GroupModelRateMultipliers, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModelRateMultipliers is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModelRateMultipliers requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModelRateMultipliers: %w", err)
+	}
+	return oldValue.ModelRateMultipliers, nil
+}
+
+// ResetModelRateMultipliers resets all changes to the "model_rate_multipliers" field.
+func (m *GroupMutation) ResetModelRateMultipliers() {
+	m.model_rate_multipliers = nil
+}
+
 // SetClaudeCodeOnly sets the "claude_code_only" field.
 func (m *GroupMutation) SetClaudeCodeOnly(b bool) {
 	m.claude_code_only = &b
@@ -25997,7 +26034,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 69)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26123,6 +26160,9 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.model_quotas != nil {
 		fields = append(fields, group.FieldModelQuotas)
+	}
+	if m.model_rate_multipliers != nil {
+		fields = append(fields, group.FieldModelRateMultipliers)
 	}
 	if m.claude_code_only != nil {
 		fields = append(fields, group.FieldClaudeCodeOnly)
@@ -26294,6 +26334,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.ModelPricing()
 	case group.FieldModelQuotas:
 		return m.ModelQuotas()
+	case group.FieldModelRateMultipliers:
+		return m.ModelRateMultipliers()
 	case group.FieldClaudeCodeOnly:
 		return m.ClaudeCodeOnly()
 	case group.FieldFallbackGroupID:
@@ -26439,6 +26481,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldModelPricing(ctx)
 	case group.FieldModelQuotas:
 		return m.OldModelQuotas(ctx)
+	case group.FieldModelRateMultipliers:
+		return m.OldModelRateMultipliers(ctx)
 	case group.FieldClaudeCodeOnly:
 		return m.OldClaudeCodeOnly(ctx)
 	case group.FieldFallbackGroupID:
@@ -26793,6 +26837,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetModelQuotas(v)
+		return nil
+	case group.FieldModelRateMultipliers:
+		v, ok := value.(domain.GroupModelRateMultipliers)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModelRateMultipliers(v)
 		return nil
 	case group.FieldClaudeCodeOnly:
 		v, ok := value.(bool)
@@ -27612,6 +27663,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldModelQuotas:
 		m.ResetModelQuotas()
+		return nil
+	case group.FieldModelRateMultipliers:
+		m.ResetModelRateMultipliers()
 		return nil
 	case group.FieldClaudeCodeOnly:
 		m.ResetClaudeCodeOnly()

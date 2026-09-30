@@ -652,6 +652,7 @@ export interface AdminGroup extends Group {
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_allowlist?: ModelAllowlist
   model_quotas?: ModelQuotas
+  model_rate_multipliers?: ModelRateMultipliers
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
@@ -680,6 +681,19 @@ export interface ModelQuotaRule {
 export interface ModelQuotas {
   enabled: boolean
   rules: ModelQuotaRule[]
+}
+
+// 按模型/模型前缀的倍率系数规则（私有扩展）
+// match 语义同 ModelQuotaRule；multiplier 与分组倍率（或用户专属倍率）相乘，必须 > 0
+export interface ModelRateMultiplierRule {
+  match: string
+  multiplier: number
+}
+
+// 分组级单模型倍率系数配置：实付倍率 = (用户专属倍率 ?? 分组倍率) × 系数 × 高峰因子
+export interface ModelRateMultipliers {
+  enabled: boolean
+  rules: ModelRateMultiplierRule[]
 }
 
 // 单个窗口的用量进度（管理端展示）
@@ -874,6 +888,7 @@ export interface CreateGroupRequest {
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
   model_quotas?: ModelQuotas
+  model_rate_multipliers?: ModelRateMultipliers
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -942,6 +957,7 @@ export interface UpdateGroupRequest {
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
   model_quotas?: ModelQuotas
+  model_rate_multipliers?: ModelRateMultipliers
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean

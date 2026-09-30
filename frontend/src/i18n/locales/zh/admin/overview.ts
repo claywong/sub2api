@@ -1184,6 +1184,26 @@ export default {
           enabledButEmpty: '按模型配额已开启，请至少添加一条规则'
         }
       },
+      modelRateMultipliers: {
+        title: '单模型倍率',
+        hint: '为单个模型或整个模型系列设置倍率系数，实付倍率 = 分组倍率（或用户专属倍率）× 系数 × 高峰因子。使用记录里的倍率显示合成后的值，原价仍按官方价。条目支持精确模型 ID 与末尾 * 通配（如 claude-opus*），先按请求模型匹配，未命中再按实际转发模型匹配；精确条目优先于通配，多条通配同时命中时前缀最长者优先。开启独立图片/视频倍率时，该部分不乘系数。',
+        empty: '暂无规则，点击下方按钮添加',
+        addRule: '添加规则',
+        matchPlaceholder: '如 claude-opus* 或 gpt-6-astra',
+        columns: {
+          match: '模型 / 前缀',
+          multiplier: '系数',
+          effective: '生效倍率（分组倍率 × 系数）'
+        },
+        errors: {
+          emptyMatch: '请填写模型 ID 或前缀',
+          bareWildcard: '不允许单独使用 *，请直接调整分组倍率',
+          wildcardPosition: '通配符 * 只能出现在末尾：{match}',
+          duplicate: '规则重复：{match}',
+          invalidMultiplier: '系数必须是大于 0 的数字：{match}',
+          enabledButEmpty: '单模型倍率已开启，请至少添加一条规则'
+        }
+      },
       codexModelsManifest: {
         title: '固定账号获取模型列表',
         hint: '开启后，普通模型列表与 Codex Model Manifest 均优先从选定账号获取并合并，再应用账号映射和分组列表过滤；限流/过载中的选定账号仍会被使用。',
