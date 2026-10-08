@@ -25,6 +25,8 @@ describe('profile username draft', () => {
     let finish!: (value: unknown) => void
     mocks.updateProfile.mockReturnValue(new Promise(resolve => { finish = resolve }))
     const wrapper = mount(Harness)
+    // The fork disables the username input; lift it so the draft logic can still be exercised.
+    ;(wrapper.get('#username').element as HTMLInputElement).disabled = false
     await wrapper.get('#username').setValue('submitted')
     await wrapper.get('form').trigger('submit')
     expect(mocks.updateProfile).toHaveBeenCalledWith({ username: 'submitted' })

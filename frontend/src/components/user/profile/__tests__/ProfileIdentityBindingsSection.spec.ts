@@ -1,9 +1,34 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount as vtuMount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import type { User } from '@/types'
+
+// The fork hard-disables the email binding form (no email change allowed). The
+// specs below exercise the underlying form logic, so lift the static `disabled`
+// from those controls after every mount.
+const EMAIL_FORM_CONTROLS = [
+  'input',
+  'send-code',
+  'code-input',
+  'password-input',
+  'submit',
+].map((name) => `[data-testid="profile-binding-email-${name}"]`)
+
+function enableEmailForm(root: Element): void {
+  EMAIL_FORM_CONTROLS.forEach((selector) => {
+    root.querySelectorAll<HTMLInputElement | HTMLButtonElement>(selector).forEach((el) => {
+      el.disabled = false
+    })
+  })
+}
+
+const mount: typeof vtuMount = ((component: unknown, options: unknown) => {
+  const wrapper = (vtuMount as (c: unknown, o: unknown) => ReturnType<typeof vtuMount>)(component, options)
+  enableEmailForm(wrapper.element as Element)
+  return wrapper
+}) as typeof vtuMount
 
 const routeState = vi.hoisted(() => ({
   fullPath: '/profile',

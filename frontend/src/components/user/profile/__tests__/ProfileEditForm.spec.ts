@@ -22,6 +22,11 @@ vi.mock('vue-i18n', () => ({
 }))
 
 describe('ProfileEditForm', () => {
+  it('keeps the username input disabled', () => {
+    const wrapper = mount(ProfileEditForm, { props: { initialUsername: 'alice' } })
+    expect(wrapper.get('#username').attributes('disabled')).toBeDefined()
+  })
+
   it.each([
     [{ status: 400, code: 'VALIDATION_ERROR', message: 'username is too long' }, 'username is too long'],
     [{ response: { data: { detail: 'backend failure' } } }, 'backend failure'],
@@ -30,6 +35,8 @@ describe('ProfileEditForm', () => {
     updateProfileMock.mockRejectedValue(error)
     const wrapper = mount(ProfileEditForm, { props: { initialUsername: 'alice' } })
 
+    // The fork disables the username input; lift it so the submit logic can still be exercised.
+    ;(wrapper.get('#username').element as HTMLInputElement).disabled = false
     await wrapper.get('#username').setValue('new-name')
     await wrapper.get('form').trigger('submit.prevent')
 

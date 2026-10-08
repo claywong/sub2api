@@ -68,16 +68,16 @@ describe('AccountTableFilters', () => {
     const toggle = wrapper.get('button[aria-controls]')
     expect(toggle.find('span').exists()).toBe(false)
     for (const [filters, count] of [
-      [{ type: 'oauth', privacy_mode: '', group: '' }, 1],
-      [{ type: 'setup-token', privacy_mode: '__unset__', group: 'ungrouped' }, 3],
-      [{ type: '', privacy_mode: 'training_off', group: '42' }, 2]
+      [{ privacy_mode: '', group: 'ungrouped' }, 1],
+      [{ privacy_mode: '__unset__', group: 'ungrouped' }, 2],
+      [{ privacy_mode: 'training_off', group: '' }, 1]
     ] as const) {
       await wrapper.setProps({ filters: { ...defaultFilters(), ...filters } })
       expect(toggle.get('span').text()).toBe(String(count))
       expect(toggle.attributes('aria-label')).toBe(`admin.accounts.moreFiltersActive (${count})`)
       expect(toggle.attributes('aria-expanded')).toBe('false')
     }
-    await wrapper.setProps({ filters: { type: null, privacy_mode: undefined, group: '' } })
+    await wrapper.setProps({ filters: { privacy_mode: undefined, group: null } })
     expect(toggle.find('span').exists()).toBe(false)
     expect(toggle.attributes('aria-label')).toBe('admin.accounts.moreFilters')
     wrapper.unmount()
@@ -90,7 +90,6 @@ describe('AccountTableFilters', () => {
     const expectedOptions = [
       ['platform', ['', ...CONCRETE_PLATFORM_OPTIONS.map(option => option.value)]],
       ['status', ['', 'active', 'inactive', 'error', 'rate_limited', 'temp_unschedulable', 'unschedulable']],
-      ['type', ['', 'oauth', 'setup-token', 'apikey', 'bedrock']],
       ['privacy_mode', ['', '__unset__', 'training_off', 'training_set_cf_blocked', 'training_set_failed']],
       ['group', ['', 'ungrouped', '42']]
     ] as const
@@ -109,7 +108,7 @@ describe('AccountTableFilters', () => {
         expect(wrapper.props('filters')).toEqual(filters)
       }
     }
-    expect(wrapper.findAllComponents(Select)[4].props('options')[2].label).toBe('A very long group name')
+    expect(wrapper.findAllComponents(Select)[3].props('options')[2].label).toBe('A very long group name')
     wrapper.unmount()
   })
 
