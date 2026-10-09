@@ -146,7 +146,7 @@ export default {
           claudecodeSwitch: 'Normalize Claude Code clients (CLI / IDE / SDK; unify version, keep entrypoint)',
           codexSwitch: 'Normalize Codex clients (UA and originator, same as OpenAI OAuth convergence)',
           zcodeSwitch: 'Normalize ZCode clients (unify ZCode version and runtime)',
-          restrictClientsSwitch: 'Block other clients (only Codex / Claude Code / ZCode allowed; others get 403)',
+          restrictClientsSwitch: 'Block other clients (only Codex / Claude Code / ZCode allowed; others get 403. Codex and Claude Code are strictly validated, subject to the global Codex allow/deny lists, version range and fingerprint gate)',
         },
         zhipuTeam: {
           title: 'Team Plan Organization / Project ID',

@@ -58,7 +58,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 	// 私有扩展：智谱账号客户端准入（见 openai_gateway_messages_anthropic_native_fingerprint_target.go）。
-	if shouldRejectAnthropicFingerprintClient(account, c) {
+	if s.shouldRejectAnthropicFingerprintClient(account, c, body) {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
 		c.JSON(http.StatusForbidden, gin.H{
 			"error": gin.H{

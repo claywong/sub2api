@@ -46,7 +46,7 @@ func (u *commandCodeAlphaUpstream) Do(req *http.Request, _ string, _ int64, _ in
 	}, nil
 }
 
-func (u *commandCodeAlphaUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u *commandCodeAlphaUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, concurrency)
 }
 
@@ -253,7 +253,7 @@ func (failingCommandCodeUpstream) Do(*http.Request, string, int64, int) (*http.R
 	return nil, errors.New("dial tcp: i/o timeout")
 }
 
-func (u failingCommandCodeUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u failingCommandCodeUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	return u.Do(req, proxyURL, accountID, concurrency)
 }
 

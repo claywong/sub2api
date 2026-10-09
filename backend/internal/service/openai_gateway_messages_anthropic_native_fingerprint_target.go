@@ -3,7 +3,8 @@
 // 智谱账号指纹归一化的「目标解析」与「客户端准入」：
 //   - 入站客户端识别 + 账号三个归一化开关，决定本次请求归一成哪种客户端形态
 //     （改写实现见 openai_gateway_messages_anthropic_native_fingerprint.go）；
-//   - 准入开关开启时，只允许 Codex / Claude Code / ZCode 三类客户端调用。
+//   - 准入开关开启时，只允许 Codex / Claude Code / ZCode 三类客户端调用，
+//     校验规则见 openai_gateway_messages_anthropic_native_fingerprint_gate.go。
 //
 // @author wangzhong
 package service
@@ -151,17 +152,4 @@ func accountAnthropicFingerprintTarget(account *Account, c *gin.Context) anthrop
 		return anthropicFingerprintOff
 	}
 	return resolveAnthropicFingerprintTarget(anthropicFingerprintSwitchesOf(account), classifyInboundAnthropicFingerprintClient(c))
-}
-
-// shouldRejectAnthropicFingerprintClient 报告本次请求是否应被准入开关拒绝：
-// 智谱账号开启 restrict_clients，且入站客户端不是 Codex / Claude Code / ZCode。
-// 调用方负责按入口协议写 403 错误体（与 codex_cli_only 拒绝同样不做 failover）。
-func shouldRejectAnthropicFingerprintClient(account *Account, c *gin.Context) bool {
-	if !anthropicFingerprintAccountInScope(account) {
-		return false
-	}
-	if !anthropicFingerprintExtraFlag(account.Extra, anthropicFingerprintRestrictClientsExtraKey) {
-		return false
-	}
-	return classifyInboundAnthropicFingerprintClient(c) == anthropicFingerprintClientOther
 }

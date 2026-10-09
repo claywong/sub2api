@@ -5,7 +5,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -291,24 +293,58 @@ func TestAnthropicFingerprintRestrictClients(t *testing.T) {
 	const zcodeUA = "ZCode/3.14.3 ai-sdk/provider-utils/4.0.27 runtime/node.js/24"
 	restricted := fpPipelineAccountWith(anthropicFingerprintRestrictClientsExtraKey)
 
-	t.Run("判定：三类客户端放行，其他拒绝", func(t *testing.T) {
-		for _, ua := range []string{fpPipelineCodexUA, fpPipelineClaudeUA, zcodeUA} {
-			require.False(t, shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, ua, "")), ua)
-		}
-		require.False(t, shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, "some-sdk/1.0", "codex_cli_rs")), "originator 识别为 Codex")
+	svc := openCodeSessionTestService()
+
+	t.Run("判定：ZCode 放行，其他拒绝", func(t *testing.T) {
+		require.False(t, svc.shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, zcodeUA, ""), nil))
 		for _, ua := range []string{"litellm/1.70.0", "curl/8.0", ""} {
-			require.True(t, shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, ua, "")), ua)
+			require.True(t, svc.shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, ua, ""), nil), ua)
 		}
 	})
 
+	t.Run("判定：Codex 走 codex_cli_only 同款门（版本 + 引擎指纹）", func(t *testing.T) {
+		withFingerprint := fpPipelineContext(t, fpPipelineCodexUA, "")
+		withFingerprint.Request.Header.Set("x-codex-window-id", "w1")
+		require.False(t, svc.shouldRejectAnthropicFingerprintClient(restricted, withFingerprint, nil), "官方 UA + x-codex- 头放行")
+
+		require.True(t, svc.shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, fpPipelineCodexUA, ""), nil), "缺引擎指纹头拒绝")
+
+		originatorOnly := fpPipelineContext(t, "some-sdk/1.0", "codex_cli_rs")
+		originatorOnly.Request.Header.Set("x-codex-window-id", "w1")
+		require.True(t, svc.shouldRejectAnthropicFingerprintClient(restricted, originatorOnly, nil), "官方 originator 但 UA 无可解析引擎版本，被版本门拒绝")
+	})
+
+	t.Run("判定：Claude Code 复用 ClaudeCodeValidator", func(t *testing.T) {
+		// 非 messages 路径（/v1/responses）：UA 匹配即通过。
+		require.False(t, svc.shouldRejectAnthropicFingerprintClient(restricted, fpPipelineContext(t, fpPipelineClaudeUA, ""), nil))
+
+		// messages 路径：只有 UA 不够，缺 system / 必需头 / metadata.user_id 被拒。
+		bare := fpPipelineContext(t, fpPipelineClaudeUA, "")
+		bare.Request.URL.Path = "/v1/messages"
+		require.True(t, svc.shouldRejectAnthropicFingerprintClient(restricted, bare, []byte(`{"model":"glm-5.1","messages":[]}`)))
+
+		// messages 路径：完整的 Claude Code 请求放行。
+		full := fpPipelineContext(t, fpPipelineClaudeUA, "")
+		full.Request.URL.Path = "/v1/messages"
+		full.Request.Header.Set("X-App", "cli")
+		full.Request.Header.Set("anthropic-beta", "claude-code-20250219")
+		full.Request.Header.Set("anthropic-version", "2023-06-01")
+		userID := `{"device_id":"` + strings.Repeat("a", 64) + `","account_uuid":"","session_id":"11111111-1111-1111-1111-111111111111"}`
+		userIDJSON, err := json.Marshal(userID)
+		require.NoError(t, err)
+		body := []byte(`{"model":"glm-5.1","system":[{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."}],` +
+			`"metadata":{"user_id":` + string(userIDJSON) + `},"messages":[]}`)
+		require.False(t, svc.shouldRejectAnthropicFingerprintClient(restricted, full, body))
+	})
+
 	t.Run("默认关闭不拦截", func(t *testing.T) {
-		require.False(t, shouldRejectAnthropicFingerprintClient(fpPipelineAccountWith(), fpPipelineContext(t, "litellm/1.70.0", "")))
+		require.False(t, svc.shouldRejectAnthropicFingerprintClient(fpPipelineAccountWith(), fpPipelineContext(t, "litellm/1.70.0", ""), nil))
 	})
 
 	t.Run("非智谱账号即使写了开关也不拦截", func(t *testing.T) {
 		account := fpPipelineAccount(PlatformDeepseek, false, false)
 		account.Extra[anthropicFingerprintRestrictClientsExtraKey] = true
-		require.False(t, shouldRejectAnthropicFingerprintClient(account, fpPipelineContext(t, "litellm/1.70.0", "")))
+		require.False(t, svc.shouldRejectAnthropicFingerprintClient(account, fpPipelineContext(t, "litellm/1.70.0", ""), nil))
 	})
 
 	t.Run("/v1/messages 入口：403 且不请求上游", func(t *testing.T) {

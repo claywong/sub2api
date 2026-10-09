@@ -349,7 +349,7 @@ export default {
           claudecodeSwitch: '归一化 Claude Code 客户端（CLI / IDE / SDK，统一版本、保留入口）',
           codexSwitch: '归一化 Codex 客户端（UA 与 originator 同 OpenAI OAuth 收敛）',
           zcodeSwitch: '归一化 ZCode 客户端（统一 ZCode 版本与运行时）',
-          restrictClientsSwitch: '禁止其他客户端（仅允许 Codex / Claude Code / ZCode，其他客户端返回 403）',
+          restrictClientsSwitch: '禁止其他客户端（仅允许 Codex / Claude Code / ZCode，其他客户端返回 403；Codex 与 Claude Code 按严格规则校验，受全局 Codex 黑白名单、版本区间、指纹门约束）',
         },
         zhipuTeam: {
           title: '团队版组织 / 项目 ID',
