@@ -4348,8 +4348,16 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         ? fpMode as CodexFingerprintMode
         : 'off')
     }
-    // Anthropic 指纹归一化（CN 供应商 apikey）：缺省/非法值按 off 呈现，
-    // 四个独立开关，兼容 bool 与字符串 "true"，与后端读取侧 opt-in 语义一致。
+    const credentials = newAccount.credentials as Record<string, unknown> | undefined
+    const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
+    if (compactMappings && typeof compactMappings === 'object') {
+      openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
+    }
+  }
+  // Anthropic 指纹归一化（私有扩展，仅智谱 apikey）：缺省/非法值按 off 呈现，
+  // 四个独立开关，兼容 bool 与字符串 "true"，与后端读取侧 opt-in 语义一致。
+  // 独立于 OpenAI 分支，否则智谱账号打开编辑框时开关永远回填为关闭。
+  if (newAccount.platform === 'zhipu' && newAccount.type === 'apikey') {
     anthropicFingerprintNormalizeCodex.value =
       extra?.anthropic_fingerprint_normalize_codex === true || extra?.anthropic_fingerprint_normalize_codex === 'true'
     anthropicFingerprintNormalizeClaudeCode.value =
@@ -4358,11 +4366,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       extra?.anthropic_fingerprint_normalize_zcode === true || extra?.anthropic_fingerprint_normalize_zcode === 'true'
     anthropicFingerprintRestrictClients.value =
       extra?.anthropic_fingerprint_restrict_clients === true || extra?.anthropic_fingerprint_restrict_clients === 'true'
-    const credentials = newAccount.credentials as Record<string, unknown> | undefined
-    const compactMappings = credentials?.compact_model_mapping as Record<string, string> | undefined
-    if (compactMappings && typeof compactMappings === 'object') {
-      openAICompactModelMappings.value = Object.entries(compactMappings).map(([from, to]) => ({ from, to }))
-    }
   }
   if (newAccount.platform === 'anthropic' && newAccount.type === 'apikey') {
     anthropicPassthroughEnabled.value = extra?.anthropic_passthrough === true
@@ -5902,7 +5905,15 @@ const handleSubmit = async () => {
         }
       }
 
-      // Anthropic 指纹归一化：四个独立开关，false 不落键（opt-in），true 显式落键。
+      updatePayload.extra = newExtra
+    }
+
+    // Anthropic 指纹归一化（私有扩展，仅智谱 apikey）：四个独立开关，
+    // false 不落键（opt-in），true 显式落键。独立于 OpenAI 分支，否则智谱账号保存时不会写入。
+    if (showAnthropicFingerprintNormalize.value) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
       if (anthropicFingerprintNormalizeCodex.value) {
         newExtra.anthropic_fingerprint_normalize_codex = true
       } else {
@@ -5923,7 +5934,6 @@ const handleSubmit = async () => {
       } else {
         delete newExtra.anthropic_fingerprint_restrict_clients
       }
-
       updatePayload.extra = newExtra
     }
 
