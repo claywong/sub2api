@@ -166,9 +166,6 @@
                   <Icon name="arrowUp" size="sm" class="h-3.5 w-3.5 text-violet-500" />
                   <span class="font-medium text-gray-900 dark:text-white">{{ row.output_tokens?.toLocaleString() || 0 }}</span>
                 </div>
-                <span v-if="formatOtps(row)" class="text-xs text-gray-400 dark:text-gray-500" :title="t('usage.otpsHint')">
-                  {{ formatOtps(row) }}
-                </span>
               </div>
               <div v-if="row.cache_read_tokens > 0 || row.cache_creation_tokens > 0" class="flex items-center gap-2">
                 <div v-if="row.cache_read_tokens > 0" class="inline-flex items-center gap-1">
@@ -543,7 +540,6 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
-import { formatOtps } from '@/utils/usageOtps'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
