@@ -705,6 +705,107 @@ describe('EditAccountModal', () => {
     })
   })
 
+  it('submits the Zhipu Anthropic fingerprint switches in extra', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'coding',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4'
+    }
+    account.extra = { zhipu_5h_used_percent: 3 }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const checkboxes = wrapper.findAll('input[type="checkbox"]').filter((box) =>
+      box.element.closest('label')?.textContent?.includes('anthropicFingerprintNormalize')
+    )
+    expect(checkboxes).toHaveLength(4)
+    for (const box of checkboxes) {
+      await box.setValue(true)
+    }
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      zhipu_5h_used_percent: 3,
+      anthropic_fingerprint_normalize_claudecode: true,
+      anthropic_fingerprint_normalize_codex: true,
+      anthropic_fingerprint_normalize_zcode: true,
+      anthropic_fingerprint_restrict_clients: true
+    })
+  })
+
+  it('rehydrates saved Zhipu Anthropic fingerprint switches and keeps them on save', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'coding',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4'
+    }
+    account.extra = {
+      anthropic_fingerprint_normalize_claudecode: true,
+      anthropic_fingerprint_normalize_zcode: true,
+      anthropic_fingerprint_restrict_clients: true
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const checkboxes = wrapper.findAll('input[type="checkbox"]').filter((box) =>
+      box.element.closest('label')?.textContent?.includes('anthropicFingerprintNormalize')
+    )
+    // 顺序与模板一致：claudecode / codex / zcode / restrictClients
+    expect(checkboxes.map((box) => (box.element as HTMLInputElement).checked)).toEqual([
+      true,
+      false,
+      true,
+      true
+    ])
+
+    // 只勾选 codex，其余已保存的开关必须原样保留，而不是被表单默认值冲掉。
+    await checkboxes[1].setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      anthropic_fingerprint_normalize_claudecode: true,
+      anthropic_fingerprint_normalize_codex: true,
+      anthropic_fingerprint_normalize_zcode: true,
+      anthropic_fingerprint_restrict_clients: true
+    })
+  })
+
+  it('removes the Zhipu Anthropic fingerprint switches when they are turned off', async () => {
+    const account = buildAccount()
+    account.platform = 'zhipu'
+    account.credentials = {
+      api_key: 'sk-glm',
+      account_mode: 'coding',
+      base_url: 'https://open.bigmodel.cn/api/coding/paas/v4'
+    }
+    account.extra = {
+      anthropic_fingerprint_normalize_claudecode: true,
+      anthropic_fingerprint_restrict_clients: true
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    const checkboxes = wrapper.findAll('input[type="checkbox"]').filter((box) =>
+      box.element.closest('label')?.textContent?.includes('anthropicFingerprintNormalize')
+    )
+    for (const box of checkboxes) {
+      await box.setValue(false)
+    }
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).not.toHaveProperty('anthropic_fingerprint_normalize_claudecode')
+    expect(extra).not.toHaveProperty('anthropic_fingerprint_restrict_clients')
+  })
+
   it.each([
     ['explicit Chat Completions', 'chat_completions'],
     ['legacy missing protocol', undefined]
