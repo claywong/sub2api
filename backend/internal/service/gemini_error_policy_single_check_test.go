@@ -61,7 +61,7 @@ func (s *geminiSequenceUpstreamStub) Do(*http.Request, string, int64, int) (*htt
 	}, nil
 }
 
-func (s *geminiSequenceUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (s *geminiSequenceUpstreamStub) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	return s.Do(req, proxyURL, accountID, concurrency)
 }
 

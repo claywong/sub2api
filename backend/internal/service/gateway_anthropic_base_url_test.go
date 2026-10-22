@@ -94,7 +94,7 @@ func TestGatewayService_AnthropicPassthroughAndCountTokensUseSelectedBase(t *tes
 	require.Equal(t, "Bearer test-key", passthroughReq.Header.Get("Authorization"))
 	require.Equal(t, int64(65535), gjson.GetBytes(wireBody, "max_tokens").Int())
 
-	countPassthroughReq, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "test-key")
+	countPassthroughReq, _, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "test-key")
 	require.NoError(t, err)
 	require.Equal(t, "https://ollama.com/v1/messages/count_tokens?beta=true", countPassthroughReq.URL.String())
 	require.Equal(t, "Bearer test-key", countPassthroughReq.Header.Get("Authorization"))
