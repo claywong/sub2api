@@ -126,7 +126,7 @@ func TestAdminFullAccessKeepsIdentityAndJWTBoundary(t *testing.T) {
 		return &service.User{ID: 9, Role: service.RoleAdmin, Status: service.StatusActive}, nil
 	}}, nil, nil, nil)
 	r := gin.New()
-	r.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, users, settings, nil)))
+	r.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, users, settings, nil, nil)))
 	r.GET("/api/v1/admin/future", func(c *gin.Context) {
 		require.NotNil(t, adminaccess.FromContext(c.Request.Context()))
 		require.Nil(t, adminaccess.RestrictedFromContext(c.Request.Context()))

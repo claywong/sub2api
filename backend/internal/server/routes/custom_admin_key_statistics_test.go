@@ -139,7 +139,7 @@ func TestScopedAdminRegisteredStatisticsAndOpenAIRoutes(t *testing.T) {
 				key, _, err := settings.CreateScopedAdminKey(context.Background(), service.ScopedAdminKeyInput{Name: "统计路由", Enabled: true, Policy: policy}, 9)
 				require.NoError(t, err)
 				users := service.NewUserService(&scopedRouteUsers{}, nil, nil, nil)
-				auth := middleware.NewAdminAuthMiddleware(nil, users, settings, nil)
+				auth := middleware.NewAdminAuthMiddleware(nil, users, settings, nil, nil)
 				admin := &scopedRouteStatisticsAccounts{scopedRouteAccounts: scopedRouteAccounts{t: t}}
 				repo := &scopedRouteStatisticsRepo{admin: admin}
 				logs := &scopedRouteStatisticsLogs{}
