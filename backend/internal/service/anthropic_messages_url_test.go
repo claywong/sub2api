@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -90,7 +91,7 @@ type cloudflareMessagesTestUpstream struct {
 	anthropicHTTPUpstreamRecorder
 }
 
-func (u *cloudflareMessagesTestUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u *cloudflareMessagesTestUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, concurrency int, _ *tlsfingerprint.Profile, _ time.Duration) (*http.Response, error) {
 	u.resp = adaptiveCNAnthropicTestResponse()
 	if req.URL.RawQuery != "" {
 		u.resp.StatusCode = http.StatusBadRequest

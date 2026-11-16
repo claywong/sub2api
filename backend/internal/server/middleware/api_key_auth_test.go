@@ -75,7 +75,7 @@ func TestAPIKeyAuthLookupFailureWhenClientGoneReturns499(t *testing.T) {
 			svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
 
 			for _, mw := range []gin.HandlerFunc{
-				gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)),
+				gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, nil, cfg)),
 				APIKeyAuthWithSubscriptionGoogle(svc, nil, cfg),
 			} {
 				var ctx context.Context
@@ -105,7 +105,7 @@ func TestAPIKeyAuthRejectsNonUTF8KeyAsInvalid(t *testing.T) {
 	svc := service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg)
 
 	r := gin.New()
-	r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, cfg)))
+	r.Use(gin.HandlerFunc(NewAPIKeyAuthMiddleware(svc, nil, nil, cfg)))
 	r.GET("/t", func(c *gin.Context) { c.Status(http.StatusOK) })
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/t", nil)

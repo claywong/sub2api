@@ -145,6 +145,7 @@ docs/*
 !docs/anthropic-scheduling-health-aware.md
 !docs/ops-error-webhook.md
 !docs/ASYNC_IMAGE_TASKS.md
+!docs/OPENAI_IMAGES_CODEX.md
 !docs/BATCH_IMAGE_MVP.md
 !docs/COMPOSITE_GROUPS.md
 !docs/PLUGIN_DEVELOPMENT.md

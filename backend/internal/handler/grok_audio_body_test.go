@@ -61,7 +61,7 @@ func TestGrokVoiceRequestBodyMemoryOverload(t *testing.T) {
 // missing body keeps its validation message.
 func TestGrokVoiceRequestBodyReadFailures(t *testing.T) {
 	cfg := &config.Config{RunMode: config.RunModeSimple}
-	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil, nil)
 	t.Cleanup(billing.Stop)
 	h := &OpenAIGatewayHandler{
 		gatewayService:      &service.OpenAIGatewayService{},
