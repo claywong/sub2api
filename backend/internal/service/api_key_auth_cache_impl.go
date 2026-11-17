@@ -24,7 +24,10 @@ import (
 // v28: group require_privacy_set（OpenAI 选号从 ctx 分组读取）。
 // 上游用 v27 承载该字段，与我们的 v27 撞号；顺延到 v28，避免我们线上已有的
 // v27 快照（不含该字段）被当作有效缓存读出，导致隐私门控在缓存过期前失效。
-const apiKeyAuthSnapshotVersion = 28
+// v29: group force_openai_ultrafast（OpenAI 网关从 ctx 分组读取）。
+// 上游用 v28 承载该字段，与我们的 v28 撞号；顺延到 v29，使两边的 v28 旧快照都失效，
+// 避免不含该字段的快照在缓存过期前让强制 ultrafast 失效。
+const apiKeyAuthSnapshotVersion = 29
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -431,6 +434,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			AllowMessagesDispatch:           apiKey.Group.AllowMessagesDispatch,
 			AllowLive:                       apiKey.Group.AllowLive,
 			ForceOpenAIFast:                 apiKey.Group.ForceOpenAIFast,
+			ForceOpenAIUltrafast:            apiKey.Group.ForceOpenAIUltrafast,
 			FreeOpenAIFast:                  apiKey.Group.FreeOpenAIFast,
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
@@ -539,6 +543,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			AllowMessagesDispatch:           snapshot.Group.AllowMessagesDispatch,
 			AllowLive:                       snapshot.Group.AllowLive,
 			ForceOpenAIFast:                 snapshot.Group.ForceOpenAIFast,
+			ForceOpenAIUltrafast:            snapshot.Group.ForceOpenAIUltrafast,
 			FreeOpenAIFast:                  snapshot.Group.FreeOpenAIFast,
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
