@@ -154,7 +154,7 @@
                       ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(iv.cache_write_1h_price, rate)
                       }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
                     ><template v-if="iv.cache_write_12h_price != null"
-                      ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (12h </span>{{ paidPerMillion(iv.cache_write_12h_price, period)
+                      ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (12h </span>{{ paidPerMillion(iv.cache_write_12h_price, rate)
                       }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
                     >
                     <span class="ml-1 font-sans font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.cacheReadShort') }}</span>
@@ -174,7 +174,7 @@
                     ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (1h </span>{{ paidPerMillion(m.pricing.cache_write_1h_price, rate)
                     }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
                   ><template v-if="m.pricing?.cache_write_12h_price != null"
-                    ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (12h </span>{{ paidPerMillion(m.pricing.cache_write_12h_price, period)
+                    ><span class="font-sans font-normal text-gray-400 dark:text-dark-500"> (12h </span>{{ paidPerMillion(m.pricing.cache_write_12h_price, rate)
                     }}<span class="font-sans font-normal text-gray-400 dark:text-dark-500">)</span></template
                   >
                 </div>
