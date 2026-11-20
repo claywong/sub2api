@@ -331,9 +331,9 @@ func TestAnthropicPromptTotalBufferedMessages(t *testing.T) {
 				var err error
 				switch route {
 				case "messages":
-					usage, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "claude-sonnet-4", "claude-sonnet-4")
+					usage, _, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "claude-sonnet-4", "claude-sonnet-4")
 				case "passthrough":
-					usage, err = service.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), response, ctx, account)
+					usage, _, err = service.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), response, ctx, account)
 				case "native messages":
 					var result *OpenAIForwardResult
 					result, err = (&OpenAIGatewayService{cfg: &config.Config{}}).handleNativeAnthropicBufferedResponse(context.Background(), response, ctx, account, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())

@@ -173,7 +173,13 @@ func TestAnthropicCacheCreationMissingDetailForwardBillingBoundary(t *testing.T)
 							streamed, err = service.handleStreamingResponse(context.Background(), response, ctx, &Account{ID: 701}, time.Now(), "claude-sonnet-4", "claude-sonnet-4", false)
 						} else {
 							streamed, err = service.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), response, ctx, &Account{ID: 701}, time.Now(), "claude-sonnet-4")
-							require.Equal(t, payload, recorder.Body.String())
+							if terminal == "eof" {
+								// 私有扩展：上游流未正常结束时，直通路径在原始数据后追加 stream_incomplete 错误事件。
+								require.True(t, strings.HasPrefix(recorder.Body.String(), payload))
+								require.Contains(t, strings.TrimPrefix(recorder.Body.String(), payload), "stream_incomplete")
+							} else {
+								require.Equal(t, payload, recorder.Body.String())
+							}
 						}
 						require.NotNil(t, streamed)
 						result = &ForwardResult{RequestID: "cache_creation", Model: "claude-sonnet-4", Usage: *streamed.usage, Duration: time.Second}
@@ -362,7 +368,7 @@ func assertAnthropicCacheCreationForwardBoundary(t *testing.T, antigravity bool)
 					require.Equal(t, stream, result.Stream)
 				} else {
 					service := &GatewayService{cfg: &config.Config{}, rateLimitService: &RateLimitService{}}
-					usage, err := service.handleNonStreamingResponse(context.Background(), response, ctx, &Account{ID: 701}, "claude-sonnet-4", "claude-sonnet-4")
+					usage, _, err := service.handleNonStreamingResponse(context.Background(), response, ctx, &Account{ID: 701}, "claude-sonnet-4", "claude-sonnet-4")
 					require.NoError(t, err)
 					result = &ForwardResult{Model: "claude-sonnet-4", Usage: *usage}
 				}

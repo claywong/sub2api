@@ -142,7 +142,7 @@ func TestCacheTTLOverrideForwardBillingBoundary(t *testing.T) {
 					switch route {
 					case "nonstream":
 						var usage *ClaudeUsage
-						usage, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "k3", "k3")
+						usage, _, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "k3", "k3")
 						require.NotNil(t, usage)
 						result = &ForwardResult{Usage: *usage}
 					case "standard", "passthrough":
@@ -368,7 +368,7 @@ func TestCacheTTLOverrideForwardPreservesAbsentDetails(t *testing.T) {
 					if stream {
 						_, err = service.handleStreamingResponse(context.Background(), response, ctx, account, time.Now(), "k3", "k3", false)
 					} else {
-						_, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "k3", "k3")
+						_, _, err = service.handleNonStreamingResponse(context.Background(), response, ctx, account, "k3", "k3")
 					}
 					require.NoError(t, err)
 					if !stream {
