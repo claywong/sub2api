@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -169,7 +170,7 @@ func TestNormalizeNativeAnthropicRequestHeaders(t *testing.T) {
 	h2.Set("User-Agent", "some-sdk/0.1.2")
 	h2.Set("x-anthropic-billing-header", "cc_version=2.1.81.a1b")
 	// 真实链路顺序：先应用账号级覆写，再做归一化
-	overridden.ApplyHeaderOverrides(h2)
+	overridden.ApplyHeaderOverrides(context.Background(), h2)
 	NormalizeNativeAnthropicRequestHeaders(overridden, h2, anthropicFingerprintClaudeCode, "")
 	if got := h2.Get("User-Agent"); got != "claude-cli/9.9.9" {
 		t.Fatalf("account-level UA override must win, got %q", got)

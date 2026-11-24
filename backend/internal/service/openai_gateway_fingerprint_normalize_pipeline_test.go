@@ -216,7 +216,7 @@ func TestNormalizeNativeAnthropicStainlessHeaders(t *testing.T) {
 			credKeyHeaderOverrides:       map[string]any{"x-stainless-os": "Windows"},
 		}
 		h := stainless()
-		account.ApplyHeaderOverrides(h)
+		account.ApplyHeaderOverrides(context.Background(), h)
 		NormalizeNativeAnthropicRequestHeaders(account, h, anthropicFingerprintCodex, "")
 		require.Equal(t, "Windows", getHeaderRaw(h, "x-stainless-os"))
 		require.Equal(t, "", getHeaderRaw(h, "x-stainless-package-version"))
